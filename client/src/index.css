@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-grafana-dark text-white;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-grafana-primary hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded;
+  }
+  
+  .input-field {
+    @apply bg-grafana-secondary border border-gray-600 rounded px-3 py-2 w-full focus:outline-none focus:border-grafana-primary;
+  }
+} 
