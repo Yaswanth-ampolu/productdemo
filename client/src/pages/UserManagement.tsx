@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface User {
   id: number;
@@ -11,7 +11,7 @@ interface User {
   created_at: string;
 }
 
-interface NewUser {
+interface UserFormData {
   name: string;
   username: string;
   email: string;
@@ -19,18 +19,21 @@ interface NewUser {
   role: string;
 }
 
+const defaultUserForm: UserFormData = {
+  name: '',
+  username: '',
+  email: '',
+  password: '',
+  role: 'viewer'
+};
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newUser, setNewUser] = useState<NewUser>({
-    name: '',
-    username: '',
-    email: '',
-    password: '',
-    role: 'viewer'
-  });
+  const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [userForm, setUserForm] = useState<UserFormData>(defaultUserForm);
 
   useEffect(() => {
     fetchUsers();
@@ -47,15 +50,53 @@ export default function UserManagement() {
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleOpenModal = (user?: User) => {
+    if (user) {
+      setEditingUser(user);
+      setUserForm({
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        password: '', // Don't populate password for editing
+        role: user.role
+      });
+    } else {
+      setEditingUser(null);
+      setUserForm(defaultUserForm);
+    }
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingUser(null);
+    setUserForm(defaultUserForm);
+    setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
     try {
-      await api.post('/users', newUser);
-      setShowCreateModal(false);
-      setNewUser({ name: '', username: '', email: '', password: '', role: 'viewer' });
+      if (editingUser) {
+        // Remove empty fields from update
+        const updateData = Object.entries(userForm).reduce((acc, [key, value]) => {
+          if (value !== '') {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as Partial<UserFormData>);
+
+        await api.put(`/users/${editingUser.id}`, updateData);
+      } else {
+        await api.post('/users', userForm);
+      }
+      
+      handleCloseModal();
       fetchUsers();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create user');
+      setError(err.response?.data?.error || `Failed to ${editingUser ? 'update' : 'create'} user`);
     }
   };
 
@@ -83,7 +124,7 @@ export default function UserManagement() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-xl md:text-2xl font-bold">User Management</h2>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => handleOpenModal()}
           className="btn-primary flex items-center justify-center sm:justify-start"
         >
           <PlusIcon className="w-5 h-5 mr-2" />
@@ -138,12 +179,20 @@ export default function UserManagement() {
                   <td className="px-4 md:px-6 py-4 whitespace-nowrap text-gray-300 hidden lg:table-cell">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 md:px-6 py-4 whitespace-nowrap text-right">
+                  <td className="px-4 md:px-6 py-4 whitespace-nowrap text-right space-x-3">
+                    <button
+                      onClick={() => handleOpenModal(user)}
+                      className="text-blue-400 hover:text-blue-300 inline-flex items-center"
+                    >
+                      <PencilIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline ml-1">Edit</span>
+                    </button>
                     <button
                       onClick={() => handleDeleteUser(user.id)}
-                      className="text-red-400 hover:text-red-300"
+                      className="text-red-400 hover:text-red-300 inline-flex items-center"
                     >
-                      Delete
+                      <TrashIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline ml-1">Delete</span>
                     </button>
                   </td>
                 </tr>
@@ -153,19 +202,21 @@ export default function UserManagement() {
         </div>
       </div>
 
-      {/* Create User Modal */}
-      {showCreateModal && (
+      {/* User Modal (Create/Edit) */}
+      {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-grafana-dark p-6 rounded-lg shadow-lg w-full max-w-md">
-            <h3 className="text-xl font-bold mb-4">Create New User</h3>
-            <form onSubmit={handleCreateUser} className="space-y-4">
+            <h3 className="text-xl font-bold mb-4">
+              {editingUser ? 'Edit User' : 'Create New User'}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Name</label>
                 <input
                   type="text"
                   className="input-field w-full"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                  value={userForm.name}
+                  onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
                   required
                 />
               </div>
@@ -174,8 +225,8 @@ export default function UserManagement() {
                 <input
                   type="text"
                   className="input-field w-full"
-                  value={newUser.username}
-                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  value={userForm.username}
+                  onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
                   required
                 />
               </div>
@@ -184,27 +235,29 @@ export default function UserManagement() {
                 <input
                   type="email"
                   className="input-field w-full"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Password</label>
+                <label className="block text-sm font-medium mb-1">
+                  Password {editingUser && '(leave blank to keep current)'}
+                </label>
                 <input
                   type="password"
                   className="input-field w-full"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  required
+                  value={userForm.password}
+                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                  required={!editingUser}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Role</label>
                 <select
                   className="input-field w-full"
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                  value={userForm.role}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
                 >
                   <option value="viewer">Viewer</option>
                   <option value="admin">Admin</option>
@@ -213,13 +266,13 @@ export default function UserManagement() {
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={handleCloseModal}
                   className="px-4 py-2 text-gray-300 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary">
-                  Create User
+                  {editingUser ? 'Update' : 'Create'} User
                 </button>
               </div>
             </form>

@@ -1,19 +1,19 @@
-# Grafana-like Dashboard Application
+# Platform Dashboard
 
-A modern, responsive web application built with React, TypeScript, and Express that provides user management and monitoring capabilities similar to Grafana.
+A modern, responsive web application built with React, TypeScript, and Express that provides user management and monitoring capabilities with a beautiful, intuitive interface.
 
 ## 🚀 Features
+
+- **Modern Design**
+  - Beautiful, intuitive interface
+  - Dark mode by default
+  - Smooth animations and transitions
+  - Responsive and mobile-friendly
 
 - **Authentication System**
   - Secure login/logout functionality
   - Session-based authentication
   - Role-based access control (Admin/Viewer)
-
-- **Responsive Design**
-  - Mobile-first approach
-  - Collapsible sidebar navigation
-  - Adaptive layouts for all screen sizes
-  - Touch-friendly interface
 
 - **User Management**
   - User CRUD operations
@@ -21,11 +21,11 @@ A modern, responsive web application built with React, TypeScript, and Express t
   - Secure password handling
   - Responsive data tables
 
-- **Modern UI**
-  - Dark theme inspired by Grafana
-  - Interactive components
-  - Loading states and animations
-  - Error handling and feedback
+- **Performance**
+  - Fast page loads
+  - Optimized bundle size
+  - Efficient state management
+  - Real-time updates
 
 ## 🛠️ Technology Stack
 
