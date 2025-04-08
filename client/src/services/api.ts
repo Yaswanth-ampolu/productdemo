@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { config } from '../config';
 
 const api = axios.create({
-  baseURL: config.apiBaseUrl,
+  // Use relative URLs instead of absolute URLs with baseURL
+  baseURL: '',
   withCredentials: true, // Important for cookies
   headers: {
     'Content-Type': 'application/json'
@@ -13,6 +13,8 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error.response?.data || error.message);
+    
     // Don't redirect on 401 from auth endpoints
     if (error.response?.status === 401 && 
         !error.config.url?.includes('/auth/')) {

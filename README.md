@@ -1,4 +1,4 @@
-# Platform Dashboard
+# platform Dashboard
 
 A modern, responsive web application built with React, TypeScript, and Express that provides user management and monitoring capabilities with a beautiful, intuitive interface.
 

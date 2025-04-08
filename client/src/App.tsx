@@ -7,6 +7,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import UserManagement from './pages/UserManagement';
+import Chatbot from './pages/Chatbot';
+import RunStatus from './pages/RunStatus';
 import LoadingScreen from './components/LoadingScreen';
 
 function App() {
@@ -20,6 +22,8 @@ function App() {
           {/* Protected routes wrapped in Layout */}
           <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/chatbot" element={<Chatbot />} />
+            <Route path="/runs" element={<RunStatus />} />
             <Route 
               path="/users" 
               element={

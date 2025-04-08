@@ -26,6 +26,7 @@ const isAdmin = (req, res, next) => {
       next();
     }
   } catch (error) {
+    console.error('Admin check error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -33,6 +34,10 @@ const isAdmin = (req, res, next) => {
 // Login route
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
 
   try {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);

@@ -22,7 +22,7 @@ sudo groupadd "$SERVICE_GROUP" || true
 
 # Copy files
 sudo cp -r . "$INSTALL_DIR/"
-sudo cp config.ini "$CONFIG_DIR/"
+sudo cp conf/config.ini "$CONFIG_DIR/"
 sudo cp dashboard.service /etc/systemd/system/
 
 # Build frontend

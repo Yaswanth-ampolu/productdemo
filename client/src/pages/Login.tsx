@@ -32,7 +32,8 @@ export default function Login() {
     try {
       await login(username, password);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to login');
+      console.error('Login error:', err);
+      setError(err.response?.data?.error || 'Failed to login. Please try again.');
       setIsLoading(false);
     }
   };

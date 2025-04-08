@@ -8,6 +8,8 @@ const cors = require('cors');
 const { initializeDatabase } = require('./database');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const chatbotRoutes = require('./routes/chatbot');
+const runsRoutes = require('./routes/runs');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 
@@ -17,13 +19,15 @@ const argv = yargs(hideBin(process.argv))
     alias: 'c',
     type: 'string',
     description: 'Path to config file',
-    default: './config.ini'
+    default: './conf/config.ini'
   })
   .help()
   .argv;
 
 // Read configuration
-const config = ini.parse(fs.readFileSync(argv.config, 'utf-8'));
+const configPath = path.resolve(argv.config);
+console.log(`Loading configuration from: ${configPath}`);
+const config = ini.parse(fs.readFileSync(configPath, 'utf-8'));
 
 // Initialize Express app
 const app = express();
@@ -52,12 +56,15 @@ app.use(session({
     httpOnly: true,
     sameSite: config.security.cookie_samesite,
     maxAge: parseInt(config.security.cookie_max_age)
-  }
+  },
+  rolling: true // Resets the cookie expiration on every response
 }));
 
 // API Routes
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
+app.use('/chatbot', chatbotRoutes);
+app.use('/runs', runsRoutes);
 
 // Serve static files in production
 if (config.frontend.serve_static) {
@@ -78,9 +85,16 @@ app.use((err, req, res, next) => {
 
 // Start server
 const port = config.server.port || 5634;
-const host = config.server.domain || '0.0.0.0';
+const host = config.server.domain || 'localhost';
 const server = app.listen(port, host, () => {
   console.log(`Server running on ${config.server.protocol}://${host}:${port}`);
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${port} is already in use. Please use a different port.`);
+  } else {
+    console.error('Error starting server:', err);
+  }
+  process.exit(1);
 });
 
 // Graceful shutdown

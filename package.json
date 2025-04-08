@@ -4,8 +4,10 @@
   "description": "A modern platform dashboard application for user management and monitoring",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node src/server.js --config=./conf/config.ini",
+    "dev": "nodemon src/server.js --config=./conf/config.ini",
+    "client": "cd client && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run client\"",
     "test": "jest"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
     "node-windows": "^1.0.0-beta.8"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "jest": "^29.7.0",
     "nodemon": "^3.1.9"
   }
