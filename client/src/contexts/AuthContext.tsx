@@ -5,6 +5,8 @@ interface User {
   id: number;
   username: string;
   role: string;
+  name?: string;
+  email?: string;
 }
 
 interface AuthContextType {
@@ -13,6 +15,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: () => boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -38,6 +41,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      setUser(response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      throw error;
+    }
+  };
 
   const login = async (username: string, password: string) => {
     setLoading(true);
@@ -74,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     isAdmin,
+    refreshUser,
   };
 
   return (

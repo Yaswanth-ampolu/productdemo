@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const chatbotRoutes = require('./routes/chatbot');
 const runsRoutes = require('./routes/runs');
+const settingsRoutes = require('./routes/settings');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 
@@ -65,6 +66,7 @@ app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/chatbot', chatbotRoutes);
 app.use('/runs', runsRoutes);
+app.use('/settings', settingsRoutes);
 
 // Serve static files in production
 if (config.frontend.serve_static) {

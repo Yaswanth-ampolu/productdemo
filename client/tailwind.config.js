@@ -7,6 +7,40 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Use CSS variables for theme colors
+        theme: {
+          // Main backgrounds
+          bg: 'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          'surface-light': 'var(--color-surface-light)',
+          'surface-dark': 'var(--color-surface-dark)',
+          
+          // Primary colors
+          primary: 'var(--color-primary)',
+          'primary-light': 'var(--color-primary-light)',
+          'primary-dark': 'var(--color-primary-dark)',
+          
+          // Secondary colors
+          secondary: 'var(--color-secondary)',
+          'secondary-light': 'var(--color-secondary-light)',
+          'secondary-dark': 'var(--color-secondary-dark)',
+          
+          // Text colors
+          text: 'var(--color-text)',
+          'text-secondary': 'var(--color-text-secondary)',
+          'text-muted': 'var(--color-text-muted)',
+          
+          // Border colors
+          border: 'var(--color-border)',
+          'border-light': 'var(--color-border-light)',
+          
+          // Status colors
+          success: 'var(--color-success)',
+          warning: 'var(--color-warning)',
+          error: 'var(--color-error)',
+          info: 'var(--color-info)',
+        },
+        // Keep old color scheme for backward compatibility
         platform: {
           primary: '#6366F1',    // Indigo
           secondary: '#10B981',  // Emerald
@@ -33,6 +67,7 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'theme-gradient': 'linear-gradient(to right, var(--color-primary), var(--color-secondary))',
       }
     },
   },

@@ -152,8 +152,8 @@ export default function Chatbot() {
     if (!content) return null;
     
     const segments = content.split(/(```[\s\S]*?```)/g);
-    
-    return (
+
+  return (
       <div className="prose prose-sm max-w-none">
         {segments.map((segment, index) => {
           if (segment.startsWith('```') && segment.endsWith('```')) {
@@ -163,12 +163,16 @@ export default function Chatbot() {
             const code = match?.[2] || '';
             
             return (
-              <div key={index} className="bg-[#0D1117] rounded-md my-2 overflow-x-auto">
-                <div className="flex items-center justify-between bg-[#161B22] px-4 py-1 text-xs text-zinc-400 border-b border-zinc-800">
+              <div key={index} className="rounded-md my-2 overflow-x-auto" style={{ backgroundColor: 'var(--color-surface-dark)' }}>
+                <div className="flex items-center justify-between px-4 py-1 text-xs border-b" style={{ 
+                  backgroundColor: 'var(--color-surface)', 
+                  color: 'var(--color-text-muted)',
+                  borderColor: 'var(--color-border)'
+                }}>
                   <span>{language || 'Code'}</span>
                   <button className="hover:text-white transition-colors">
                     <i className="ri-clipboard-line"></i>
-                  </button>
+            </button>
                 </div>
                 <pre className="p-4 text-sm overflow-x-auto">
                   <code>{code}</code>
@@ -196,7 +200,7 @@ export default function Chatbot() {
             );
           }
         })}
-      </div>
+            </div>
     );
   };
 
@@ -217,19 +221,23 @@ export default function Chatbot() {
   }, [messages]);
 
   return (
-    <div className="fixed inset-0 bg-[#030712] flex flex-col">
+    <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Chat Header - Only shown when not empty */}
       {!isEmpty && (
-        <div className="bg-[#030712] border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+        <div className="border-b px-4 py-3 flex items-center justify-between" style={{ 
+          backgroundColor: 'var(--color-bg)',
+          borderColor: 'var(--color-border)'
+        }}>
           <div>
             <div className="flex justify-end">
-              <button
+                  <button
                 onClick={resetChat}
-                className="text-zinc-400 hover:text-white transition-colors p-1 rounded-md hover:bg-zinc-800"
+                className="p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
+                style={{ color: 'var(--color-text-muted)' }}
                 title="Reset chat"
               >
                 <ArrowPathIcon className="w-5 h-5" />
-              </button>
+                  </button>
             </div>
           </div>
         </div>
@@ -242,7 +250,7 @@ export default function Chatbot() {
           {isEmpty ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center p-6 max-w-lg">
-                <h2 className="text-3xl font-semibold mb-3 text-white">
+                <h2 className="text-3xl font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
                   What can I help with?
                 </h2>
               </div>
@@ -255,22 +263,23 @@ export default function Chatbot() {
                   {group.role === "user" ? (
                     group.messages.map((message, msgIdx) => (
                       <div key={msgIdx} className="mb-1.5 flex justify-end">
-                        <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-indigo-600 text-white">
+                        <div className="max-w-[70%] rounded-2xl px-4 py-3 text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
                           <div className="whitespace-pre-wrap">{formatMessageContent(message.content)}</div>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="mb-1.5 pb-4 border-b border-zinc-800">
+                    <div className="mb-1.5 pb-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
                       {group.messages.map((message, msgIdx) => (
                         <div key={msgIdx} className="flex mb-1">
                           {msgIdx === 0 && (
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white mr-3 shrink-0 mt-1">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
+                                 style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
                               SE
                             </div>
                           )}
                           <div className={`max-w-[80%] ${msgIdx === 0 ? "" : "ml-11"}`}>
-                            <div className="text-white">
+                            <div style={{ color: 'var(--color-text)' }}>
                               {formatMessageContent(message.content)}
                             </div>
                           </div>
@@ -284,14 +293,15 @@ export default function Chatbot() {
               {/* Loading indicator */}
               {isLoading && (
                 <div className="flex mb-1 pb-4">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white mr-3 shrink-0 mt-1">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
+                       style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
                     SE
                   </div>
-                  <div className="text-white">
+                  <div style={{ color: 'var(--color-text)' }}>
                     <div className="flex space-x-2 items-center">
-                      <div className="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '300ms' }}></div>
                     </div>
                   </div>
                 </div>
@@ -304,26 +314,36 @@ export default function Chatbot() {
         </div>
         
         {/* Input area - always fixed */}
-        <div className={`${isEmpty ? "absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/4" : "absolute bottom-0 left-0 right-0"} bg-[#030712] ${!isEmpty && "border-t border-zinc-800"} py-4 px-8 md:px-20 lg:px-40`}>
+        <div className={`${isEmpty ? "absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/4" : "absolute bottom-0 left-0 right-0"} 
+          ${!isEmpty && "border-t"} py-4 px-8 md:px-20 lg:px-40`}
+          style={{ 
+            backgroundColor: 'var(--color-bg)',
+            borderColor: 'var(--color-border)'
+          }}>
           {/* MCP selector dropdown */}
           {showMcpSelector && (
             <div 
               ref={mcpSelectorRef}
-              className="absolute bottom-full mb-2 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-[#030712] rounded-xl shadow-2xl border border-zinc-800 p-3 z-20"
+              className="absolute bottom-full mb-2 left-4 right-4 md:left-auto md:right-4 md:w-80 rounded-xl shadow-2xl border p-3 z-20"
+              style={{ 
+                backgroundColor: 'var(--color-surface)',
+                borderColor: 'var(--color-border)'
+              }}
             >
               <div className="flex justify-between items-center mb-3">
-                <div className="text-sm font-medium text-white">Model Context Protocols</div>
+                <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Model Context Protocols</div>
                 <button 
                   type="button" 
                   onClick={() => setShowMcpSelector(false)}
-                  className="text-zinc-400 hover:text-white p-1"
+                  className="p-1"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
               
               {mcps.length === 0 ? (
-                <div className="text-center py-4 text-zinc-400 text-sm">
+                <div className="text-center py-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
                   No MCPs available.
                 </div>
               ) : (
@@ -331,15 +351,20 @@ export default function Chatbot() {
                   {mcps.map(mcp => (
                     <div 
                       key={mcp.id}
-                      className="p-2 rounded-md hover:bg-[#0f172a] transition-colors flex items-center justify-between"
+                      className="p-2 rounded-md transition-colors flex items-center justify-between hover:bg-opacity-10 hover:bg-gray-500"
+                      style={{ backgroundColor: 'var(--color-surface-dark)' }}
                     >
                       <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-md flex items-center justify-center mr-2 bg-[#0f172a] text-indigo-400">
+                        <div className="w-8 h-8 rounded-md flex items-center justify-center mr-2" 
+                             style={{ 
+                               backgroundColor: 'var(--color-surface-dark)', 
+                               color: 'var(--color-primary)' 
+                             }}>
                           <i className={`${mcp.icon || 'ri-cpu-line'} text-base`}></i>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-white">{mcp.name}</div>
-                          <div className="text-xs text-zinc-400 truncate max-w-[15rem]">{mcp.description}</div>
+                          <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{mcp.name}</div>
+                          <div className="text-xs truncate max-w-[15rem]" style={{ color: 'var(--color-text-muted)' }}>{mcp.description}</div>
                         </div>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
@@ -349,11 +374,14 @@ export default function Chatbot() {
                           onChange={() => toggleMcp(mcp.id)}
                           className="sr-only peer" 
                         />
-                        <div className="w-9 h-5 bg-[#0f172a] rounded-full peer
+                        <div className="w-9 h-5 rounded-full peer
                                        peer-checked:after:translate-x-full after:content-[''] after:absolute 
-                                       after:top-[2px] after:left-[2px] after:bg-zinc-400 after:rounded-full 
-                                       after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-900/30 
-                                       peer-checked:after:bg-indigo-500">
+                                       after:top-[2px] after:left-[2px] after:rounded-full 
+                                       after:h-4 after:w-4 after:transition-all peer-checked:after:bg-indigo-500"
+                             style={{ 
+                               backgroundColor: 'var(--color-surface-light)',
+                               borderColor: 'var(--color-border)'
+                             }}>
                         </div>
                       </label>
                     </div>
@@ -364,15 +392,20 @@ export default function Chatbot() {
           )}
 
           {/* Input form */}
-          <div className={`flex items-center relative rounded-xl border ${isEmpty ? "border-zinc-700" : "border-zinc-800"} shadow-lg ${
+          <div className={`flex items-center relative rounded-xl border ${
             isEmpty ? "max-w-3xl w-[90vw] md:w-[650px]" : "w-full"
-          } bg-[#030712]`}>
+          }`}
+            style={{ 
+              backgroundColor: 'var(--color-surface)',
+              borderColor: 'var(--color-border)'
+            }}>
             <button
               type="button"
               onClick={() => setShowMcpSelector(!showMcpSelector)}
-              className={`p-3 text-zinc-400 hover:text-white transition-colors`}
+              className={`p-3 transition-colors hover:text-primary-theme`}
               aria-label="Toggle MCP selector"
               title="Select Model Context Protocols"
+              style={{ color: 'var(--color-text-muted)' }}
             >
               <CpuChipIcon className="h-5 w-5" />
             </button>
@@ -383,12 +416,16 @@ export default function Chatbot() {
                 {activeMcps.map(mcp => (
                   <div
                     key={mcp.id}
-                    className="w-6 h-6 rounded-md bg-indigo-900/20 flex items-center justify-center text-indigo-400"
+                    className="w-6 h-6 rounded-md flex items-center justify-center"
                     title={mcp.name}
+                    style={{ 
+                      backgroundColor: 'var(--color-primary-dark)10',
+                      color: 'var(--color-primary)'
+                    }}
                   >
                     <i className={`${mcp.icon || 'ri-cpu-line'} text-xs`}></i>
-                  </div>
-                ))}
+            </div>
+          ))}
               </div>
             )}
 
@@ -400,14 +437,19 @@ export default function Chatbot() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full px-3 py-3.5 bg-transparent border-none outline-none text-white placeholder-zinc-400"
+                className="w-full px-3 py-3.5 bg-transparent border-none outline-none placeholder-zinc-400"
+                style={{ 
+                  color: 'var(--color-text)',
+                  backgroundColor: 'transparent'
+                }}
                 disabled={isLoading}
               />
               
               <div className="flex items-center">
                 <button
                   type="button"
-                  className="p-2 text-zinc-400 hover:text-white transition-colors"
+                  className="p-2 transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   <MicrophoneIcon className="h-5 w-5" />
                 </button>
@@ -415,14 +457,17 @@ export default function Chatbot() {
                 <button
                   type="submit"
                   disabled={!input.trim() || isLoading}
-                  className="p-2 mr-1 rounded-md text-zinc-400 disabled:opacity-50 disabled:text-zinc-600 hover:text-white transition-colors"
+                  className="p-2 mr-1 rounded-md transition-colors disabled:opacity-50"
                   aria-label="Send message"
+                  style={{ 
+                    color: input.trim() && !isLoading ? 'var(--color-primary)' : 'var(--color-text-muted)'
+                  }}
                 >
                   <PaperAirplaneIcon className="h-5 w-5" />
                 </button>
               </div>
             </form>
-          </div>
+                </div>
 
           {/* Action buttons shown only in empty state */}
           {isEmpty && (
@@ -430,7 +475,11 @@ export default function Chatbot() {
               <div className="flex flex-wrap justify-center gap-2">
                 <button
                   onClick={resetChat}
-                  className="px-3 py-1.5 bg-[#0f172a] rounded-md text-sm text-zinc-300 hover:text-white hover:bg-[#1e293b] transition-colors flex items-center"
+                  className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
+                  style={{ 
+                    backgroundColor: 'var(--color-surface-dark)',
+                    color: 'var(--color-text)'
+                  }}
                 >
                   <PlusIcon className="h-4 w-4 mr-1.5" />
                   <span>New Chat</span>
@@ -438,7 +487,11 @@ export default function Chatbot() {
                 {activeMcps.length === 0 ? (
                   <button
                     onClick={() => setShowMcpSelector(true)}
-                    className="px-3 py-1.5 bg-[#0f172a] rounded-md text-sm text-zinc-300 hover:text-white hover:bg-[#1e293b] transition-colors flex items-center"
+                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface-dark)',
+                      color: 'var(--color-text)'
+                    }}
                   >
                     <CpuChipIcon className="h-4 w-4 mr-1.5" />
                     <span>Enable MCPs</span>
@@ -446,7 +499,11 @@ export default function Chatbot() {
                 ) : (
                   <button
                     onClick={() => setShowMcpSelector(true)}
-                    className="px-3 py-1.5 bg-[#0f172a] rounded-md text-sm text-zinc-300 hover:text-white hover:bg-[#1e293b] transition-colors flex items-center"
+                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface-dark)',
+                      color: 'var(--color-text)'
+                    }}
                   >
                     <CheckIcon className="h-4 w-4 mr-1.5" />
                     <span>{activeMcps.length} MCPs Active</span>

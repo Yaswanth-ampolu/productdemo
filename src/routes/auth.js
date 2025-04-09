@@ -80,7 +80,7 @@ router.post('/logout', (req, res) => {
 // Get current user info
 router.get('/me', isAuthenticated, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(req.session.userId);
+    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(req.session.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
