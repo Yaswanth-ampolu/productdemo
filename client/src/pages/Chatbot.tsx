@@ -16,9 +16,18 @@ import {
   CalendarDaysIcon,
   ArrowDownIcon
 } from '@heroicons/react/24/outline';
+import { EllipsisHorizontalIcon } from '@heroicons/react/24/solid';
+import { format } from 'date-fns';
+import { useCallback, useLayoutEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 import { chatbotService, ChatMessageResponse } from '../services/chatbotService';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatMessage, ChatSession } from '../types';
+import { useSidebar } from '../contexts/SidebarContext';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomDark, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Mcp {
   id: number;
@@ -35,6 +44,7 @@ interface TimeGroup {
 
 const Chatbot: React.FC = () => {
   const { user } = useAuth();
+  const { isExpanded: isMainSidebarExpanded } = useSidebar();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
@@ -258,14 +268,18 @@ const Chatbot: React.FC = () => {
     
     if (!input.trim() || isLoading) return;
     
+    // Create a unique ID for this message
+    const tempId = `temp-${Date.now()}`;
+    
     // Add user message to local state immediately
     const userMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: tempId,
       role: 'user',
       content: input.trim(),
       timestamp: new Date(),
     };
     
+    // Add message to UI immediately
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -288,11 +302,20 @@ const Chatbot: React.FC = () => {
         timestamp: new Date(response.timestamp),
       };
       
-      setMessages(prev => [...prev.filter(m => m.id !== `temp-${Date.now()}`), userMessage, aiResponse]);
+      // Replace the temporary message with a permanent one and add the AI response
+      setMessages(prev => {
+        // Filter out the temporary message
+        const filteredMessages = prev.filter(m => m.id !== tempId);
+        // Add the confirmed user message and AI response
+        return [...filteredMessages, 
+          {...userMessage, id: `user-${Date.now()}`}, 
+          aiResponse
+        ];
+      });
     } catch (error) {
       console.error('Error sending message:', error);
       // Remove temporary message on error
-      setMessages(prev => prev.filter(m => m.id !== `temp-${Date.now()}`));
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setIsLoading(false);
     }
@@ -448,14 +471,20 @@ const Chatbot: React.FC = () => {
   }, [sessions]);
 
   return (
-    <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--color-bg)' }}>
-      {/* Chat Header - Only shown when not empty */}
-      <div className="border-b px-4 py-3 flex items-center justify-between" style={{ 
+    <div className="fixed inset-0 flex flex-col" 
+      style={{ 
         backgroundColor: 'var(--color-bg)',
-        borderColor: 'var(--color-border)'
+        left: isMainSidebarExpanded ? '64px' : '55px',
+        width: isMainSidebarExpanded ? 'calc(100% - 64px)' : 'calc(100% - 50px)'
+      }}>
+      {/* Chat Header with responsive design */}
+      <div className="px-4 py-3 flex items-center justify-between" style={{ 
+        backgroundColor: 'var(--color-bg)',
+        borderColor: 'transparent',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
       }}>
         <div className="flex items-center space-x-2">
-          {/* Mobile sidebar toggle */}
+          {/* Mobile sidebar toggle - Only visible on small screens */}
           <button 
             onClick={() => setShowSidebar(!showSidebar)}
             className="md:hidden p-1 rounded-md"
@@ -491,7 +520,7 @@ const Chatbot: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center">
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+              <h2 className="text-base md:text-lg font-semibold truncate max-w-[200px] md:max-w-none" style={{ color: 'var(--color-text)' }}>
                 {activeSessionId ? sessionTitle : 'New Chat'}
               </h2>
               {activeSessionId && (
@@ -521,22 +550,27 @@ const Chatbot: React.FC = () => {
         </div>
       </div>
       
-      {/* Main layout */}
+      {/* Redesigned main layout - Fixed position to work with main app layout */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Sidebar */}
-        <div className={`absolute md:relative h-full transition-all ${showSidebar ? 'w-64 md:w-64' : 'w-0'}`} style={{
-          backgroundColor: 'var(--color-bg)',
-          borderRight: '1px solid var(--color-border)'
-        }}>
+        {/* Chat sessions sidebar - Positioned to not overlap with app sidebar */}
+        <div className={`absolute md:relative h-full transition-all ${showSidebar ? 'z-20 md:z-0 w-64 md:w-64' : 'w-0'}`} 
+          style={{
+            backgroundColor: 'var(--color-surface-light)',
+            borderRight: '1px solid var(--color-border-subtle)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            left: '0' // Adjusted to match the new container position
+          }}>
           <div className="h-full w-full overflow-hidden">
             <div className="p-4">
               <button
                 onClick={createNewSession}
-                className="w-full py-2 px-3 rounded-lg flex items-center justify-center"
+                className="w-full py-2 px-3 rounded-lg flex items-center justify-center transition-colors"
                 style={{
-                  backgroundColor: 'var(--color-surface-dark)',
+                  backgroundColor: 'var(--color-surface)',
                   color: 'var(--color-text)',
-                  border: '1px solid var(--color-border)'
+                  border: '1px solid var(--color-border-subtle)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
                 }}
               >
                 <PlusIcon className="w-5 h-5 mr-2" />
@@ -558,22 +592,25 @@ const Chatbot: React.FC = () => {
                   <div key={group.label} className="mb-2">
                     {/* Group header */}
                     <div 
-                      className="px-4 py-2 flex items-center justify-between cursor-pointer"
+                      className="px-4 py-2 flex items-center justify-between cursor-pointer transition-colors hover:bg-opacity-50 hover:bg-gray-500 group"
                       onClick={() => toggleGroup(group.label)}
                       style={{
-                        backgroundColor: 'var(--color-surface-dark)',
-                        color: 'var(--color-text-muted)'
+                        backgroundColor: expandedGroups[group.label] ? 
+                          'var(--color-surface)' : 'var(--color-surface-dark)',
+                        color: 'var(--color-text-secondary)',
+                        borderTop: '1px solid var(--color-border-subtle)',
+                        borderBottom: expandedGroups[group.label] ? 
+                          '1px solid var(--color-border-subtle)' : 'none'
                       }}
                     >
                       <div className="flex items-center">
-                        <CalendarDaysIcon className="w-4 h-4 mr-2" />
-                        <span className="text-sm font-medium">{group.label}</span>
+                        <CalendarDaysIcon className="w-4 h-4 mr-2 group-hover:text-primary-theme transition-colors" />
+                        <span className="text-sm font-medium group-hover:text-primary-theme transition-colors">{group.label}</span>
                       </div>
-                      <div>
-                        {expandedGroups[group.label] ? 
-                          <ChevronUpIcon className="w-4 h-4" /> : 
-                          <ChevronDownIcon className="w-4 h-4" />
-                        }
+                      <div className="transition-transform duration-200" style={{
+                        transform: expandedGroups[group.label] ? 'rotate(0deg)' : 'rotate(-90deg)'
+                      }}>
+                        <ChevronDownIcon className="w-4 h-4 group-hover:text-primary-theme transition-colors" />
                       </div>
                     </div>
                     
@@ -582,16 +619,22 @@ const Chatbot: React.FC = () => {
                       <div 
                         key={session.id} 
                         onClick={() => setActiveSessionId(session.id)}
-                        className="px-4 py-3 cursor-pointer flex items-center justify-between border-b transition-colors"
+                        className={`px-4 py-3 cursor-pointer flex items-center justify-between transition-all duration-200 mb-1 rounded-lg mx-1 group hover:translate-x-1 ${
+                          activeSessionId === session.id ? 'hover:translate-x-0' : ''
+                        }`}
                         style={{
                           backgroundColor: activeSessionId === session.id ? 
-                            'var(--color-primary)10' : 'transparent',
-                          borderColor: 'var(--color-border)',
-                          color: 'var(--color-text)'
+                            'var(--color-primary-translucent)' : 'var(--color-surface-light)',
+                          borderLeft: activeSessionId === session.id ? 
+                            '3px solid var(--color-primary)' : '3px solid transparent',
+                          color: 'var(--color-text)',
+                          boxShadow: activeSessionId === session.id ? '0 2px 8px rgba(0,0,0,0.05)' : 'none'
                         }}
                       >
                         <div className="truncate flex-1">
-                          <div className="text-sm font-medium truncate">
+                          <div className={`text-sm font-medium truncate ${
+                            activeSessionId === session.id ? '' : 'group-hover:text-primary-theme'
+                          }`}>
                             {session.title}
                           </div>
                           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -605,7 +648,7 @@ const Chatbot: React.FC = () => {
                         </div>
                         <button
                           onClick={(e) => deleteSession(session.id, e)}
-                          className="p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
+                          className="p-1 rounded-full hover:bg-opacity-20 hover:bg-gray-500 opacity-0 group-hover:opacity-100 transition-all"
                           style={{ color: 'var(--color-text-muted)' }}
                         >
                           <TrashIcon className="w-4 h-4" />
@@ -619,9 +662,12 @@ const Chatbot: React.FC = () => {
           </div>
         </div>
         
-        {/* Chat area and input */}
-        <div className={`absolute inset-0 ${showSidebar ? 'ml-0 md:ml-64' : ''} flex flex-col`}>
-          {/* Messages area - only this should scroll */}
+        {/* Chat area - Adjusted to work with both sidebars */}
+        <div className={`absolute inset-0 ${showSidebar ? 'ml-0 md:ml-64' : ''} flex flex-col`}
+          style={{
+            backgroundColor: 'var(--color-bg)'
+          }}>
+          {/* Messages area with proper padding */}
           <div 
             ref={messagesContainerRef}
             className="flex-1 overflow-y-auto scrollbar-hide"
@@ -649,37 +695,17 @@ const Chatbot: React.FC = () => {
             )}
             
             {isEmpty ? (
-              <div className="h-full flex flex-col items-center justify-center">
+              <div className="h-full flex flex-col items-center justify-center px-4">
                 <div className="w-16 h-16 mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)20' }}>
                   <ChatBubbleLeftRightIcon className="w-8 h-8" style={{ color: 'var(--color-primary)' }} />
                 </div>
-                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>Chat Assistant</h3>
+                <h3 className="text-xl font-bold mb-2 text-center" style={{ color: 'var(--color-text)' }}>Chat Assistant</h3>
                 <p className="mb-8 text-center max-w-md" style={{ color: 'var(--color-text-muted)' }}>
-                  I'm here to help with your IC design tasks. You can ask me questions, request assistance, or get information about the platform.
+                  I'm here to help with your tasks. You can ask me questions, request assistance, or get information about the platform.
                 </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl px-4">
-                  {["How do I start a new IC design run?", "Show me the latest dashboard metrics", "What's the best way to optimize timing?", "Help me debug my failing DRC checks"].map((suggestion, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setInput(suggestion);
-                        inputRef.current?.focus();
-                      }}
-                      className="p-3 text-left rounded-lg border transition-colors"
-                      style={{
-                        backgroundColor: 'var(--color-surface-dark)',
-                        borderColor: 'var(--color-border)',
-                        color: 'var(--color-text)'
-                      }}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
               </div>
             ) : (
-              <div className="w-full mx-auto pt-4 px-8 pb-0 md:px-20 lg:px-40">
+              <div className="w-full mx-auto pt-4 px-4 md:px-8 lg:px-16 xl:px-24 pb-0">
                 {/* Grouped messages */}
                 {groupedMessages.map((group, groupIndex) => (
                   <div key={groupIndex} className="message-group mb-6">
@@ -692,7 +718,7 @@ const Chatbot: React.FC = () => {
                         </div>
                       ))
                     ) : (
-                      <div className="mb-1.5 pb-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                      <div className="mb-1.5 pb-4" style={{ borderColor: 'transparent' }}>
                         {group.messages.map((message, msgIdx) => (
                           <div key={msgIdx} className="flex mb-1">
                             {msgIdx === 0 && (
@@ -737,21 +763,33 @@ const Chatbot: React.FC = () => {
             )}
           </div>
           
-          {/* Input area - always fixed */}
-          <div className={`${isEmpty ? "absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/4" : "absolute bottom-0 left-0 right-0"} 
-            ${!isEmpty && "border-t"} py-4 px-8 md:px-20 lg:px-40`}
+          {/* Input area - Fixed positioning but with responsive width */}
+          <div 
+            className={`${isEmpty ? "absolute left-1/2 bottom-[25%] transform -translate-x-1/2" : "absolute bottom-0 left-0 right-0"} 
+            ${!isEmpty && ""} py-4 px-4 md:px-8 lg:px-16 xl:px-24`}
             style={{ 
-              backgroundColor: 'var(--color-bg)',
-              borderColor: 'var(--color-border)'
-            }}>
+              backgroundColor: isEmpty ? 'transparent' : 'var(--color-bg)88', /* Semi-transparent background */
+              borderColor: 'transparent',
+              backdropFilter: isEmpty ? 'none' : 'blur(10px)',
+              WebkitBackdropFilter: isEmpty ? 'none' : 'blur(10px)', /* For Safari support */
+              maxWidth: '100%',
+              margin: '0 auto',
+              boxShadow: isEmpty ? 'none' : '0 -8px 20px rgba(0,0,0,0.05)'
+            }}
+          >
             {/* Input form */}
-            <div className={`flex items-center relative rounded-xl border ${
-              isEmpty ? "max-w-3xl w-[90vw] md:w-[650px]" : "w-full"
-            }`}
+            <div 
+              className={`flex items-center relative rounded-xl ${
+                isEmpty ? "max-w-3xl w-[90vw] md:w-[650px]" : "max-w-5xl w-full mx-auto"
+              }`}
               style={{ 
                 backgroundColor: 'var(--color-surface)',
-                borderColor: 'var(--color-border)'
-              }}>
+                borderColor: 'transparent',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                padding: isEmpty ? '0' : '8px 12px',
+                transform: isEmpty ? 'none' : 'translateY(-22px)'
+              }}
+            >
               <form onSubmit={handleSubmit} className="flex-1 flex items-center">
                 <input
                   ref={inputRef}
@@ -760,7 +798,7 @@ const Chatbot: React.FC = () => {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="w-full px-3 py-3.5 bg-transparent border-none outline-none placeholder-zinc-400"
+                  className={`w-full px-4 ${isEmpty ? 'py-3.5' : 'py-4'} bg-transparent border-none outline-none placeholder-zinc-400 rounded-xl`}
                   style={{ 
                     color: 'var(--color-text)',
                     backgroundColor: 'transparent'
@@ -786,11 +824,11 @@ const Chatbot: React.FC = () => {
 
             {/* Action buttons shown only in empty state */}
             {isEmpty && (
-              <div className="flex justify-center mt-5">
+              <div className="flex justify-center mt-8">
                 <div className="flex flex-wrap justify-center gap-2">
                   <button
                     onClick={createNewSession}
-                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
+                    className="px-4 py-2 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
                     style={{ 
                       backgroundColor: 'var(--color-surface-dark)',
                       color: 'var(--color-text)'

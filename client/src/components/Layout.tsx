@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSidebar } from '../contexts/SidebarContext';
 import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
@@ -14,13 +15,8 @@ import Sidebar from './Sidebar';
 export default function Layout() {
   const { user, isAdmin, logout } = useAuth();
   const { currentTheme, setTheme } = useTheme();
+  const { isExpanded: isSidebarOpen, toggleSidebar: toggleSidebarContext } = useSidebar();
   const navigate = useNavigate();
-  
-  // Initialize sidebar state from localStorage or default to true for desktop
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    const saved = localStorage.getItem('sidebarOpen');
-    return saved !== null ? JSON.parse(saved) : window.innerWidth >= 1024;
-  });
   
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'Welcome to the Pinnacleflow Ai!', read: false },
@@ -28,22 +24,20 @@ export default function Layout() {
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Save sidebar state to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('sidebarOpen', JSON.stringify(isSidebarOpen));
-  }, [isSidebarOpen]);
-
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 1024) {
-        setIsSidebarOpen(false);
+        // We're using the shared context now, so no direct setting
+        if (isSidebarOpen) {
+          toggleSidebarContext();
+        }
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isSidebarOpen, toggleSidebarContext]);
 
   const handleLogout = async () => {
     await logout();
@@ -61,10 +55,6 @@ export default function Layout() {
     setTheme(nextTheme);
   };
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(prev => !prev);
-  };
-
   const markAllAsRead = () => {
     setNotifications(notifications.map(n => ({ ...n, read: true })));
   };
@@ -78,8 +68,8 @@ export default function Layout() {
     <div className="flex h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <Sidebar
         isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onToggle={toggleSidebar}
+        onClose={() => toggleSidebarContext()}
+        onToggle={toggleSidebarContext}
         user={user}
         isAdmin={isAdmin}
       />
@@ -96,7 +86,7 @@ export default function Layout() {
               <button
                 type="button"
                 className="lg:hidden p-2 rounded focus:outline-none transition-colors"
-                onClick={toggleSidebar}
+                onClick={toggleSidebarContext}
                 aria-label="Toggle sidebar"
                 style={{
                   color: 'var(--color-text-secondary)'
@@ -110,20 +100,6 @@ export default function Layout() {
             </div>
             
             <div className="flex items-center space-x-3">
-              {/* Theme toggle */}
-              <button 
-                type="button"
-                onClick={toggleTheme}
-                className="p-2 rounded-full transition-colors"
-                style={{
-                  color: 'var(--color-text-secondary)',
-                  backgroundColor: 'transparent'
-                }}
-                aria-label="Toggle theme"
-              >
-                <ThemeIcon className="w-5 h-5" />
-              </button>
-              
               {/* Notifications */}
               <div className="relative">
                 <button 

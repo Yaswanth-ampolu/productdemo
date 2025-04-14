@@ -10,6 +10,7 @@
   --color-primary: #3b82f6;
   --color-primary-light: #60a5fa;
   --color-primary-dark: #2563eb;
+  --color-primary-translucent: rgba(59, 130, 246, 0.08);
   
   /* Secondary colors */
   --color-secondary: #8b5cf6;
@@ -24,6 +25,7 @@
   /* Borders */
   --color-border: #2a3349;
   --color-border-light: #384466;
+  --color-border-subtle: rgba(42, 51, 73, 0.5);
   
   /* Status colors */
   --color-success: #10b981;
@@ -252,4 +254,68 @@ a:hover {
 
 .border-theme {
   border-color: var(--color-border) !important;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  /* Main backgrounds */
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-light: #f0f4f8;
+  --color-surface-dark: #e5e7eb;
+  
+  /* Primary colors */
+  --color-primary: #2563eb;
+  --color-primary-light: #3b82f6;
+  --color-primary-dark: #1d4ed8;
+  --color-primary-translucent: rgba(37, 99, 235, 0.06);
+  
+  /* Secondary colors */
+  --color-secondary: #7c3aed;
+  --color-secondary-light: #8b5cf6;
+  --color-secondary-dark: #6d28d9;
+  
+  /* Text colors */
+  --color-text: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  
+  /* Borders */
+  --color-border: #e5e7eb;
+  --color-border-light: #f3f4f6;
+  --color-border-subtle: rgba(229, 231, 235, 0.7);
+  
+  /* Status colors remain the same for consistency */
+}
+
+/* Midnight theme */
+[data-theme="midnight"] {
+  /* Main backgrounds */
+  --color-bg: #0a0a1a;
+  --color-surface: #13132a;
+  --color-surface-light: #1c1c36;
+  --color-surface-dark: #0e0e20;
+  
+  /* Primary colors */
+  --color-primary: #8b5cf6;
+  --color-primary-light: #a78bfa;
+  --color-primary-dark: #7c3aed;
+  --color-primary-translucent: rgba(139, 92, 246, 0.1);
+  
+  /* Secondary colors */
+  --color-secondary: #ec4899;
+  --color-secondary-light: #f472b6;
+  --color-secondary-dark: #db2777;
+  
+  /* Text colors */
+  --color-text: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  
+  /* Borders */
+  --color-border: #222249;
+  --color-border-light: #333366;
+  --color-border-subtle: rgba(34, 34, 73, 0.5);
+  
+  /* Status colors remain the same for consistency */
 } 

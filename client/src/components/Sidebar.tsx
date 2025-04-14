@@ -34,7 +34,7 @@ const NavLink: React.FC<NavLinkProps> = ({ to, icon: Icon, children, onClick, co
   return (
     <Link
       to={to}
-      className={`flex items-center px-4 py-3 rounded-lg transition-all duration-200 group
+      className={`flex items-center ${collapsed ? 'px-3 py-4' : 'px-4 py-3'} rounded-lg transition-all duration-200 group
         ${collapsed ? 'justify-center' : ''}`}
       style={{
         color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
@@ -43,14 +43,15 @@ const NavLink: React.FC<NavLinkProps> = ({ to, icon: Icon, children, onClick, co
       }}
       onClick={onClick}
     >
-      <Icon className={`w-6 h-6 ${collapsed ? '' : 'mr-3'}`} />
+      <Icon className={`${collapsed ? 'w-7 h-7 transition-transform group-hover:scale-110' : 'w-6 h-6 mr-3'}`} />
       {!collapsed && <span>{children}</span>}
       {collapsed && (
         <div 
-          className="absolute left-full ml-2 px-2 py-1 text-sm rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transform -translate-x-2 group-hover:translate-x-0 transition-all duration-200"
+          className="absolute left-full ml-2 px-3 py-1.5 text-sm rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transform -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-50 shadow-lg"
           style={{
             backgroundColor: 'var(--color-surface-dark)',
-            color: 'var(--color-text)'
+            color: 'var(--color-text)',
+            border: '1px solid var(--color-border-subtle)'
           }}
         >
           {children}
