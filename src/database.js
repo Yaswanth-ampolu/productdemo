@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const ini = require('ini');
@@ -11,75 +11,176 @@ const configPath = process.argv.find(arg => arg.startsWith('--config='))
 
 console.log(`Database loading configuration from: ${configPath}`);
 const config = ini.parse(fs.readFileSync(path.resolve(configPath), 'utf-8'));
-const dbPath = path.resolve(config.database.path);
 
-// Ensure data directory exists
-const dataDir = path.dirname(dbPath);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+// PostgreSQL connection configuration
+const pgConfig = {
+  host: config.database['database-host'],
+  port: config.database['database-port'],
+  user: config.database['database-user'],
+  password: config.database['database-password'],
+  database: config.database['database-name'],
+  max: config.database.max_connections || 20,
+  ssl: config.database.ssl === 'true'
+};
+
+console.log(`Connecting to PostgreSQL at ${pgConfig.host}:${pgConfig.port}`);
+
+const pool = new Pool(pgConfig);
+
+// Test the connection
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('Error connecting to PostgreSQL:', err);
+    process.exit(1);
+  }
+  console.log(`Connected to PostgreSQL database: ${pgConfig.database}`);
+  release();
+});
+
+// Helper function to convert SQLite '?' placeholders to PostgreSQL '$1' style placeholders
+function convertPlaceholders(text) {
+  let paramIndex = 0;
+  return text.replace(/\?/g, () => `$${++paramIndex}`);
 }
 
-let db;
-try {
-  db = new Database(dbPath, { fileMustExist: false });
-} catch (error) {
-  console.error('Error opening database:', error);
-  process.exit(1);
-}
+// Create a database interface object that mimics the SQLite interface
+// to minimize changes in existing code
+const db = {
+  // Query executor function
+  async query(text, params) {
+    try {
+      const convertedText = convertPlaceholders(text);
+      const result = await pool.query(convertedText, params);
+      return result;
+    } catch (error) {
+      console.error('Database query error:', error);
+      throw error;
+    }
+  },
+  
+  // For code compatibility with SQLite, we'll provide similar methods
+  // but adapted for PostgreSQL
+  prepare(text) {
+    const convertedText = convertPlaceholders(text);
+    
+    return {
+      get: async (...params) => {
+        try {
+          const result = await pool.query(convertedText, params);
+          return result.rows[0] || null;
+        } catch (error) {
+          console.error(`Error in db.prepare().get() with query '${convertedText}':`, error);
+          throw error;
+        }
+      },
+      all: async (...params) => {
+        try {
+          const result = await pool.query(convertedText, params);
+          return result.rows;
+        } catch (error) {
+          console.error(`Error in db.prepare().all() with query '${convertedText}':`, error);
+          throw error;
+        }
+      },
+      run: async (...params) => {
+        try {
+          const result = await pool.query(convertedText, params);
+          // For compatibility with better-sqlite3, we add lastInsertRowid
+          // This approximation works only for single inserts
+          let lastInsertRowid = null;
+          if (result.rows && result.rows[0] && result.rows[0].id) {
+            lastInsertRowid = result.rows[0].id;
+          }
+          
+          return {
+            changes: result.rowCount || 0,
+            lastInsertRowid: lastInsertRowid
+          };
+        } catch (error) {
+          console.error(`Error in db.prepare().run() with query '${convertedText}':`, error);
+          throw error;
+        }
+      }
+    };
+  },
+  
+  // Execute raw SQL
+  async exec(text) {
+    try {
+      await pool.query(text);
+    } catch (error) {
+      console.error('SQL execution error:', error);
+      throw error;
+    }
+  }
+};
 
-function initializeDatabase() {
-  console.log('Initializing database at:', dbPath);
+async function initializeDatabase() {
+  console.log('Checking PostgreSQL database connection');
   
   try {
-    // Create users table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('Users table initialized');
-
-    // Create sessions table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        session_id TEXT UNIQUE NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      )
-    `);
-    console.log('Sessions table initialized');
-
+    // Add name column to users table if it doesn't exist
     try {
-      // Check if admin user exists, if not create default admin
-      const row = db.prepare("SELECT * FROM users WHERE username = ?").get(config.admin.default_username);
-
-      if (!row) {
-        const hashedPassword = bcrypt.hashSync(config.admin.default_password, 10);
-        db.prepare(
-          "INSERT INTO users (name, username, email, password, role) VALUES (?, ?, ?, ?, ?)"
-        ).run('Administrator', config.admin.default_username, config.admin.default_email || 'admin@local.host', hashedPassword, 'admin');
-        console.log('Default admin user created');
-      } else {
-        console.log('Admin user already exists');
-      }
+      console.log('Checking if name column exists in users table...');
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'users'
+            AND column_name = 'name'
+          ) THEN
+            ALTER TABLE users ADD COLUMN name VARCHAR(100);
+            RAISE NOTICE 'Added name column to users table';
+          ELSE
+            RAISE NOTICE 'name column already exists in users table';
+          END IF;
+        END $$;
+      `);
+      console.log('Name column check completed');
     } catch (error) {
-      console.error('Error handling admin user:', error);
+      console.error('Error checking/adding name column:', error.message);
+    }
+
+    // Check if admin user exists, if not create default admin
+    const userQuery = await pool.query("SELECT * FROM users WHERE username = $1", [config.admin.default_username]);
+    
+    if (userQuery.rows.length === 0) {
+      const hashedPassword = bcrypt.hashSync(config.admin.default_password, 10);
+      
+      // Modified query to include name field
+      await pool.query(
+        "INSERT INTO users (username, password, email, role, name) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        [config.admin.default_username, hashedPassword, config.admin.default_email || 'admin@local.host', 'admin', 'Administrator']
+      );
+      console.log('Default admin user created');
+    } else {
+      // Update admin user to add name if it's missing
+      if (userQuery.rows[0].name === null || userQuery.rows[0].name === undefined) {
+        await pool.query(
+          "UPDATE users SET name = $1 WHERE username = $2",
+          ['Administrator', config.admin.default_username]
+        );
+        console.log('Updated admin user with name');
+      }
+      console.log('Admin user already exists');
     }
   } catch (error) {
     console.error('Database initialization error:', error);
-    process.exit(1);
+    // Don't exit the process, just log the error
+    console.error('More details:', error.message);
   }
 }
 
+process.on('exit', () => {
+  // Close the pool when the application exits
+  pool.end();
+  console.log('Database connection pool closed');
+});
+
 module.exports = {
   db,
+  pool, // Export the pool for direct access if needed
   initializeDatabase
 }; 

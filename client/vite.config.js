@@ -17,6 +17,18 @@ export default defineConfig({
       '/chatbot': {
         target: 'http://localhost:5634',
         changeOrigin: true,
+      },
+      '/dashboard': {
+        target: 'http://localhost:5634',
+        changeOrigin: true,
+      },
+      '/runs': {
+        target: 'http://localhost:5634',
+        changeOrigin: true,
+      },
+      '/settings': {
+        target: 'http://localhost:5634',
+        changeOrigin: true,
       }
     }
   }

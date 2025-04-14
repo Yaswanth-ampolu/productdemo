@@ -13,13 +13,13 @@ const isAuthenticated = (req, res, next) => {
 };
 
 // Middleware to check if user is admin
-const isAdmin = (req, res, next) => {
+const isAdmin = async (req, res, next) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(req.session.userId);
+    const user = await db.prepare('SELECT role FROM users WHERE id = ?').get(req.session.userId);
     if (!user || user.role !== 'admin') {
       res.status(403).json({ error: 'Forbidden' });
     } else {
@@ -32,7 +32,7 @@ const isAdmin = (req, res, next) => {
 };
 
 // Login route
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -40,13 +40,13 @@ router.post('/login', (req, res) => {
   }
 
   try {
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = await db.prepare('SELECT * FROM users WHERE username = ?').get(username);
     
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const validPassword = bcrypt.compareSync(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -54,11 +54,16 @@ router.post('/login', (req, res) => {
     // Store user session
     req.session.userId = user.id;
     req.session.role = user.role;
+    
+    console.log('Login successful for user:', username);
+    console.log('User role:', user.role);
+    console.log('Session data:', req.session);
 
     res.json({
       id: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      name: user.name
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -78,9 +83,9 @@ router.post('/logout', (req, res) => {
 });
 
 // Get current user info
-router.get('/me', isAuthenticated, (req, res) => {
+router.get('/me', isAuthenticated, async (req, res) => {
   try {
-    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(req.session.userId);
+    const user = await db.prepare('SELECT id, username, email, role, name FROM users WHERE id = ?').get(req.session.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

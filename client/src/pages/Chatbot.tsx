@@ -7,15 +7,18 @@ import {
   PlusIcon,
   CheckIcon,
   XMarkIcon,
-  MicrophoneIcon
+  ArrowLeftIcon,
+  ChatBubbleLeftRightIcon,
+  PencilIcon,
+  TrashIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CalendarDaysIcon,
+  ArrowDownIcon
 } from '@heroicons/react/24/outline';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+import { chatbotService, ChatMessageResponse } from '../services/chatbotService';
+import { useAuth } from '../contexts/AuthContext';
+import { ChatMessage, ChatSession } from '../types';
 
 interface Mcp {
   id: number;
@@ -25,14 +28,41 @@ interface Mcp {
   isActive: boolean;
 }
 
-export default function Chatbot() {
-  const [messages, setMessages] = useState<Message[]>([]);
+interface TimeGroup {
+  label: string;
+  sessions: ChatSession[];
+}
+
+const Chatbot: React.FC = () => {
+  const { user } = useAuth();
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessionTitle, setSessionTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [messageOffset, setMessageOffset] = useState(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [totalMessages, setTotalMessages] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    'Today': true,
+    'Yesterday': true,
+    'Previous 7 Days': true,
+    'Previous 30 Days': false,
+    'Older': false
+  });
   const [showMcpSelector, setShowMcpSelector] = useState(false);
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const mcpSelectorRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Dummy MCPs for demo purposes
   const [mcps, setMcps] = useState<Mcp[]>([
@@ -55,15 +85,36 @@ export default function Chatbot() {
   // Get active MCPs
   const activeMcps = mcps.filter(mcp => mcp.isActive);
 
-  // Auto-scroll to bottom of messages
+  // Fetch sessions on component mount
+  useEffect(() => {
+    fetchSessions();
+  }, []);
+
+  // Fetch messages when active session changes
+  useEffect(() => {
+    if (activeSessionId) {
+      fetchSessionMessages(activeSessionId);
+    } else {
+      setMessages([]);
+    }
+  }, [activeSessionId]);
+
+  // Auto-scroll to bottom of messages when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input on load
+  // Focus input on session change or component mount
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [activeSessionId]);
+
+  // Focus title input when editing
+  useEffect(() => {
+    if (editingTitle) {
+      titleInputRef.current?.focus();
+    }
+  }, [editingTitle]);
 
   // Close MCP selector when clicking outside
   useEffect(() => {
@@ -79,14 +130,137 @@ export default function Chatbot() {
     };
   }, [mcpSelectorRef]);
 
+  // Setup infinite scrolling for messages
+  useEffect(() => {
+    const messagesContainer = messagesContainerRef.current;
+    if (!messagesContainer) return;
+
+    const handleScroll = () => {
+      if (messagesContainer.scrollTop === 0 && hasMoreMessages && !loadingMessages) {
+        loadMoreMessages();
+      }
+    };
+
+    messagesContainer.addEventListener('scroll', handleScroll);
+    return () => messagesContainer.removeEventListener('scroll', handleScroll);
+  }, [messagesContainerRef, hasMoreMessages, loadingMessages, activeSessionId, messageOffset]);
+
+  const fetchSessions = async () => {
+    try {
+      setLoadingSessions(true);
+      const fetchedSessions = await chatbotService.getSessions();
+      setSessions(fetchedSessions);
+      
+      // If we have sessions but no active session, select the most recent one
+      if (fetchedSessions.length > 0 && !activeSessionId) {
+        setActiveSessionId(fetchedSessions[0].id);
+        setSessionTitle(fetchedSessions[0].title);
+      }
+    } catch (error) {
+      console.error('Error fetching chat sessions:', error);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  const fetchSessionMessages = async (sessionId: string, append = false) => {
+    try {
+      setLoadingMessages(true);
+      const offset = append ? messageOffset : 0;
+      const response = await chatbotService.getSession(sessionId, 12, offset);
+      
+      const { messages: fetchedMessages, total } = response;
+      setTotalMessages(total);
+      setHasMoreMessages(offset + fetchedMessages.length < total);
+      
+      if (append) {
+        // Prepend new messages to existing ones
+        setMessages(prev => [...fetchedMessages, ...prev]);
+        setMessageOffset(prev => prev + fetchedMessages.length);
+      } else {
+        // Replace messages
+        setMessages(fetchedMessages);
+        setMessageOffset(fetchedMessages.length);
+      }
+      
+      // Update session title
+      setSessionTitle(response.session.title);
+    } catch (error) {
+      console.error('Error fetching session messages:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const loadMoreMessages = async () => {
+    if (!activeSessionId || !hasMoreMessages || loadingMessages) return;
+    await fetchSessionMessages(activeSessionId, true);
+  };
+
+  const createNewSession = async () => {
+    try {
+      const newSession = await chatbotService.createSession('New Chat');
+      setSessions(prev => [newSession, ...prev]);
+      setActiveSessionId(newSession.id);
+      setSessionTitle(newSession.title);
+      setMessages([]);
+      setMessageOffset(0);
+      setHasMoreMessages(false);
+      setTotalMessages(0);
+    } catch (error) {
+      console.error('Error creating new session:', error);
+    }
+  };
+
+  const deleteSession = async (sessionId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    if (!confirm('Are you sure you want to delete this chat?')) return;
+    
+    try {
+      await chatbotService.deleteSession(sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      
+      // If the deleted session was active, select another one or clear
+      if (activeSessionId === sessionId) {
+        const remainingSessions = sessions.filter(s => s.id !== sessionId);
+        if (remainingSessions.length > 0) {
+          setActiveSessionId(remainingSessions[0].id);
+          setSessionTitle(remainingSessions[0].title);
+        } else {
+          setActiveSessionId(null);
+          setSessionTitle('');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+    }
+  };
+
+  const updateSessionTitle = async () => {
+    if (!activeSessionId || !sessionTitle.trim()) return;
+    
+    try {
+      await chatbotService.updateSession(activeSessionId, { title: sessionTitle });
+      setSessions(prev => prev.map(s => 
+        s.id === activeSessionId ? { ...s, title: sessionTitle } : s
+      ));
+      setEditingTitle(false);
+    } catch (error) {
+      console.error('Error updating session title:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!input.trim() || isLoading) return;
     
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    // Add user message to local state immediately
+    const userMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
       role: 'user',
       content: input.trim(),
       timestamp: new Date(),
@@ -96,34 +270,32 @@ export default function Chatbot() {
     setInput('');
     setIsLoading(true);
     
-    // Simulate AI response after a short delay
-    setTimeout(() => {
-      // Generate a contextual response based on input
-      let responseContent = "";
-      const userInput = userMessage.content.toLowerCase();
+    try {
+      // Send message to backend
+      const response = await chatbotService.sendMessage(userMessage.content, activeSessionId || undefined);
       
-      if (userInput.includes("execute run") || userInput.includes("start run")) {
-        responseContent = "I've initiated the run process for you. You can monitor its progress in the Run Status dashboard. Would you like me to show you the details?";
-      } else if (userInput.includes("delete run") || userInput.includes("remove run")) {
-        responseContent = "I can help you delete a run. Please confirm which run you'd like to remove, or I can show you a list of your recent runs.";
-      } else if (userInput.includes("dashboard") || userInput.includes("analytics")) {
-        responseContent = "Here's a link to the dashboard: [Dashboard](/dashboard). You can view all your analytics and metrics there.";
-      } else if (userInput.includes("status") || userInput.includes("progress")) {
-        responseContent = "The current run status shows 3 completed runs, 2 in progress, and 1 failed. Would you like to see details for any specific run?";
-      } else {
-        responseContent = "I'm here to help with your IC design workflow. I can assist with run management, provide status updates, or direct you to relevant dashboards. What specific information do you need?";
+      // If this creates a new session, update our session info
+      if (!activeSessionId || activeSessionId !== response.sessionId) {
+        setActiveSessionId(response.sessionId);
+        await fetchSessions(); // Refresh sessions to get the new one
       }
       
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
+      // Add AI response to messages
+      const aiResponse: ChatMessage = {
+        id: response.id,
         role: 'assistant',
-        content: responseContent,
-        timestamp: new Date(),
+        content: response.content,
+        timestamp: new Date(response.timestamp),
       };
       
-      setMessages(prev => [...prev, aiResponse]);
+      setMessages(prev => [...prev.filter(m => m.id !== `temp-${Date.now()}`), userMessage, aiResponse]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Remove temporary message on error
+      setMessages(prev => prev.filter(m => m.id !== `temp-${Date.now()}`));
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -134,14 +306,65 @@ export default function Chatbot() {
   };
 
   const resetChat = () => {
-    setMessages([]);
-    inputRef.current?.focus();
+    if (confirm('Are you sure you want to clear the current chat?')) {
+      setMessages([]);
+      inputRef.current?.focus();
+    }
   };
 
   const toggleMcp = (mcpId: number) => {
     setMcps(prev => prev.map(mcp => 
       mcp.id === mcpId ? { ...mcp, isActive: !mcp.isActive } : mcp
     ));
+  };
+
+  const toggleGroup = (groupLabel: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupLabel]: !prev[groupLabel]
+    }));
+  };
+
+  // Group sessions by time
+  const groupSessionsByTime = (sessions: ChatSession[]): TimeGroup[] => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const lastWeekStart = new Date(today);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    
+    const lastMonthStart = new Date(today);
+    lastMonthStart.setDate(lastMonthStart.getDate() - 30);
+    
+    const groups: TimeGroup[] = [
+      { label: 'Today', sessions: [] },
+      { label: 'Yesterday', sessions: [] },
+      { label: 'Previous 7 Days', sessions: [] },
+      { label: 'Previous 30 Days', sessions: [] },
+      { label: 'Older', sessions: [] }
+    ];
+    
+    sessions.forEach(session => {
+      const lastMessageDate = new Date(session.last_message_timestamp);
+      
+      if (lastMessageDate >= today) {
+        groups[0].sessions.push(session);
+      } else if (lastMessageDate >= yesterday) {
+        groups[1].sessions.push(session);
+      } else if (lastMessageDate >= lastWeekStart) {
+        groups[2].sessions.push(session);
+      } else if (lastMessageDate >= lastMonthStart) {
+        groups[3].sessions.push(session);
+      } else {
+        groups[4].sessions.push(session);
+      }
+    });
+    
+    // Remove empty groups
+    return groups.filter(group => group.sessions.length > 0);
   };
 
   // Determine if chat is empty (for positioning the input)
@@ -153,7 +376,7 @@ export default function Chatbot() {
     
     const segments = content.split(/(```[\s\S]*?```)/g);
 
-  return (
+    return (
       <div className="prose prose-sm max-w-none">
         {segments.map((segment, index) => {
           if (segment.startsWith('```') && segment.endsWith('```')) {
@@ -172,7 +395,7 @@ export default function Chatbot() {
                   <span>{language || 'Code'}</span>
                   <button className="hover:text-white transition-colors">
                     <i className="ri-clipboard-line"></i>
-            </button>
+                  </button>
                 </div>
                 <pre className="p-4 text-sm overflow-x-auto">
                   <code>{code}</code>
@@ -200,13 +423,13 @@ export default function Chatbot() {
             );
           }
         })}
-            </div>
+      </div>
     );
   };
 
   // Group messages by role
   const groupedMessages = React.useMemo(() => {
-    const groups: { role: string; messages: Message[] }[] = [];
+    const groups: { role: string; messages: ChatMessage[] }[] = [];
     
     messages.forEach(message => {
       const lastGroup = groups[groups.length - 1];
@@ -220,300 +443,370 @@ export default function Chatbot() {
     return groups;
   }, [messages]);
 
+  const groupedSessions = React.useMemo(() => {
+    return groupSessionsByTime(sessions);
+  }, [sessions]);
+
   return (
     <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Chat Header - Only shown when not empty */}
-      {!isEmpty && (
-        <div className="border-b px-4 py-3 flex items-center justify-between" style={{ 
-          backgroundColor: 'var(--color-bg)',
-          borderColor: 'var(--color-border)'
-        }}>
-          <div>
-            <div className="flex justify-end">
-                  <button
-                onClick={resetChat}
-                className="p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
-                style={{ color: 'var(--color-text-muted)' }}
-                title="Reset chat"
+      <div className="border-b px-4 py-3 flex items-center justify-between" style={{ 
+        backgroundColor: 'var(--color-bg)',
+        borderColor: 'var(--color-border)'
+      }}>
+        <div className="flex items-center space-x-2">
+          {/* Mobile sidebar toggle */}
+          <button 
+            onClick={() => setShowSidebar(!showSidebar)}
+            className="md:hidden p-1 rounded-md"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {showSidebar ? <XMarkIcon className="w-5 h-5" /> : <ChatBubbleLeftRightIcon className="w-5 h-5" />}
+          </button>
+          
+          {/* Session title or editing field */}
+          {editingTitle ? (
+            <div className="flex items-center">
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={sessionTitle}
+                onChange={(e) => setSessionTitle(e.target.value)}
+                onBlur={updateSessionTitle}
+                onKeyDown={(e) => e.key === 'Enter' && updateSessionTitle()}
+                className="px-2 py-1 rounded-md"
+                style={{
+                  backgroundColor: 'var(--color-surface-dark)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)'
+                }}
+              />
+              <button
+                onClick={updateSessionTitle}
+                className="ml-2 p-1 rounded-md"
+                style={{ color: 'var(--color-primary)' }}
               >
-                <ArrowPathIcon className="w-5 h-5" />
-                  </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Main layout */}
-      <div className="flex-1 relative overflow-hidden">
-        {/* Messages area - only this should scroll */}
-        <div className="absolute inset-0 overflow-y-auto scrollbar-hide">
-          {isEmpty ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center p-6 max-w-lg">
-                <h2 className="text-3xl font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
-                  What can I help with?
-                </h2>
-              </div>
+                <CheckIcon className="w-4 h-4" />
+              </button>
             </div>
           ) : (
-            <div className="w-full mx-auto pt-4 px-8 pb-0 md:px-20 lg:px-40">
-              {/* Message groups */}
-              {groupedMessages.map((group, groupIndex) => (
-                <div key={groupIndex} className="message-group mb-6">
-                  {group.role === "user" ? (
-                    group.messages.map((message, msgIdx) => (
-                      <div key={msgIdx} className="mb-1.5 flex justify-end">
-                        <div className="max-w-[70%] rounded-2xl px-4 py-3 text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
-                          <div className="whitespace-pre-wrap">{formatMessageContent(message.content)}</div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="mb-1.5 pb-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
-                      {group.messages.map((message, msgIdx) => (
-                        <div key={msgIdx} className="flex mb-1">
-                          {msgIdx === 0 && (
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
-                                 style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
-                              SE
-                            </div>
-                          )}
-                          <div className={`max-w-[80%] ${msgIdx === 0 ? "" : "ml-11"}`}>
-                            <div style={{ color: 'var(--color-text)' }}>
-                              {formatMessageContent(message.content)}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Loading indicator */}
-              {isLoading && (
-                <div className="flex mb-1 pb-4">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
-                       style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
-                    SE
-                  </div>
-                  <div style={{ color: 'var(--color-text)' }}>
-                    <div className="flex space-x-2 items-center">
-                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '300ms' }}></div>
-                    </div>
-                  </div>
-                </div>
+            <div className="flex items-center">
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+                {activeSessionId ? sessionTitle : 'New Chat'}
+              </h2>
+              {activeSessionId && (
+                <button
+                  onClick={() => setEditingTitle(true)}
+                  className="ml-2 p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  <PencilIcon className="w-4 h-4" />
+                </button>
               )}
-              {/* Extra space at the bottom to ensure messages aren't hidden behind input */}
-              <div className="h-40"></div>
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
         
-        {/* Input area - always fixed */}
-        <div className={`${isEmpty ? "absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/4" : "absolute bottom-0 left-0 right-0"} 
-          ${!isEmpty && "border-t"} py-4 px-8 md:px-20 lg:px-40`}
-          style={{ 
-            backgroundColor: 'var(--color-bg)',
-            borderColor: 'var(--color-border)'
-          }}>
-          {/* MCP selector dropdown */}
-          {showMcpSelector && (
-            <div 
-              ref={mcpSelectorRef}
-              className="absolute bottom-full mb-2 left-4 right-4 md:left-auto md:right-4 md:w-80 rounded-xl shadow-2xl border p-3 z-20"
+        <div className="flex items-center space-x-2">
+          {!isEmpty && (
+            <button
+              onClick={resetChat}
+              className="p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
+              style={{ color: 'var(--color-text-muted)' }}
+              title="Clear current chat"
+            >
+              <ArrowPathIcon className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Main layout */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Sidebar */}
+        <div className={`absolute md:relative h-full transition-all ${showSidebar ? 'w-64 md:w-64' : 'w-0'}`} style={{
+          backgroundColor: 'var(--color-bg)',
+          borderRight: '1px solid var(--color-border)'
+        }}>
+          <div className="h-full w-full overflow-hidden">
+            <div className="p-4">
+              <button
+                onClick={createNewSession}
+                className="w-full py-2 px-3 rounded-lg flex items-center justify-center"
+                style={{
+                  backgroundColor: 'var(--color-surface-dark)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)'
+                }}
+              >
+                <PlusIcon className="w-5 h-5 mr-2" />
+                New Chat
+              </button>
+            </div>
+            
+            {loadingSessions ? (
+              <div className="p-4 text-center" style={{ color: 'var(--color-text-muted)' }}>
+                Loading sessions...
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="p-4 text-center" style={{ color: 'var(--color-text-muted)' }}>
+                No chat history yet
+              </div>
+            ) : (
+              <div className="overflow-y-auto h-[calc(100%-80px)]">
+                {groupedSessions.map(group => (
+                  <div key={group.label} className="mb-2">
+                    {/* Group header */}
+                    <div 
+                      className="px-4 py-2 flex items-center justify-between cursor-pointer"
+                      onClick={() => toggleGroup(group.label)}
+                      style={{
+                        backgroundColor: 'var(--color-surface-dark)',
+                        color: 'var(--color-text-muted)'
+                      }}
+                    >
+                      <div className="flex items-center">
+                        <CalendarDaysIcon className="w-4 h-4 mr-2" />
+                        <span className="text-sm font-medium">{group.label}</span>
+                      </div>
+                      <div>
+                        {expandedGroups[group.label] ? 
+                          <ChevronUpIcon className="w-4 h-4" /> : 
+                          <ChevronDownIcon className="w-4 h-4" />
+                        }
+                      </div>
+                    </div>
+                    
+                    {/* Group sessions */}
+                    {expandedGroups[group.label] && group.sessions.map(session => (
+                      <div 
+                        key={session.id} 
+                        onClick={() => setActiveSessionId(session.id)}
+                        className="px-4 py-3 cursor-pointer flex items-center justify-between border-b transition-colors"
+                        style={{
+                          backgroundColor: activeSessionId === session.id ? 
+                            'var(--color-primary)10' : 'transparent',
+                          borderColor: 'var(--color-border)',
+                          color: 'var(--color-text)'
+                        }}
+                      >
+                        <div className="truncate flex-1">
+                          <div className="text-sm font-medium truncate">
+                            {session.title}
+                          </div>
+                          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                            {new Date(session.last_message_timestamp).toLocaleString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => deleteSession(session.id, e)}
+                          className="p-1 rounded-full hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Chat area and input */}
+        <div className={`absolute inset-0 ${showSidebar ? 'ml-0 md:ml-64' : ''} flex flex-col`}>
+          {/* Messages area - only this should scroll */}
+          <div 
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto scrollbar-hide"
+          >
+            {/* Load more messages indicator */}
+            {hasMoreMessages && (
+              <div className="flex justify-center mt-4">
+                <button 
+                  onClick={loadMoreMessages}
+                  className="px-3 py-1 rounded-md flex items-center text-sm"
+                  style={{
+                    backgroundColor: 'var(--color-surface-dark)',
+                    color: 'var(--color-text-muted)'
+                  }}
+                  disabled={loadingMessages}
+                >
+                  {loadingMessages ? (
+                    <div className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 rounded-full" style={{ borderColor: 'var(--color-primary)' }}></div>
+                  ) : (
+                    <ArrowDownIcon className="w-4 h-4 mr-2" />
+                  )}
+                  {loadingMessages ? 'Loading...' : 'Load more messages'}
+                </button>
+              </div>
+            )}
+            
+            {isEmpty ? (
+              <div className="h-full flex flex-col items-center justify-center">
+                <div className="w-16 h-16 mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)20' }}>
+                  <ChatBubbleLeftRightIcon className="w-8 h-8" style={{ color: 'var(--color-primary)' }} />
+                </div>
+                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>Chat Assistant</h3>
+                <p className="mb-8 text-center max-w-md" style={{ color: 'var(--color-text-muted)' }}>
+                  I'm here to help with your IC design tasks. You can ask me questions, request assistance, or get information about the platform.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl px-4">
+                  {["How do I start a new IC design run?", "Show me the latest dashboard metrics", "What's the best way to optimize timing?", "Help me debug my failing DRC checks"].map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setInput(suggestion);
+                        inputRef.current?.focus();
+                      }}
+                      className="p-3 text-left rounded-lg border transition-colors"
+                      style={{
+                        backgroundColor: 'var(--color-surface-dark)',
+                        borderColor: 'var(--color-border)',
+                        color: 'var(--color-text)'
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="w-full mx-auto pt-4 px-8 pb-0 md:px-20 lg:px-40">
+                {/* Grouped messages */}
+                {groupedMessages.map((group, groupIndex) => (
+                  <div key={groupIndex} className="message-group mb-6">
+                    {group.role === "user" ? (
+                      group.messages.map((message, msgIdx) => (
+                        <div key={msgIdx} className="mb-1.5 flex justify-end">
+                          <div className="max-w-[70%] rounded-2xl px-4 py-3 text-white" style={{ backgroundColor: 'var(--color-primary)' }}>
+                            <div className="whitespace-pre-wrap">{formatMessageContent(message.content)}</div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="mb-1.5 pb-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                        {group.messages.map((message, msgIdx) => (
+                          <div key={msgIdx} className="flex mb-1">
+                            {msgIdx === 0 && (
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
+                                   style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
+                                AI
+                              </div>
+                            )}
+                            <div className={`max-w-[80%] ${msgIdx === 0 ? "" : "ml-11"}`}>
+                              <div style={{ color: 'var(--color-text)' }}>
+                                {formatMessageContent(message.content)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Loading indicator */}
+                {isLoading && (
+                  <div className="flex mb-1 pb-4">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 shrink-0 mt-1"
+                         style={{ background: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}>
+                      AI
+                    </div>
+                    <div style={{ color: 'var(--color-text)' }}>
+                      <div className="flex space-x-2 items-center">
+                        <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: 'var(--color-text-muted)', animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Extra space at the bottom to ensure messages aren't hidden behind input */}
+                <div className="h-40"></div>
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+          
+          {/* Input area - always fixed */}
+          <div className={`${isEmpty ? "absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/4" : "absolute bottom-0 left-0 right-0"} 
+            ${!isEmpty && "border-t"} py-4 px-8 md:px-20 lg:px-40`}
+            style={{ 
+              backgroundColor: 'var(--color-bg)',
+              borderColor: 'var(--color-border)'
+            }}>
+            {/* Input form */}
+            <div className={`flex items-center relative rounded-xl border ${
+              isEmpty ? "max-w-3xl w-[90vw] md:w-[650px]" : "w-full"
+            }`}
               style={{ 
                 backgroundColor: 'var(--color-surface)',
                 borderColor: 'var(--color-border)'
-              }}
-            >
-              <div className="flex justify-between items-center mb-3">
-                <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Model Context Protocols</div>
-                <button 
-                  type="button" 
-                  onClick={() => setShowMcpSelector(false)}
-                  className="p-1"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-              
-              {mcps.length === 0 ? (
-                <div className="text-center py-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  No MCPs available.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {mcps.map(mcp => (
-                    <div 
-                      key={mcp.id}
-                      className="p-2 rounded-md transition-colors flex items-center justify-between hover:bg-opacity-10 hover:bg-gray-500"
-                      style={{ backgroundColor: 'var(--color-surface-dark)' }}
-                    >
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-md flex items-center justify-center mr-2" 
-                             style={{ 
-                               backgroundColor: 'var(--color-surface-dark)', 
-                               color: 'var(--color-primary)' 
-                             }}>
-                          <i className={`${mcp.icon || 'ri-cpu-line'} text-base`}></i>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{mcp.name}</div>
-                          <div className="text-xs truncate max-w-[15rem]" style={{ color: 'var(--color-text-muted)' }}>{mcp.description}</div>
-                        </div>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={mcp.isActive}
-                          onChange={() => toggleMcp(mcp.id)}
-                          className="sr-only peer" 
-                        />
-                        <div className="w-9 h-5 rounded-full peer
-                                       peer-checked:after:translate-x-full after:content-[''] after:absolute 
-                                       after:top-[2px] after:left-[2px] after:rounded-full 
-                                       after:h-4 after:w-4 after:transition-all peer-checked:after:bg-indigo-500"
-                             style={{ 
-                               backgroundColor: 'var(--color-surface-light)',
-                               borderColor: 'var(--color-border)'
-                             }}>
-                        </div>
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Input form */}
-          <div className={`flex items-center relative rounded-xl border ${
-            isEmpty ? "max-w-3xl w-[90vw] md:w-[650px]" : "w-full"
-          }`}
-            style={{ 
-              backgroundColor: 'var(--color-surface)',
-              borderColor: 'var(--color-border)'
-            }}>
-            <button
-              type="button"
-              onClick={() => setShowMcpSelector(!showMcpSelector)}
-              className={`p-3 transition-colors hover:text-primary-theme`}
-              aria-label="Toggle MCP selector"
-              title="Select Model Context Protocols"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              <CpuChipIcon className="h-5 w-5" />
-            </button>
-
-            {/* Active MCP indicators */}
-            {activeMcps.length > 0 && (
-              <div className="flex items-center gap-1">
-                {activeMcps.map(mcp => (
-                  <div
-                    key={mcp.id}
-                    className="w-6 h-6 rounded-md flex items-center justify-center"
-                    title={mcp.name}
+              }}>
+              <form onSubmit={handleSubmit} className="flex-1 flex items-center">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  placeholder={isEmpty ? "What can I help with?" : "Ask anything..."}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="w-full px-3 py-3.5 bg-transparent border-none outline-none placeholder-zinc-400"
+                  style={{ 
+                    color: 'var(--color-text)',
+                    backgroundColor: 'transparent'
+                  }}
+                  disabled={isLoading}
+                />
+                
+                <div className="flex items-center">
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isLoading}
+                    className="p-2 mr-1 rounded-md transition-colors disabled:opacity-50"
+                    aria-label="Send message"
                     style={{ 
-                      backgroundColor: 'var(--color-primary-dark)10',
-                      color: 'var(--color-primary)'
+                      color: input.trim() && !isLoading ? 'var(--color-primary)' : 'var(--color-text-muted)'
                     }}
                   >
-                    <i className={`${mcp.icon || 'ri-cpu-line'} text-xs`}></i>
+                    <PaperAirplaneIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </form>
             </div>
-          ))}
+
+            {/* Action buttons shown only in empty state */}
+            {isEmpty && (
+              <div className="flex justify-center mt-5">
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button
+                    onClick={createNewSession}
+                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
+                    style={{ 
+                      backgroundColor: 'var(--color-surface-dark)',
+                      color: 'var(--color-text)'
+                    }}
+                  >
+                    <PlusIcon className="h-4 w-4 mr-1.5" />
+                    <span>New Chat</span>
+                  </button>
+                </div>
               </div>
             )}
-
-            <form onSubmit={handleSubmit} className="flex-1 flex items-center">
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder={isEmpty ? "What can I help with?" : "Ask anything..."}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="w-full px-3 py-3.5 bg-transparent border-none outline-none placeholder-zinc-400"
-                style={{ 
-                  color: 'var(--color-text)',
-                  backgroundColor: 'transparent'
-                }}
-                disabled={isLoading}
-              />
-              
-              <div className="flex items-center">
-                <button
-                  type="button"
-                  className="p-2 transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  <MicrophoneIcon className="h-5 w-5" />
-                </button>
-                
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isLoading}
-                  className="p-2 mr-1 rounded-md transition-colors disabled:opacity-50"
-                  aria-label="Send message"
-                  style={{ 
-                    color: input.trim() && !isLoading ? 'var(--color-primary)' : 'var(--color-text-muted)'
-                  }}
-                >
-                  <PaperAirplaneIcon className="h-5 w-5" />
-                </button>
-              </div>
-            </form>
-                </div>
-
-          {/* Action buttons shown only in empty state */}
-          {isEmpty && (
-            <div className="flex justify-center mt-5">
-              <div className="flex flex-wrap justify-center gap-2">
-                <button
-                  onClick={resetChat}
-                  className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
-                  style={{ 
-                    backgroundColor: 'var(--color-surface-dark)',
-                    color: 'var(--color-text)'
-                  }}
-                >
-                  <PlusIcon className="h-4 w-4 mr-1.5" />
-                  <span>New Chat</span>
-                </button>
-                {activeMcps.length === 0 ? (
-                  <button
-                    onClick={() => setShowMcpSelector(true)}
-                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
-                    style={{ 
-                      backgroundColor: 'var(--color-surface-dark)',
-                      color: 'var(--color-text)'
-                    }}
-                  >
-                    <CpuChipIcon className="h-4 w-4 mr-1.5" />
-                    <span>Enable MCPs</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowMcpSelector(true)}
-                    className="px-3 py-1.5 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
-                    style={{ 
-                      backgroundColor: 'var(--color-surface-dark)',
-                      color: 'var(--color-text)'
-                    }}
-                  >
-                    <CheckIcon className="h-4 w-4 mr-1.5" />
-                    <span>{activeMcps.length} MCPs Active</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
-} 
+};
+
+export default Chatbot; 
