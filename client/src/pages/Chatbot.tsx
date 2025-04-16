@@ -474,7 +474,7 @@ const Chatbot: React.FC = () => {
     <div className="fixed inset-0 flex flex-col" 
       style={{ 
         backgroundColor: 'var(--color-bg)',
-        left: isMainSidebarExpanded ? '64px' : '55px',
+        left: isMainSidebarExpanded ? '64px' : '63px',
         width: isMainSidebarExpanded ? 'calc(100% - 64px)' : 'calc(100% - 50px)'
       }}>
       {/* Chat Header with responsive design */}
