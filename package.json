@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/server.js --config=./conf/config.ini",
     "dev": "nodemon src/server.js --config=./conf/config.ini",
+    "dev:script": "node src/scripts/dev.js",
+    "apply:schema": "node src/scripts/apply_chat_sessions_schema.js",
     "client": "cd client && npm run dev",
     "dev:all": "concurrently \"npm run dev\" \"npm run client\"",
     "test": "jest"

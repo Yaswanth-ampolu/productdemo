@@ -1,96 +1,241 @@
-# Platform Dashboard Project Intelligence
+# Cursor Project Intelligence
+
+This `.cursorrules` file defines key patterns, preferences, and project-specific insights for the Platform Dashboard. It is designed to enhance Cursor's effectiveness by encoding evolving decisions, challenges, and conventions. It should be updated frequently as the project evolves.
+
+## Memory Bank Awareness
+
+Always begin tasks by reviewing these memory bank files:
+
+```mermaid
+flowchart TD
+    PB[projectbrief.md] --> PC[productContext.md]
+    PB --> SP[systemPatterns.md]
+    PB --> TC[techContext.md]
+    PB --> DB[DatabaseStructure.md]
+    
+    PC --> AC[activeContext.md]
+    SP --> AC
+    TC --> AC
+    DB --> AC
+    
+    AC --> P[progress.md]
+```
+
+Pay special attention to `activeContext.md`, `progress.md` and `DatabaseStructure.md` for the latest state.
+
+## Project Structure
+
+### Directory Organization
+```
+project-root/
+├── client/                   # Frontend React application
+│   ├── src/
+│   │   ├── components/       # Reusable UI components
+│   │   │   ├── common/       # Common components used across the app
+│   │   │   ├── layout/       # Layout-related components
+│   │   │   ├── Layout.tsx    # Main layout wrapper
+│   │   │   └── Sidebar.tsx   # Navigation sidebar
+│   │   ├── contexts/         # React context providers
+│   │   │   ├── AuthContext.tsx    # Authentication state management
+│   │   │   ├── ThemeContext.tsx   # Theme/dark mode management
+│   │   │   └── SidebarContext.tsx # Sidebar open/close state
+│   │   ├── pages/            # Major application routes
+│   │   │   ├── Login.tsx     # Login page
+│   │   │   ├── Dashboard.tsx # Main dashboard view
+│   │   │   ├── Chatbot.tsx   # Chat interface
+│   │   │   ├── Settings.tsx  # User settings
+│   │   │   ├── UserManagement.tsx # Admin user management
+│   │   │   └── RunStatus.tsx # Process/run monitoring
+│   │   ├── services/         # API service calls
+│   │   ├── utils/            # Utility functions
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── types/            # TypeScript type definitions
+│   │   ├── App.tsx           # Main app component & routing
+│   │   └── main.tsx          # Entry point
+│   └── package.json          # Frontend dependencies
+│
+├── src/                      # Backend application
+│   ├── routes/               # API route definitions
+│   │   ├── auth.js           # Authentication endpoints
+│   │   ├── users.js          # User management
+│   │   ├── chatbot.js        # Chat functionality
+│   │   ├── dashboard.js      # Dashboard metrics
+│   │   ├── runs.js           # Run status endpoints
+│   │   └── settings.js       # Settings endpoints
+│   ├── services/             # Backend services
+│   ├── scripts/              # Utility scripts
+│   │   ├── apply_schema.js   # Database schema scripts
+│   │   └── sql/              # SQL schema files
+│   ├── database.js           # Database connection & queries
+│   └── server.js             # Express server setup
+│
+├── conf/                     # Configuration files
+│   └── config.ini            # Application configuration
+│
+├── documentation/            # Project documentation
+│   ├── conversation.md       # Support conversations
+│   ├── plan.md               # Project planning
+│   └── structureofconnection.md # Connection documentation
+│
+├── memory-bank/              # Internal knowledge base
+│   ├── projectbrief.md       # Project overview
+│   ├── DatabaseStructure.md  # Database documentation
+│   └── ...                   # Other memory bank files
+│
+└── package.json              # Project dependencies
+```
+
+### Key Components
+
+1. **Sidebar Navigation**
+   - Located at `client/src/components/Sidebar.tsx`
+   - Responsive with collapsible behavior
+   - Handles different user permission levels
+   - Main navigation element with icon-based links
+   - Uses color variables from theme context
+
+2. **Layout System**
+   - Main wrapper at `client/src/components/Layout.tsx`
+   - Manages sidebar integration and main content area
+   - Responsive with mobile considerations
+   - Contains header and content containers
+
+3. **Authentication Flow**
+   - Login page at `client/src/pages/Login.tsx`
+   - Authentication context in `client/src/contexts/AuthContext.tsx`
+   - Protected routes with `PrivateRoute.tsx` and `AdminRoute.tsx`
+
+4. **Theme System**
+   - Dark mode by default with theme toggle
+   - CSS variables for consistent theming
+   - Theme context in `client/src/contexts/ThemeContext.tsx`
+   - Color variables with `--color-primary`, `--color-surface`, etc.
+
+5. **Database Management**
+   - PostgreSQL database schema in `src/database.js`
+   - Schema application scripts in `src/scripts/`
+   - SQL schema files in `src/scripts/sql/`
 
 ## Project Patterns
 
-### Code Style & Organization
-- Use TypeScript for all new frontend code
-- Follow component-based architecture for UI elements
-- Implement container/presenter pattern for data fetching components
-- Use React hooks instead of class components
-- Follow TailwindCSS utility-first approach for styling
+### Code Style & Structure
+- Language: TypeScript (frontend)
+- Architecture: Component-based UI + container/presenter split
+- Styling: TailwindCSS utility-first
+- Hooks over class components
+- Organized under `src/components`, `src/containers`, etc.
 
 ### Naming Conventions
-- PascalCase for React components
-- camelCase for functions, variables, and file names
-- snake_case for database table and column names
-- UPPER_SNAKE_CASE for constants
-
-### API Design
-- RESTful API design with resource-oriented endpoints
-- Use HTTP status codes appropriately
-- JSON request/response format
-- Include error messages in error responses
-- Version API with /api/v1 prefix
+- PascalCase → React components
+- camelCase → JS/TS variables, functions, filenames
+- snake_case → PostgreSQL tables/columns
+- UPPER_SNAKE_CASE → Constants and env keys
 
 ### State Management
-- Use React Context API for global state
-- Local component state for UI-specific state
-- Store auth token in HTTP-only cookies
-- Client-side caching for frequently accessed data
+- Global: React Context API
+  - AuthContext: User authentication state
+  - ThemeContext: Dark/light mode preferences
+  - SidebarContext: Sidebar open/collapsed state
+- Local: Component state with useState
+- Caching: Client-side for common data
+- Auth: Stored in HTTP-only cookies
+
+### API Design
+- RESTful, resource-based endpoints
+- Versioning under `/api/v1`
+- Use correct HTTP status codes and descriptive error messages
+- JSON format across all endpoints
+- API services in `client/src/services/` directory
+
+### Database Design
+- PostgreSQL with UUID primary keys for most entities
+- JSONB for flexible structured data
+- Triggers for automating metrics updates
+- Indexes on frequently queried fields
+- Cascading deletions for relational integrity
+- Functions for common operations
 
 ### Error Handling
-- Use try/catch blocks for async functions
-- Consistent error response format from API
-- Display user-friendly error messages
-- Log errors on the server
-- Use error boundaries in React components
+- try/catch for async logic
+- Standardized error objects from API
+- Error boundaries in UI
+- Server-side logging
 
-### Testing Strategy
-- Jest for unit testing
-- Component testing with React Testing Library
-- API testing with supertest
-- Focus on critical user paths
+### Testing Stack
+- Unit: Jest
+- Component: React Testing Library
+- API: supertest
+- Focus testing on critical flows
 
-## Project Preferences
+### Documentation Organization
+- User documentation in `documentation/`
+- Internal documentation in `memory-bank/`
+- Database structure in `memory-bank/DatabaseStructure.md`
+- Code-level documentation as comments
 
-### Development Workflow
-- Feature branches should be created from main
-- Pull requests require review before merging
-- Run tests locally before pushing
-- Use npm scripts for common tasks
+## Preferences & Workflow
 
-### UI/UX Preferences
-- Dark mode is the default theme
+### UI/UX
+- Default: Dark mode
 - Desktop-first responsive design
-- Focus on accessibility (WCAG compliance)
-- Consistent spacing and typography
+- Focus on accessibility (WCAG)
+- Consistent spacing/typography
+- Color variables follow a consistent naming pattern:
+  - `--color-primary`: Main brand color
+  - `--color-secondary`: Secondary brand color
+  - `--color-surface`: Background surfaces
+  - `--color-text`: Primary text color
+  - `--color-text-secondary`: Less prominent text
+  - `--color-border`: Border color for containers
 
-### Technical Decisions
-- PostgreSQL for all environments (development and production)
-- Session-based authentication with HTTP-only cookies
-- Static file serving through Express
-- Client-side routing with React Router
+### Git Workflow
+- Branch from `main`
+- Feature branches → PR → Code review required
+- Run tests before pushing
+- Use `npm` scripts for shared tasks
+
+### Technical Stack
+- PostgreSQL (dev + prod)
+- Express for API/static files
+- React Router for client routing
+- Session-based auth via HTTP-only cookies
+- Evaluating React Query for data fetching
 
 ## Known Challenges
-
-### Authentication
-- Session management across browser tabs
-- Proper logout across all devices
-- CSRF protection implementation
-
-### Performance
-- Optimizing initial load time
-- Lazy loading components and routes
-- Efficient data fetching patterns
-
-### Deployment
-- Configuring for different environments
-- Database migration strategy
-- Static asset optimization
+- Session logout sync across devices/tabs
+- CSRF protection (pending)
+- Optimizing initial load performance
+- Configuring for multi-env deployment
+- Efficient database migrations
+- Mobile sidebar navigation improvements
 
 ## Evolution of Decisions
+- Switched to PostgreSQL in all stages
+- Database schema optimized with triggers and functions
+- Potential shift toward OAuth or JWT for auth
+- React confirmed for frontend
+- React Query under evaluation
+- Possible expansion of global state handling
+- Considering enhanced mobile sidebar experience
+- Reorganized project structure with backend in src and documentation in documentation folder
 
-### Database
-- PostgreSQL is now used for all environments
-- Designed database schema for optimal performance
-- Considering migration path for scaling
+## Cursor-Specific Rules
 
-### Authentication
-- Started with basic session-based auth
-- Considering adding JWT for stateless auth
-- Future support for OAuth/OIDC integration
+### Planning Mode
+- Before proposing a plan:
+  - Ask 4–6 clarifying questions
+  - Read all memory-bank files
+  - Validate with user
+- Get approval before implementing any proposed plan
 
-### Frontend Framework
-- Committed to React for the frontend
-- Considering React Query for data fetching
-- Evaluating need for additional state management 
+### Act Mode
+- Always check and update `activeContext.md` and `progress.md` after any major change
+- If new patterns emerge, update:
+  - Memory Bank
+  - `.cursorrules`
+
+### When to Update Memory Bank
+- Major architectural changes
+- Introduction of new workflows or tools
+- New known issues or solved challenges
+- User requests via **"update memory bank"** 

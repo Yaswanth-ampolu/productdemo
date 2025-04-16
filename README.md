@@ -1,4 +1,4 @@
-# platform Dashboard
+# Platform Dashboard
 
 A modern, responsive web application built with React, TypeScript, and Express that provides user management and monitoring capabilities with a beautiful, intuitive interface.
 
@@ -41,31 +41,40 @@ A modern, responsive web application built with React, TypeScript, and Express t
 ### Backend
 - Node.js
 - Express
-- SQLite3 (Database)
+- PostgreSQL (Database)
 - bcrypt (Password hashing)
 - express-session (Session management)
 
 ## 📦 Project Structure
 
 ```
-├── client/                 # Frontend application
+├── client/                    # Frontend application
 │   ├── src/
-│   │   ├── components/    # Reusable React components
-│   │   ├── contexts/      # React context providers
-│   │   ├── pages/         # Page components
-│   │   ├── services/      # API services
-│   │   └── config.ts      # Frontend configuration
-│   ├── .env              # Environment variables
-│   └── vite.config.ts    # Vite configuration
+│   │   ├── components/        # Reusable React components
+│   │   ├── contexts/          # React context providers
+│   │   ├── pages/             # Page components
+│   │   ├── services/          # API services
+│   │   └── config.ts          # Frontend configuration
+│   ├── .env                   # Environment variables
+│   └── vite.config.ts         # Vite configuration
 │
-├── src/                   # Backend application
-│   ├── routes/           # API routes
-│   ├── database.js       # Database configuration
-│   └── server.js         # Express server setup
+├── src/                       # Backend application
+│   ├── routes/                # API routes
+│   ├── services/              # Backend services
+│   ├── scripts/               # Utility scripts
+│   │   └── sql/               # SQL schema files
+│   ├── database.js            # Database configuration
+│   └── server.js              # Express server setup
 │
-├── data/                 # SQLite database files
-├── config.ini           # Application configuration
-└── package.json         # Project dependencies
+├── conf/                      # Configuration files
+│   └── config.ini             # Application configuration
+│
+├── documentation/             # Project documentation
+│
+├── memory-bank/               # Internal project knowledge
+│
+├── assets/                    # Static assets and data files
+└── package.json               # Project dependencies
 ```
 
 ## 🚀 Getting Started
@@ -73,6 +82,7 @@ A modern, responsive web application built with React, TypeScript, and Express t
 ### Prerequisites
 - Node.js (v14 or higher)
 - npm or yarn
+- PostgreSQL database
 
 ### Installation
 
@@ -132,7 +142,7 @@ npm run dev
 
 ## 🔧 Configuration
 
-### Backend Configuration (config.ini)
+### Backend Configuration (conf/config.ini)
 ```ini
 [server]
 domain = 0.0.0.0
@@ -140,8 +150,12 @@ port = 5634
 session_secret = your_secret_key
 
 [database]
-type = sqlite
-path = ./data/app.db
+type = postgresql
+host = localhost
+port = 5432
+name = copilot
+user = postgres
+password = your_password
 
 [admin]
 default_username = admin
@@ -184,6 +198,13 @@ VITE_BACKEND_URL=/api
 - GET /users - List all users (Admin only)
 - POST /users - Create new user (Admin only)
 - DELETE /users/:id - Delete user (Admin only)
+
+### Chat Interface
+- POST /chatbot/sessions - Create new chat session
+- GET /chatbot/sessions - List all chat sessions
+- GET /chatbot/sessions/:id - Get specific chat session
+- PUT /chatbot/sessions/:id - Update chat session
+- DELETE /chatbot/sessions/:id - Delete chat session
 
 ## 💻 Development
 

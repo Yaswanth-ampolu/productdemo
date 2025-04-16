@@ -1,0 +1,96 @@
+# Platform Dashboard Project Intelligence
+
+## Project Patterns
+
+### Code Style & Organization
+- Use TypeScript for all new frontend code
+- Follow component-based architecture for UI elements
+- Implement container/presenter pattern for data fetching components
+- Use React hooks instead of class components
+- Follow TailwindCSS utility-first approach for styling
+
+### Naming Conventions
+- PascalCase for React components
+- camelCase for functions, variables, and file names
+- snake_case for database table and column names
+- UPPER_SNAKE_CASE for constants
+
+### API Design
+- RESTful API design with resource-oriented endpoints
+- Use HTTP status codes appropriately
+- JSON request/response format
+- Include error messages in error responses
+- Version API with /api/v1 prefix
+
+### State Management
+- Use React Context API for global state
+- Local component state for UI-specific state
+- Store auth token in HTTP-only cookies
+- Client-side caching for frequently accessed data
+
+### Error Handling
+- Use try/catch blocks for async functions
+- Consistent error response format from API
+- Display user-friendly error messages
+- Log errors on the server
+- Use error boundaries in React components
+
+### Testing Strategy
+- Jest for unit testing
+- Component testing with React Testing Library
+- API testing with supertest
+- Focus on critical user paths
+
+## Project Preferences
+
+### Development Workflow
+- Feature branches should be created from main
+- Pull requests require review before merging
+- Run tests locally before pushing
+- Use npm scripts for common tasks
+
+### UI/UX Preferences
+- Dark mode is the default theme
+- Desktop-first responsive design
+- Focus on accessibility (WCAG compliance)
+- Consistent spacing and typography
+
+### Technical Decisions
+- PostgreSQL for all environments (development and production)
+- Session-based authentication with HTTP-only cookies
+- Static file serving through Express
+- Client-side routing with React Router
+
+## Known Challenges
+
+### Authentication
+- Session management across browser tabs
+- Proper logout across all devices
+- CSRF protection implementation
+
+### Performance
+- Optimizing initial load time
+- Lazy loading components and routes
+- Efficient data fetching patterns
+
+### Deployment
+- Configuring for different environments
+- Database migration strategy
+- Static asset optimization
+
+## Evolution of Decisions
+
+### Database
+- PostgreSQL is now used for all environments
+- Designed database schema for optimal performance
+- Considering migration path for scaling
+
+### Authentication
+- Started with basic session-based auth
+- Considering adding JWT for stateless auth
+- Future support for OAuth/OIDC integration
+
+### Frontend Framework
+- Committed to React for the frontend
+- Considering React Query for data fetching
+- Evaluating need for additional state management 
