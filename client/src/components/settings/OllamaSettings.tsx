@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -18,9 +18,26 @@ import {
   Heading,
   Alert,
   AlertIcon,
-  AlertTitle,
   AlertDescription,
-  Divider
+  Divider,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  Select,
+  Tag,
+  TagLabel,
+  TagLeftIcon,
+  Icon,
+  keyframes,
+  Kbd,
+  useColorModeValue,
+  IconButton,
+  Checkbox,
 } from '@chakra-ui/react';
 import {
   Table,
@@ -31,50 +48,86 @@ import {
   Td,
   TableContainer
 } from '@chakra-ui/table';
-import { Card, CardBody, CardHeader } from '@chakra-ui/card';
-import { api } from '../../services/api';
-import { CheckCircleIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
+import { Card, CardBody, CardHeader, CardFooter } from '@chakra-ui/card';
+import { 
+  CheckCircleIcon, 
+  WarningIcon, 
+  RepeatIcon, 
+  RepeatClockIcon,
+  SettingsIcon,
+  LinkIcon,
+  StarIcon,
+  ArrowForwardIcon,
+  CloseIcon,
+  ChevronRightIcon,
+  InfoIcon
+} from '@chakra-ui/icons';
 import axios from 'axios';
+import { syncOllamaModels, SyncResult, getOllamaSettings, getOllamaModelsFromDB, saveOllamaSettings, testOllamaConnection, getAvailableOllamaModels, toggleOllamaModelStatus, OllamaSettings as ServiceOllamaSettings, OllamaModel } from '../../services/ollamaService';
+
+// Storage key for caching settings
+const SETTINGS_CACHE_KEY = 'ollama_settings_cache';
+const MODELS_CACHE_KEY = 'ollama_models_cache';
+const AVAILABLE_MODELS_CACHE_KEY = 'ollama_available_models_cache';
+const SELECTED_MODELS_CACHE_KEY = 'ollama_selected_models_cache';
+
+// Animation keyframes
+const pulse = keyframes`
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+`;
 
 interface OllamaSettingsProps {
   isAdmin: boolean;
 }
 
-interface OllamaSettings {
-  host: string;
-  port: number;
-  default_model: string;
-}
-
-interface AIModel {
-  id: string;
-  name: string;
-  description: string;
-  is_active: boolean;
-  ollama_model_id: string;
-  parameters: any;
-  created_at: string;
-  updated_at: string;
-}
+// Use OllamaSettings type from the service
+type Settings = ServiceOllamaSettings;
 
 const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
-  const [settings, setSettings] = useState<OllamaSettings>({
-    host: 'localhost',
-    port: 11434,
-    default_model: ''
+  const [settings, setSettings] = useState<Settings>(() => {
+    // Try to load from cache on initial render
+    const cachedSettings = localStorage.getItem(SETTINGS_CACHE_KEY);
+    return cachedSettings ? JSON.parse(cachedSettings) : {
+      host: 'localhost',
+      port: 11434,
+      default_model: ''
+    };
   });
-  const [models, setModels] = useState<AIModel[]>([]);
+
+  const [models, setModels] = useState<OllamaModel[]>(() => {
+    // Try to load models from cache on initial render
+    const cachedModels = localStorage.getItem(MODELS_CACHE_KEY);
+    return cachedModels ? JSON.parse(cachedModels) : [];
+  });
+
+  const [availableModels, setAvailableModels] = useState<OllamaModel[]>(() => {
+    // Try to load available models from cache on initial render
+    const cachedAvailableModels = localStorage.getItem(AVAILABLE_MODELS_CACHE_KEY);
+    return cachedAvailableModels ? JSON.parse(cachedAvailableModels) : [];
+  });
+
+  const [selectedModels, setSelectedModels] = useState<string[]>(() => {
+    // Try to load selected models from cache on initial render
+    const cachedSelectedModels = localStorage.getItem(SELECTED_MODELS_CACHE_KEY);
+    return cachedSelectedModels ? JSON.parse(cachedSelectedModels) : [];
+  });
+
   const [saveLoading, setSaveLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'success' | 'error' | 'testing'>('unknown');
   const [lastAction, setLastAction] = useState<string>('');
+  const [lastError, setLastError] = useState<string>('');
   const toast = useToast();
-  const [availableModels, setAvailableModels] = useState<any[]>([]);
+  const retryModal = useDisclosure();
+  const [retryOperation, setRetryOperation] = useState<() => Promise<void>>(() => async () => {});
 
-  // Load settings on component mount
+  // Load settings and models on component mount and when admin status changes
   useEffect(() => {
     if (isAdmin) {
       loadSettings();
@@ -82,65 +135,100 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     }
   }, [isAdmin]);
 
-  const loadSettings = async () => {
+  // Cache settings whenever they change
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+  }, [settings]);
+  
+  // Cache models whenever they change
+  useEffect(() => {
+    localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify(models));
+  }, [models]);
+
+  // Cache available models whenever they change
+  useEffect(() => {
+    localStorage.setItem(AVAILABLE_MODELS_CACHE_KEY, JSON.stringify(availableModels));
+  }, [availableModels]);
+
+  // Cache selected models whenever they change
+  useEffect(() => {
+    localStorage.setItem(SELECTED_MODELS_CACHE_KEY, JSON.stringify(selectedModels));
+  }, [selectedModels]);
+
+  // Debounced load settings to prevent excessive API calls
+  const loadSettings = useCallback(async () => {
+    // Only make API call if we don't have settings or if they're stale
     try {
       setLastAction('Loading settings...');
-      const response = await axios.get('/api/ollama/settings');
+      const result = await getOllamaSettings();
       
-      if (response.data.success) {
-        setSettings(response.data.settings);
+      if (result && typeof result === 'object') {
+        setSettings(result);
         setLastAction('Settings loaded successfully');
       } else {
-        setLastAction('Failed to load settings: ' + (response.data.message || 'Unknown error'));
+        setLastAction('Failed to load settings: Invalid response format');
+        setLastError('Could not load Ollama settings');
         showToast({
           title: 'Error loading settings',
-          description: response.data.message || 'Could not load Ollama settings',
+          description: 'Could not load Ollama settings',
           status: 'error'
         });
       }
     } catch (error: any) {
       console.error('Error loading Ollama settings:', error);
       setLastAction('Failed to load settings');
+      setLastError(error.response?.data?.message || error.message || 'Failed to load Ollama settings');
       
       showToast({
         title: 'Error loading settings',
         description: error.response?.data?.message || error.message || 'Failed to load Ollama settings',
         status: 'error'
       });
+      
+      // Setup retry operation
+      setRetryOperation(() => loadSettings);
     }
-  };
+  }, []);
 
-  const loadModels = async () => {
+  const loadModels = useCallback(async () => {
     try {
       setModelsLoading(true);
       setLastAction('Loading models from database...');
       
-      const response = await axios.get('/api/ollama/models/db');
+      const models = await getOllamaModelsFromDB();
       
-      if (response.data.success) {
-        setModels(response.data.models || []);
-        setLastAction(`Loaded ${response.data.models?.length || 0} models from database`);
+      if (Array.isArray(models)) {
+        setModels(models || []);
+        setLastAction(`Loaded ${models.length || 0} models from database`);
       } else {
-        setLastAction('Failed to load models: ' + (response.data.message || 'Unknown error'));
+        setLastAction('Failed to load models: Invalid response format');
+        setLastError('Could not load AI models from database');
         showToast({
           title: 'Error loading models',
-          description: response.data.message || 'Could not load AI models from database',
+          description: 'Could not load AI models from database',
           status: 'error'
         });
+        
+        // Setup retry operation
+        setRetryOperation(() => loadModels);
       }
     } catch (error: any) {
       console.error('Error loading AI models:', error);
       setLastAction('Failed to load models from database');
+      setLastError(error.response?.data?.message || error.message || 'Failed to load AI models from database');
       
       showToast({
         title: 'Error loading models',
         description: error.response?.data?.message || error.message || 'Failed to load AI models from database',
         status: 'error'
       });
+      
+      // Setup retry operation
+      setRetryOperation(() => loadModels);
     } finally {
       setModelsLoading(false);
     }
-  };
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -154,34 +242,51 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     try {
       setSaveLoading(true);
       setLastAction('Saving settings...');
+      setLastError('');
       
-      const response = await axios.put('/api/ollama/settings', settings);
+      const result = await saveOllamaSettings(settings);
       
-      if (response.data.success) {
+      if (result && typeof result === 'object') {
         setLastAction('Settings saved successfully');
         setConnectionStatus('unknown'); // Reset connection status after changing settings
         showToast({
           title: 'Settings saved',
-          description: response.data.message || 'Ollama connection settings have been updated',
+          description: 'Ollama connection settings have been updated',
           status: 'success'
         });
+        
+        // Update cached settings
+        localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+        
+        // Test connection after saving settings
+        await testConnection();
       } else {
-        setLastAction('Failed to save settings: ' + (response.data.message || 'Unknown error'));
+        setLastAction('Failed to save settings: Invalid response format');
+        setLastError('There was a problem saving your settings');
         showToast({
           title: 'Error saving settings',
-          description: response.data.message || 'There was a problem saving your settings',
+          description: 'There was a problem saving your settings',
           status: 'error'
         });
+        
+        // Setup retry operation
+        setRetryOperation(() => saveSettings);
+        retryModal.onOpen();
       }
     } catch (error: any) {
       console.error('Error saving Ollama settings:', error);
       setLastAction('Failed to save settings');
+      setLastError(error.response?.data?.message || error.message || 'Failed to save Ollama connection settings');
       
       showToast({
         title: 'Error saving settings',
         description: error.response?.data?.message || error.message || 'Failed to save Ollama connection settings',
         status: 'error'
       });
+      
+      // Setup retry operation
+      setRetryOperation(() => saveSettings);
+      retryModal.onOpen();
     } finally {
       setSaveLoading(false);
     }
@@ -190,35 +295,38 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   const testConnection = async () => {
     try {
       setTestLoading(true);
-      setLastAction('Testing connection to Ollama server...');
       setConnectionStatus('testing');
-
-      const response = await axios.post('/api/ollama/test-connection', {
-        host: settings.host,
-        port: settings.port
-      });
-
-      if (response.data.success) {
+      setLastAction('Testing connection to Ollama server...');
+      setLastError('');
+      
+      const result = await testOllamaConnection(settings.host, settings.port);
+      
+      if (result.success) {
         setConnectionStatus('success');
-        setLastAction(`Connection successful: ${response.data.message || 'Connected to Ollama server'}`);
+        setLastAction(`Connection successful! Ollama ${result.version || 'server'} responded in ${result.responseTime || '?'}ms`);
         showToast({
           title: 'Connection successful',
-          description: response.data.message || 'Successfully connected to Ollama server',
+          description: `Connected to Ollama ${result.version || 'server'} in ${result.responseTime || '?'}ms`,
           status: 'success'
         });
+        
+        // Auto-fetch models on successful connection
+        fetchAvailableModels();
       } else {
         setConnectionStatus('error');
-        setLastAction(`Connection failed: ${response.data.message || 'Could not connect to Ollama server'}`);
+        setLastAction(`Connection failed: ${result.message || result.error || 'Unknown error'}`);
+        setLastError(result.message || result.error || 'Failed to connect to Ollama server');
         showToast({
           title: 'Connection failed',
-          description: response.data.message || 'Failed to connect to Ollama server',
+          description: result.message || result.error || 'Failed to connect to Ollama server',
           status: 'error'
         });
       }
     } catch (error: any) {
-      console.error('Error testing connection:', error);
+      console.error('Error testing Ollama connection:', error);
       setConnectionStatus('error');
       setLastAction('Connection test failed');
+      setLastError(error.response?.data?.message || error.message || 'Failed to connect to Ollama server');
       
       showToast({
         title: 'Connection failed',
@@ -241,38 +349,65 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     });
   };
 
+  const handleModelSelection = (modelId: string) => {
+    setSelectedModels(prev => {
+      if (prev.includes(modelId)) {
+        return prev.filter(id => id !== modelId);
+      } else {
+        return [...prev, modelId];
+      }
+    });
+  };
+
   const fetchAvailableModels = async () => {
     try {
       setFetchLoading(true);
       setLastAction('Fetching available models from Ollama server...');
+      setLastError('');
       
-      const response = await axios.get('/api/ollama/models/available');
+      const models = await getAvailableOllamaModels();
       
-      if (response.data.success) {
-        setAvailableModels(response.data.models || []);
-        setLastAction(`Found ${response.data.models.length} available models on Ollama server`);
+      if (Array.isArray(models)) {
+        setAvailableModels(models);
+        
+        // If no models are selected yet, auto-select all models
+        if (selectedModels.length === 0) {
+          setSelectedModels(models.map(model => model.ollama_model_id || model.name));
+        }
+        
+        setLastAction(`Found ${models.length} models on Ollama server`);
         showToast({
           title: 'Models fetched',
-          description: `Successfully fetched ${response.data.models.length} models from Ollama server`,
+          description: `Found ${models.length} models on the Ollama server`,
           status: 'success'
         });
       } else {
-        setLastAction('Failed to fetch models: ' + (response.data.message || 'Unknown error'));
+        setLastAction('Failed to fetch models: Invalid response format');
+        setLastError('Could not fetch models from Ollama server');
         showToast({
-          title: 'Failed to fetch models',
-          description: response.data.message || 'Could not fetch models from Ollama server',
+          title: 'Fetch failed',
+          description: 'Could not fetch models from Ollama server',
           status: 'error'
         });
+        
+        // Setup retry operation
+        setRetryOperation(() => fetchAvailableModels);
+        retryModal.onOpen();
       }
     } catch (error: any) {
       console.error('Error fetching available models:', error);
       setLastAction('Failed to fetch models from Ollama server');
+      setLastError(error.response?.data?.message || error.message || 'Error fetching models from Ollama server');
       
       showToast({
-        title: 'Failed to fetch models',
-        description: error.response?.data?.message || error.message || 'Error contacting the Ollama server',
+        title: 'Fetch failed',
+        description: error.response?.data?.message || error.message || 'Error fetching models from Ollama server',
         status: 'error'
       });
+      
+      // Setup retry operation
+      setRetryOperation(() => fetchAvailableModels);
+      retryModal.onOpen();
     } finally {
       setFetchLoading(false);
     }
@@ -290,36 +425,55 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   const syncModels = async () => {
     try {
       setSyncLoading(true);
-      setLastAction('Syncing models with Ollama server...');
+      setLastAction('Saving model selections to database...');
+      setLastError('');
       
-      const response = await axios.post('/api/ollama/models/sync');
+      // Pass selected models to sync and set active status to true
+      // Non-selected models will be set to inactive (is_active=false)
+      const result = await syncOllamaModels(selectedModels);
       
-      if (response.data.success) {
-        setLastAction(`Models synced successfully: ${response.data.syncedCount} models updated`);
+      if (result && typeof result === 'object') {
+        const totalSynced = (result.added || 0) + (result.updated || 0);
+        const inactivatedCount = result.inactivated || 0;
+        
+        setLastAction(`Models saved successfully: ${totalSynced} models updated (${result.added || 0} added, ${result.updated || 0} updated, ${inactivatedCount} deactivated)`);
+        
         showToast({
-          title: 'Models synced',
-          description: `Successfully synced ${response.data.syncedCount} models with database`,
+          title: 'Models saved',
+          description: `Successfully saved ${selectedModels.length} models as active and deactivated ${inactivatedCount} models`,
           status: 'success'
         });
+        
         // Reload models from the database to show updates
-        loadModels();
+        await loadModels();
       } else {
-        setLastAction('Failed to sync models: ' + (response.data.message || 'Unknown error'));
+        setLastAction('Failed to save models: Invalid response format');
+        setLastError('Failed to save models to database - unexpected response format');
+        
         showToast({
-          title: 'Sync failed',
-          description: response.data.message || 'Failed to sync models with database',
+          title: 'Save failed',
+          description: 'Failed to save models to database - unexpected response format',
           status: 'error'
         });
+        
+        // Setup retry operation
+        setRetryOperation(() => syncModels);
+        retryModal.onOpen();
       }
     } catch (error: any) {
-      console.error('Error syncing models:', error);
-      setLastAction('Failed to sync models with database');
+      console.error('Error saving models:', error);
+      setLastAction('Failed to save models to database');
+      setLastError(error.response?.data?.message || error.message || 'Error saving models to database');
       
       showToast({
-        title: 'Sync failed',
-        description: error.response?.data?.message || error.message || 'Error syncing models with database',
+        title: 'Save failed',
+        description: error.response?.data?.message || error.message || 'Error saving models to database',
         status: 'error'
       });
+      
+      // Setup retry operation
+      setRetryOperation(() => syncModels);
+      retryModal.onOpen();
     } finally {
       setSyncLoading(false);
     }
@@ -328,12 +482,11 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   const toggleModelStatus = async (modelId: string, isActive: boolean) => {
     try {
       setLastAction(`${isActive ? 'Activating' : 'Deactivating'} model ${modelId}...`);
+      setLastError('');
       
-      const response = await axios.put(`/api/ollama/models/${modelId}/status`, {
-        is_active: isActive
-      });
+      const model = await toggleOllamaModelStatus(modelId, isActive);
       
-      if (response.data.success) {
+      if (model && typeof model === 'object') {
         setLastAction(`Model ${modelId} ${isActive ? 'activated' : 'deactivated'} successfully`);
         showToast({
           title: `Model ${isActive ? 'activated' : 'deactivated'}`,
@@ -342,301 +495,680 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
         });
         
         // Update local state to reflect the change
-        setModels(prevModels => prevModels.map(model => 
-          model.id === modelId ? { ...model, is_active: isActive } : model
-        ));
+        const updatedModels = models.map(m => 
+          m.id === modelId ? { ...m, is_active: isActive } : m
+        );
+        setModels(updatedModels);
+        
+        // Update cache
+        localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify(updatedModels));
       } else {
-        setLastAction(`Failed to ${isActive ? 'activate' : 'deactivate'} model: ${response.data.message || 'Unknown error'}`);
+        setLastAction(`Failed to ${isActive ? 'activate' : 'deactivate'} model: Invalid response format`);
+        setLastError(`Could not ${isActive ? 'activate' : 'deactivate'} the model`);
         showToast({
           title: 'Status update failed',
-          description: response.data.message || `Could not ${isActive ? 'activate' : 'deactivate'} the model`,
+          description: `Could not ${isActive ? 'activate' : 'deactivate'} the model`,
           status: 'error'
         });
+        
+        // Setup retry operation for the specific model toggle
+        setRetryOperation(() => () => toggleModelStatus(modelId, isActive));
+        retryModal.onOpen();
       }
     } catch (error: any) {
       console.error(`Error ${isActive ? 'activating' : 'deactivating'} model:`, error);
       setLastAction(`Failed to ${isActive ? 'activate' : 'deactivate'} model`);
+      setLastError(error.response?.data?.message || error.message || `Error ${isActive ? 'activating' : 'deactivating'} the model`);
       
       showToast({
         title: 'Status update failed',
         description: error.response?.data?.message || error.message || `Error ${isActive ? 'activating' : 'deactivating'} the model`,
         status: 'error'
       });
+      
+      // Setup retry operation for the specific model toggle
+      setRetryOperation(() => () => toggleModelStatus(modelId, isActive));
+      retryModal.onOpen();
+    }
+  };
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await retryOperation();
+      retryModal.onClose();
+    } catch (error) {
+      console.error('Retry failed:', error);
+    } finally {
+      setIsRetrying(false);
     }
   };
 
   const renderConnectionStatusIcon = () => {
     if (connectionStatus === 'success') {
-      return <CheckCircleIcon color="green.500" />;
+      return <CheckCircleIcon color="green.400" />;
     } else if (connectionStatus === 'error') {
-      return <WarningIcon color="red.500" />;
+      return <WarningIcon color="red.400" />;
+    } else if (connectionStatus === 'testing') {
+      return <Spinner size="sm" color="blue.400" />;
     } else {
-      return <RepeatIcon color="gray.500" />; // Default icon for 'unknown' status
+      return <RepeatIcon color="gray.400" />;
     }
+  };
+
+  // Function to handle setting default model
+  const handleDefaultModelChange = (modelId: string) => {
+    setSettings(prev => ({
+      ...prev,
+      default_model: modelId
+    }));
   };
 
   if (!isAdmin) {
     return (
-      <Box p={4}>
-        <Text>You need administrator privileges to access Ollama settings.</Text>
+      <Box px={0} py={2} width="100%">
+        <Alert status="warning" borderRadius="md">
+          <AlertIcon />
+          <AlertDescription>You need administrator privileges to access Ollama settings.</AlertDescription>
+        </Alert>
       </Box>
     );
   }
 
   return (
-    <Box p={6} bgColor="gray.900" borderRadius="lg">
-      <VStack gap={8} align="stretch">
-        <Card variant="elevated" boxShadow="lg" borderRadius="xl" overflow="hidden">
-          <CardHeader bg="blue.800" py={4} color="white" borderBottomWidth="1px" borderColor="blue.700">
-            <Heading size="md">Ollama API Settings</Heading>
+    <Box width="100%" px={0} py={0}>
+      <VStack gap={6} align="stretch">
+        <Card 
+          variant="elevated" 
+          boxShadow="lg" 
+          borderRadius="xl" 
+          overflow="hidden"
+          borderWidth="1px"
+          borderColor="var(--color-border)"
+          transition="all 0.2s"
+          _hover={{ boxShadow: "xl" }}
+        >
+          <CardHeader 
+            bg="var(--color-surface-light)" 
+            py={4} 
+            borderBottomWidth="1px" 
+            borderColor="var(--color-border)"
+            display="flex"
+            alignItems="center"
+          >
+            <Icon as={SettingsIcon} mr={2} color="var(--color-primary)" />
+            <Heading size="md" color="var(--color-text)">Ollama API Connection</Heading>
           </CardHeader>
-          <CardBody p={6} bg="gray.800" color="white">
+          
+          <CardBody p={6} bg="var(--color-surface)">
             <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={6}>
               <FormControl>
-                <FormLabel fontWeight="medium">Host</FormLabel>
+                <FormLabel 
+                  fontWeight="medium" 
+                  color="var(--color-text-secondary)"
+                  display="flex"
+                  alignItems="center"
+                >
+                  <Icon as={LinkIcon} mr={2} boxSize={4} />
+                  Host
+                </FormLabel>
                 <Input
                   name="host"
                   value={settings.host}
                   onChange={handleInputChange}
                   placeholder="localhost"
-                  bg="gray.700"
-                  borderColor="gray.600"
-                  _hover={{ borderColor: "blue.400" }}
-                  color="white"
+                  bg="var(--color-surface-dark)"
+                  borderColor="var(--color-border)"
+                  _hover={{ borderColor: "var(--color-primary)" }}
+                  _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
+                  color="var(--color-text)"
+                  size="md"
+                  fontFamily="mono"
+                  borderRadius="md"
+                  transition="all 0.2s"
                 />
               </FormControl>
               
               <FormControl>
-                <FormLabel fontWeight="medium">Port</FormLabel>
+                <FormLabel 
+                  fontWeight="medium" 
+                  color="var(--color-text-secondary)"
+                  display="flex"
+                  alignItems="center"
+                >
+                  <Icon as={RepeatIcon} mr={2} boxSize={4} />
+                  Port
+                </FormLabel>
                 <Input
                   name="port"
                   type="number"
                   value={settings.port}
                   onChange={handleInputChange}
                   placeholder="11434"
-                  bg="gray.700"
-                  borderColor="gray.600"
-                  _hover={{ borderColor: "blue.400" }}
-                  color="white"
+                  bg="var(--color-surface-dark)"
+                  borderColor="var(--color-border)"
+                  _hover={{ borderColor: "var(--color-primary)" }}
+                  _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
+                  color="var(--color-text)"
+                  size="md"
+                  fontFamily="mono"
+                  borderRadius="md"
+                  transition="all 0.2s"
                 />
               </FormControl>
               
               <FormControl gridColumn={{ md: "span 2" }}>
-                <FormLabel fontWeight="medium">Default Model</FormLabel>
-                <Input
-                  name="default_model"
-                  value={settings.default_model}
-                  onChange={handleInputChange}
-                  placeholder="Select a default model"
-                  bg="gray.700"
-                  borderColor="gray.600"
-                  _hover={{ borderColor: "blue.400" }}
-                  color="white"
-                />
+                <FormLabel 
+                  fontWeight="medium" 
+                  color="var(--color-text-secondary)"
+                  display="flex"
+                  alignItems="center"
+                >
+                  <Icon as={StarIcon} mr={2} boxSize={4} />
+                  Default Model
+                </FormLabel>
+                {models.length > 0 ? (
+                  <Select 
+                    name="default_model"
+                    value={settings.default_model}
+                    onChange={(e) => handleDefaultModelChange(e.target.value)}
+                    placeholder="Select a default model"
+                    bg="var(--color-surface-dark)"
+                    borderColor="var(--color-border)"
+                    _hover={{ borderColor: "var(--color-primary)" }}
+                    _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
+                    color="var(--color-text)"
+                    icon={<ChevronRightIcon />}
+                    borderRadius="md"
+                    transition="all 0.2s"
+                  >
+                    {models.filter(model => model.is_active).map(model => (
+                      <option key={model.ollama_model_id} value={model.ollama_model_id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Flex direction="column">
+                    <Input
+                      name="default_model"
+                      value={settings.default_model}
+                      onChange={handleInputChange}
+                      placeholder="Sync models first to select a default model"
+                      bg="var(--color-surface-dark)"
+                      borderColor="var(--color-border)"
+                      _hover={{ borderColor: "var(--color-primary)" }}
+                      _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
+                      color="var(--color-text)"
+                      borderRadius="md"
+                      isDisabled={true}
+                      transition="all 0.2s"
+                    />
+                    <Text mt={2} fontSize="sm" color="var(--color-text-muted)">
+                      <Box 
+                        as="span" 
+                        display="inline-block" 
+                        w="6px" 
+                        h="6px" 
+                        borderRadius="full" 
+                        bg="orange.300" 
+                        mr={2}
+                        verticalAlign="middle"
+                      />
+                      Sync models to enable selection
+                    </Text>
+                  </Flex>
+                )}
               </FormControl>
             </Grid>
             
-            <Flex direction="column" gap={5} mt={8}>
-              <HStack gap={5} flexWrap="wrap">
-                <Tooltip label="Save these connection settings to the server">
-                  <Button
-                    colorScheme="blue"
-                    onClick={saveSettings}
-                    isLoading={saveLoading}
-                    loadingText="Saving"
-                    leftIcon={saveLoading ? undefined : <CheckCircleIcon />}
-                    size="md"
-                    px={8}
-                    py={5}
-                    borderRadius="md"
-                    _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                  >
-                    Save Settings
-                  </Button>
-                </Tooltip>
+            <Flex 
+              direction="column" 
+              gap={4} 
+              mt={8}
+              borderTop="1px solid var(--color-border)"
+              pt={6}
+            >
+              <HStack 
+                gap={4} 
+                flexWrap="wrap"
+                justifyContent="space-between"
+              >
+                <Button
+                  bg="var(--color-primary)"
+                  color="white"
+                  onClick={saveSettings}
+                  isLoading={saveLoading}
+                  loadingText="Saving"
+                  leftIcon={saveLoading ? undefined : <CheckCircleIcon />}
+                  _hover={{ 
+                    bg: 'var(--color-primary-dark)', 
+                    transform: "translateY(-1px)",
+                    boxShadow: "md"
+                  }}
+                  size="md"
+                  borderRadius="lg"
+                  px={6}
+                  fontWeight="medium"
+                  transition="all 0.2s"
+                >
+                  Save Settings
+                </Button>
                 
-                <Tooltip label="Test connection to the Ollama server with these settings">
-                  <Button
-                    colorScheme={connectionStatus === 'success' ? 'green' : connectionStatus === 'error' ? 'red' : connectionStatus === 'testing' ? 'blue' : 'gray'}
-                    onClick={testConnection}
-                    isLoading={testLoading}
-                    loadingText="Testing"
-                    leftIcon={renderConnectionStatusIcon()}
-                    size="md"
-                    px={8}
-                    py={5}
-                    borderRadius="md"
-                    _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                  >
-                    {connectionStatus === 'success' ? 'Connection Successful' : 
-                     connectionStatus === 'error' ? 'Connection Failed' : 
-                     connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
-                  </Button>
-                </Tooltip>
+                <Button
+                  bg={connectionStatus === 'success' ? 'green.600' : 
+                      connectionStatus === 'error' ? 'red.600' : 
+                      connectionStatus === 'testing' ? 'blue.600' : 'gray.600'}
+                  color="white"
+                  onClick={testConnection}
+                  isLoading={testLoading}
+                  loadingText="Testing"
+                  leftIcon={renderConnectionStatusIcon()}
+                  _hover={{ 
+                    bg: connectionStatus === 'success' ? 'green.700' : 
+                        connectionStatus === 'error' ? 'red.700' : 
+                        connectionStatus === 'testing' ? 'blue.700' : 'gray.700',
+                  }}
+                  size="md"
+                  borderRadius="lg"
+                  px={6}
+                  fontWeight="medium"
+                  transition="all 0.2s"
+                >
+                  {connectionStatus === 'success' ? 'Connection Successful' : 
+                   connectionStatus === 'error' ? 'Connection Failed' : 
+                   connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
+                </Button>
               </HStack>
-              
-              {lastAction && (
-                <Alert status={lastAction.includes('failed') || lastAction.includes('Failed') ? 'error' : 
-                        lastAction.includes('successful') || lastAction.includes('success') ? 'success' : 'info'} 
-                       borderRadius="md"
-                       variant="solid"
-                       mt={3}>
-                  <AlertIcon />
-                  <AlertDescription>{lastAction}</AlertDescription>
-                </Alert>
-              )}
             </Flex>
           </CardBody>
         </Card>
         
-        <Card variant="elevated" boxShadow="lg" borderRadius="xl" overflow="hidden">
-          <CardHeader bg="purple.800" py={4} color="white" borderBottomWidth="1px" borderColor="purple.700">
-            <Heading size="md">Model Management</Heading>
+        <Card 
+          variant="elevated" 
+          boxShadow="lg" 
+          borderRadius="xl" 
+          overflow="hidden"
+          borderWidth="1px"
+          borderColor="var(--color-border)"
+          transition="all 0.2s"
+          _hover={{ boxShadow: "xl" }}
+          mt={6}
+        >
+          <CardHeader 
+            bg="var(--color-surface-light)" 
+            py={4} 
+            borderBottomWidth="1px" 
+            borderColor="var(--color-border)"
+            display="flex"
+            alignItems="center"
+          >
+            <Icon as={RepeatIcon} mr={2} color="var(--color-primary)" />
+            <Heading size="md" color="var(--color-text)">Model Management</Heading>
           </CardHeader>
-          <CardBody p={6} bg="gray.800" color="white">
-            <HStack gap={5} mb={8} flexWrap="wrap">
-              <Tooltip label="Fetch available models from the Ollama server">
+          
+          <CardBody p={5} bg="var(--color-surface)">
+            <Box 
+              p={4} 
+              bg="var(--color-surface-dark)"
+              borderRadius="md"
+              borderWidth="1px"
+              borderColor="var(--color-border)"
+              mb={6}
+            >
+              <Flex justify="space-between" align="center" mb={3}>
+                <Flex align="center">
+                  <Box 
+                    as="span"
+                    bg="var(--color-primary)"
+                    color="white"
+                    fontWeight="bold"
+                    w="24px"
+                    h="24px"
+                    borderRadius="full"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    mr={3}
+                    fontSize="sm"
+                  >
+                    1
+                  </Box>
+                  <Text fontWeight="medium" color="var(--color-text)">Fetch Available Models</Text>
+                </Flex>
+                
                 <Button
-                  colorScheme="teal"
+                  bg="var(--color-primary)"
+                  color="white"
                   onClick={fetchAvailableModels}
                   isLoading={fetchLoading}
                   loadingText="Fetching"
                   leftIcon={<RepeatIcon />}
+                  _hover={{ 
+                    bg: 'var(--color-primary-dark)', 
+                    transform: "translateY(-1px)",
+                    boxShadow: "md"
+                  }}
                   size="md"
-                  px={6}
-                  py={5}
-                  borderRadius="md"
-                  _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
+                  borderRadius="lg"
+                  fontWeight="medium"
+                  transition="all 0.2s"
                 >
-                  Fetch Available Models
+                  Fetch Models
                 </Button>
-              </Tooltip>
+              </Flex>
               
-              <Tooltip label="Sync models from Ollama server to the database">
-                <Button
-                  colorScheme="purple"
-                  onClick={syncModels}
-                  isLoading={syncLoading}
-                  loadingText="Syncing"
-                  leftIcon={<RepeatIcon />}
-                  size="md"
-                  px={6}
-                  py={5}
-                  borderRadius="md"
-                  _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                >
-                  Sync Models to Database
-                </Button>
-              </Tooltip>
-            </HStack>
+              <Text fontSize="sm" color="var(--color-text-muted)" ml={10}>
+                Retrieve all available models from your Ollama server
+              </Text>
+            </Box>
             
             {availableModels.length > 0 && (
-              <Box mb={6}>
-                <Text fontWeight="medium" mb={3}>Available Models on Server: {availableModels.length}</Text>
-                <Box maxH="200px" overflowY="auto" borderWidth="1px" borderRadius="md" p={4} bg="gray.700" borderColor="gray.600">
+              <Box 
+                p={4} 
+                bg="var(--color-surface-dark)"
+                borderRadius="md"
+                borderWidth="1px"
+                borderColor="var(--color-border)"
+                mb={6}
+              >
+                <Flex justify="space-between" align="center" mb={3}>
+                  <Flex align="center">
+                    <Box 
+                      as="span"
+                      bg="var(--color-primary)"
+                      color="white"
+                      fontWeight="bold"
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      mr={3}
+                      fontSize="sm"
+                    >
+                      2
+                    </Box>
+                    <Text fontWeight="medium" color="var(--color-text)">Select Models ({selectedModels.length} of {availableModels.length} selected)</Text>
+                  </Flex>
+                  
+                  <Button
+                    size="sm"
+                    onClick={() => setSelectedModels(availableModels.map(m => m.ollama_model_id || m.name))}
+                    variant="outline"
+                  >
+                    Select All
+                  </Button>
+                </Flex>
+                
+                <Text fontSize="sm" color="var(--color-text-muted)" ml={10} mb={4}>
+                  Choose which models to make available in your application
+                </Text>
+                
+                <Grid 
+                  templateColumns={{ 
+                    base: "1fr", 
+                    md: "repeat(2, 1fr)", 
+                    lg: "repeat(3, 1fr)" 
+                  }}
+                  gap={4}
+                  maxH={{ base: "300px", md: "240px" }}
+                  overflowY="auto"
+                  ml={10}
+                  pr={2}
+                  css={{
+                    '&::-webkit-scrollbar': {
+                      width: '4px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      width: '6px',
+                      background: 'var(--color-surface-dark)'
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      background: 'var(--color-primary)',
+                      borderRadius: '24px',
+                    },
+                  }}
+                >
                   {availableModels.map((model: any, index: number) => (
                     <Flex 
-                      key={index} 
-                      justify="space-between" 
-                      align="center" 
-                      py={2} 
-                      px={3}
-                      borderBottomWidth={index < availableModels.length - 1 ? "1px" : "0"} 
-                      borderColor="gray.600"
-                      _hover={{ bg: "gray.600" }}
-                      borderRadius="sm"
+                      key={index}
+                      p={3}
+                      borderWidth="1px"
+                      borderRadius="lg"
+                      borderColor={selectedModels.includes(model.ollama_model_id || model.name) ? "var(--color-primary)" : "var(--color-border)"}
+                      bg={selectedModels.includes(model.ollama_model_id || model.name) ? "var(--color-surface-light)" : "var(--color-surface-dark)"}
+                      transition="all 0.2s"
+                      cursor="pointer"
+                      onClick={() => handleModelSelection(model.ollama_model_id || model.name)}
+                      align="center"
                     >
-                      <Text fontSize="sm" fontWeight="medium" color="white">
-                        {model.name}
-                      </Text>
-                      <Text fontSize="xs" color="gray.300">
-                        {model.size && formatModelSize(model.size)}
-                      </Text>
+                      <Checkbox
+                        isChecked={selectedModels.includes(model.ollama_model_id || model.name)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleModelSelection(model.ollama_model_id || model.name);
+                        }}
+                        colorScheme="green"
+                        size="lg"
+                        mr={3}
+                      />
+                      
+                      <Box flex="1">
+                        <Text 
+                          fontSize="sm" 
+                          fontWeight="bold" 
+                          color="var(--color-text)"
+                        >
+                          {model.name}
+                        </Text>
+                        
+                        <Flex mt={1} gap={2}>
+                          {model.size && (
+                            <Tag 
+                              size="sm" 
+                              colorScheme="blue" 
+                              borderRadius="full" 
+                              variant="subtle"
+                            >
+                              {formatModelSize(model.size)}
+                            </Tag>
+                          )}
+                          
+                          {model.name.includes('code') && (
+                            <Tag 
+                              size="sm" 
+                              colorScheme="purple" 
+                              variant="subtle"
+                              borderRadius="full"
+                            >
+                              Code
+                            </Tag>
+                          )}
+                          
+                          {model.name.includes('embed') && (
+                            <Tag 
+                              size="sm" 
+                              colorScheme="orange" 
+                              variant="subtle"
+                              borderRadius="full"
+                            >
+                              Embed
+                            </Tag>
+                          )}
+                        </Flex>
+                      </Box>
                     </Flex>
                   ))}
-                </Box>
-                <Divider my={5} borderColor="gray.600" />
+                </Grid>
               </Box>
             )}
             
-            {modelsLoading ? (
-              <Flex justify="center" align="center" h="250px" direction="column" gap={5}>
-                <Spinner size="xl" thickness="4px" color="purple.400" speed="0.8s" />
-                <Text color="gray.300">Loading models from database...</Text>
-              </Flex>
-            ) : models.length === 0 ? (
-              <Flex 
-                textAlign="center" 
-                py={12} 
-                px={6}
-                borderWidth="1px" 
-                borderRadius="lg" 
-                direction="column" 
-                align="center" 
-                justify="center"
-                bg="gray.700"
-                borderColor="gray.600"
+            {availableModels.length > 0 && (
+              <Box 
+                p={4} 
+                bg="var(--color-surface-dark)"
+                borderRadius="md"
+                borderWidth="1px"
+                borderColor="var(--color-border)"
               >
-                <WarningIcon boxSize={12} color="yellow.400" mb={5} />
-                <Text fontSize="xl" fontWeight="medium" mb={2}>No models found</Text>
-                <Text color="gray.300" mb={6}>Click "Sync Models" to import models from the Ollama server.</Text>
-                <Button
-                  colorScheme="purple"
-                  onClick={syncModels}
-                  isLoading={syncLoading}
-                  loadingText="Syncing"
-                  leftIcon={<RepeatIcon />}
-                  size="lg"
-                  px={8}
-                  py={6}
-                  borderRadius="md"
-                  _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                >
-                  Sync Models Now
-                </Button>
-              </Flex>
-            ) : (
-              <TableContainer borderWidth="1px" borderRadius="md" bg="gray.700" borderColor="gray.600">
-                <Table variant="simple" colorScheme="whiteAlpha">
-                  <Thead bg="gray.800">
-                    <Tr>
-                      <Th color="gray.300">Model Name</Th>
-                      <Th color="gray.300">Ollama ID</Th>
-                      <Th color="gray.300">Description</Th>
-                      <Th color="gray.300">Status</Th>
-                      <Th color="gray.300">Actions</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {models.map((model) => (
-                      <Tr key={model.id} _hover={{ bg: "gray.600" }}>
-                        <Td fontWeight="medium" color="white">{model.name}</Td>
-                        <Td><Text fontSize="sm" color="gray.300">{model.ollama_model_id}</Text></Td>
-                        <Td><Text fontSize="sm" noOfLines={2} color="gray.300">{model.description || 'No description'}</Text></Td>
-                        <Td>
-                          <Badge colorScheme={model.is_active ? 'green' : 'red'} px={3} py={1} borderRadius="md">
-                            {model.is_active ? 'Active' : 'Disabled'}
-                          </Badge>
-                        </Td>
-                        <Td>
-                          <Tooltip label={model.is_active ? 'Deactivate this model' : 'Activate this model'}>
-                            <Switch
-                              colorScheme="green"
-                              size="md"
-                              isChecked={model.is_active}
-                              onChange={(e) => toggleModelStatus(model.id, e.target.checked)}
-                            />
-                          </Tooltip>
-                        </Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </TableContainer>
+                <Flex justify="space-between" align="center" mb={3}>
+                  <Flex align="center">
+                    <Box 
+                      as="span"
+                      bg="var(--color-primary)"
+                      color="white"
+                      fontWeight="bold"
+                      w="24px"
+                      h="24px"
+                      borderRadius="full"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      mr={3}
+                      fontSize="sm"
+                    >
+                      3
+                    </Box>
+                    <Text fontWeight="medium" color="var(--color-text)">Save Selected Models to Database</Text>
+                  </Flex>
+                  
+                  <Button
+                    colorScheme="blue"
+                    isDisabled={selectedModels.length === 0}
+                    onClick={syncModels}
+                    isLoading={syncLoading}
+                    loadingText="Saving"
+                    size="md"
+                    borderRadius="lg"
+                  >
+                    Save {selectedModels.length} Models
+                  </Button>
+                </Flex>
+                
+                <Text fontSize="sm" color="var(--color-text-muted)" ml={10}>
+                  Only the selected models will be available in your application. Unselected models will be deactivated.
+                </Text>
+              </Box>
+            )}
+            
+            {models.length > 0 && (
+              <Box 
+                p={4} 
+                bg="var(--color-surface-light)" 
+                borderRadius="md" 
+                borderWidth="1px" 
+                borderColor="var(--color-border)"
+                mt={6}
+              >
+                <Flex align="center" mb={2}>
+                  <CheckCircleIcon color="green.500" mr={2} />
+                  <Text fontWeight="medium" color="var(--color-text)">Database Status</Text>
+                </Flex>
+                <Text fontSize="sm" color="var(--color-text-muted)" ml={6}>
+                  <b>{models.filter(m => m.is_active).length}</b> active models in database out of <b>{models.length}</b> total
+                  {models.filter(m => !m.is_active).length > 0 && (
+                    <> • <b>{models.filter(m => !m.is_active).length}</b> inactive models</>
+                  )}
+                </Text>
+              </Box>
+            )}
+            
+            {lastAction && (
+              <Box mt={4}>
+                <Text fontSize="sm" color="var(--color-text-muted)">
+                  <b>Last action:</b> {lastAction}
+                </Text>
+              </Box>
             )}
           </CardBody>
         </Card>
       </VStack>
+      
+      <Modal isOpen={retryModal.isOpen} onClose={retryModal.onClose}>
+        <ModalOverlay 
+          bg="blackAlpha.700"
+          backdropFilter="blur(5px)"
+        />
+        <ModalContent 
+          bg="var(--color-surface)" 
+          borderColor="var(--color-border)" 
+          borderWidth="1px"
+          borderRadius="xl"
+          boxShadow="2xl"
+        >
+          <ModalHeader 
+            color="var(--color-text)"
+            borderBottomWidth="1px"
+            borderColor="var(--color-border)"
+            display="flex"
+            alignItems="center"
+          >
+            <WarningIcon color="red.500" mr={2} />
+            Operation Failed
+          </ModalHeader>
+          <ModalCloseButton color="var(--color-text)" />
+          
+          <ModalBody py={6}>
+            <Alert 
+              status="error" 
+              mb={4} 
+              borderRadius="md"
+              variant="left-accent"
+              borderWidth="1px"
+              borderColor="red.300"
+            >
+              <AlertIcon />
+              <AlertDescription fontWeight="medium">{lastError}</AlertDescription>
+            </Alert>
+            
+            <Text 
+              color="var(--color-text-secondary)"
+              fontSize="md"
+              display="flex"
+              alignItems="center"
+            >
+              <Icon as={InfoIcon} mr={2} boxSize="3" color="blue.400" />
+              Would you like to retry the operation?
+            </Text>
+          </ModalBody>
+          
+          <ModalFooter 
+            borderTopWidth="1px"
+            borderColor="var(--color-border)"
+          >
+            <Button 
+              variant="outline" 
+              mr={3} 
+              onClick={retryModal.onClose}
+              borderColor="var(--color-border)"
+              color="var(--color-text)"
+              _hover={{ bg: 'var(--color-surface-light)' }}
+              borderRadius="lg"
+            >
+              Cancel
+            </Button>
+            <Button 
+              bg="var(--color-primary)"
+              color="white"
+              onClick={handleRetry}
+              isLoading={isRetrying}
+              loadingText="Retrying"
+              leftIcon={<RepeatClockIcon />}
+              _hover={{ 
+                bg: 'var(--color-primary-dark)',
+                transform: "translateY(-1px)",
+                boxShadow: "md"  
+              }}
+              borderRadius="lg"
+              transition="all 0.2s"
+            >
+              Retry
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 };

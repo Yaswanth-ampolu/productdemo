@@ -84,6 +84,7 @@ CREATE TABLE public.sessions (
 
 CREATE TABLE public.ai_models (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    model_id character varying(255) NOT NULL,
     name character varying(100) NOT NULL,
     description text,
     parameters jsonb,

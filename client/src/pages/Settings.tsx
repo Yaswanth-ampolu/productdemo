@@ -16,10 +16,19 @@ type ThemeType = 'dark' | 'light' | 'midnight';
 export default function Settings() {
   const { user, refreshUser } = useAuth();
   const { currentTheme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    // Try to restore the last active tab from localStorage
+    const savedTab = localStorage.getItem('settings_active_tab');
+    return savedTab || 'profile';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Save active tab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('settings_active_tab', activeTab);
+  }, [activeTab]);
 
   // Define available themes
   const themes = [
@@ -137,7 +146,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="py-6 px-4 md:px-8" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="py-6 px-4 md:px-8 overflow-hidden max-w-[1400px] mx-auto" style={{ backgroundColor: 'var(--color-bg)' }}>
       <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--color-text)' }}>Settings</h1>
       
       {/* Success/Error messages */}
@@ -152,10 +161,10 @@ export default function Settings() {
         </div>
       )}
       
-      <div className="flex flex-col md:flex-row gap-8">
+      <div className="flex flex-col md:flex-row gap-6">
         {/* Settings tabs */}
         <div className="w-full md:w-64 flex-shrink-0">
-          <div className="rounded-lg overflow-hidden" style={{ 
+          <div className="rounded-lg overflow-hidden sticky md:top-4" style={{ 
             backgroundColor: 'var(--color-surface)', 
             borderColor: 'var(--color-border)' 
           }}>
@@ -183,9 +192,10 @@ export default function Settings() {
         </div>
         
         {/* Settings content */}
-        <div className="flex-1 rounded-lg p-6" style={{ 
+        <div className="flex-1 rounded-lg p-5 overflow-auto" style={{ 
           backgroundColor: 'var(--color-surface)', 
-          borderColor: 'var(--color-border)'
+          borderColor: 'var(--color-border)',
+          maxHeight: 'calc(100vh - 150px)'
         }}>
           {activeTab === 'profile' && (
             <div>

@@ -67,7 +67,7 @@ During testing, we encountered a path-related error in the SPA fallback route. P
 
 ---
 
-## Phase 3: AI Integration Foundation Prompts
+## Phase 3: AI Integration Prompts
 
 ### Start Phase 3:
 
@@ -137,4 +137,264 @@ After completing the OllamaSettings component, I'll implement the ModelSelector 
    - Handle and display AI responses
 
 This will complete the frontend integration for the AI chat functionality.
+```
+
+## Implementing Persistent Settings and Layout Improvements (Task 9):
+
+**Prompt:**
+```
+Let's implement persistent settings and improve the layout for the Ollama Settings UI. The current issues are:
+
+1. Settings reset when navigating away from the page
+2. UI layout overflows and doesn't integrate well with the main Settings page
+3. Sync models error message despite successful database saves
+4. Inconsistent design patterns across the settings
+
+To fix these issues:
+
+1. First, implement settings persistence:
+   - Update the OllamaSettings component to use React useEffect to fetch settings on mount
+   - Add proper caching mechanism to prevent unnecessary API calls
+   - Ensure settings persist when navigating between tabs
+
+2. Improve the layout and styling:
+   - Refine the dark theme UI to match the main settings page style
+   - Fix the overflow issues by using responsive design patterns
+   - Use proper card components that respect the container width
+   - Ensure consistent spacing and alignment
+
+3. Fix error messages:
+   - Update the error handling for model sync to show accurate messages
+   - Add better visual distinction between error states
+   - Implement retry mechanisms for failed operations
+
+Please make these changes to maintain existing functionality while improving the UX.
+```
+
+## Creating ModelSelector Component (Task 10):
+
+**Prompt:**
+```
+I need to create a ModelSelector component for the chat interface. This component will allow users to select from the AI models that admins have enabled for use in the chatbot. The requirements are:
+
+1. Create a new component `client/src/components/chat/ModelSelector.tsx` that:
+   - Fetches enabled models from the `/api/ollama/models/active` endpoint
+   - Displays a dropdown list of available models
+   - Shows model details (name, description) in the selection UI
+   - Stores the selected model in state and passes it to parent components
+   - Remembers user's last selection using localStorage
+
+2. Include visual cues for model capabilities:
+   - Add badges or icons to indicate model specialties (code, general, etc.)
+   - Show model size or performance indicators if available
+   - Include tooltips for additional model information
+
+3. Add loading states and error handling:
+   - Show a loading indicator while fetching models
+   - Provide fallback behavior if no models are available
+   - Handle API errors gracefully
+
+This component will later be integrated into the Chatbot page to allow users to select which AI model they want to chat with.
+```
+
+## Integrating ModelSelector with Chat UI (Task 11):
+
+**Prompt:**
+```
+Now that we have created the ModelSelector component, let's integrate it with the Chatbot page. This will allow users to select different AI models during their chat sessions. The integration should:
+
+1. Update `client/src/pages/Chatbot.tsx` to:
+   - Import and position the ModelSelector component in the chat UI
+   - Add state management for the selected model
+   - Pass the selected model ID to the chat API calls
+   - Update the UI to show which model is currently responding
+
+2. Update the chat message handling:
+   - Modify the message sending function to include the selected model
+   - Update the API call to `/api/ollama/chat` to include model information
+   - Add support for changing models mid-conversation
+   - Include model-specific styling for messages (e.g., different colors or icons)
+
+3. Enhance the chat experience:
+   - Add a model capabilities section to help users select the right model
+   - Include tooltips or guidance about which models are best for different tasks
+   - Implement smooth transitions when switching models
+   - Save the user's model preference for future sessions
+
+The goal is to create an intuitive interface for users to select and interact with different AI models based on their needs.
+```
+
+## Enhancing Model Management (Task 12):
+
+**Prompt:**
+```
+Let's enhance the model management capabilities in the admin interface. The goal is to make it easier for administrators to organize, filter, and manage multiple AI models. The enhancements should include:
+
+1. Improve model organization:
+   - Add grouping functionality to categorize models (e.g., by size, capability, or provider)
+   - Implement search and filtering options to find models quickly
+   - Add sorting options (by name, size, last updated, etc.)
+   - Include pagination for handling large numbers of models
+
+2. Create detailed model views:
+   - Design a model details panel or modal to show comprehensive information
+   - Include performance metrics if available
+   - Show usage statistics (how often the model is selected by users)
+   - Display version history and update information
+
+3. Add batch operations:
+   - Implement multi-select functionality for models
+   - Add batch enable/disable options
+   - Include batch tag or categorize features
+   - Add import/export capabilities for model configurations
+
+4. Implement update notifications:
+   - Create a notification system for model updates from the Ollama server
+   - Add visual indicators for newly available models
+   - Include upgrade prompts for outdated models
+   - Add automatic sync scheduling options
+
+These enhancements will make the model management process more efficient for administrators, especially as the number of available models grows.
+```
+
+## Final Testing and Documentation (Task 13):
+
+**Prompt:**
+```
+We're nearing completion of the Ollama AI integration. Let's conduct comprehensive testing and create proper documentation to ensure smooth operation and clear user guidance:
+
+1. Testing plan:
+   - Test all Ollama-related features end-to-end
+   - Verify settings persistence across page navigation and browser reload
+   - Test model selection and chat functionality with various models
+   - Check error handling and recovery procedures
+   - Test responsiveness on different screen sizes
+
+2. Documentation updates:
+   - Create admin documentation for Ollama server setup and configuration
+   - Write user guide sections for model selection and chat features
+   - Document model management workflows for administrators
+   - Update API documentation to include all Ollama endpoints
+
+3. Implementation guides:
+   - Write troubleshooting guides for common issues
+   - Create model optimization recommendations
+   - Document performance considerations for different deployment scenarios
+   - Include security best practices for Ollama server configuration
+
+4. Automated testing:
+   - Implement unit tests for critical components
+   - Create integration tests for API endpoints
+   - Set up end-to-end tests for key user flows
+   - Document test coverage and maintenance procedures
+
+Final deliverables should include updated documentation, test reports, and any remaining bug fixes or optimizations.
+```
+
+## After SQL Schema Update and UI Fix:
+
+**Prompt:**
+```
+Great work on fixing both the database schema issue and the UI problem! Now let's proceed with the chat integration phase:
+
+1. First, create the ModelSelector component for the chat interface:
+   - Create a new file client/src/components/chat/ModelSelector.tsx
+   - Implement fetching active models from the /api/ollama/models/active endpoint
+   - Create a dropdown UI for selecting AI models with proper styling
+   - Add local storage persistence for the selected model
+   - Include model details and visual indicators for capabilities
+
+2. Next, update the ChatMessage component:
+   - Enhance the component to support AI-specific message formatting
+   - Add support for code blocks with syntax highlighting
+   - Implement markdown rendering for structured responses
+   - Create distinct styling for user vs. AI messages
+
+3. Finally, connect the chat UI to the Ollama API:
+   - Update the chat service to use the /api/ollama/chat endpoint
+   - Implement conversation context management
+   - Add streaming response support for better user experience
+   - Handle error cases and provide retry options
+
+Let's start with implementing the ModelSelector component since that's the foundation for the chat integration.
+```
+
+## After ModelSelector Implementation:
+
+**Prompt:**
+```
+Now that the ModelSelector component is implemented, let's integrate it with the Chatbot page:
+
+1. First, update src/pages/Chatbot.tsx:
+   - Import and position the ModelSelector component
+   - Add state management for the selected model
+   - Pass the selected model ID to the chat API calls
+   - Update the UI to show which model is currently responding
+
+2. Then, update the chat message handling:
+   - Modify the message sending function to include the selected model
+   - Update the API call to /api/ollama/chat
+   - Handle model-specific response formatting
+
+3. Finally, enhance the chat experience:
+   - Add model capabilities section to help users select the right model
+   - Include tooltips about which models are best for different tasks
+   - Implement smooth transitions when switching models
+   - Save the user's model preference for future sessions
+
+Let's start with the Chatbot.tsx updates to properly integrate the ModelSelector.
+```
+
+## After Chat UI Integration:
+
+**Prompt:**
+```
+Great progress on integrating the ModelSelector with the Chat UI! Now let's focus on enhancing the chat experience with advanced features:
+
+1. First, implement streaming responses:
+   - Update the chat service to handle streaming from the Ollama API
+   - Add real-time message rendering as tokens arrive
+   - Implement typing indicators and progress visualization
+   - Provide cancel option during long responses
+
+2. Then, add conversation management features:
+   - Implement conversation export/import functionality
+   - Add title generation based on conversation content
+   - Support file attachments for more context
+   - Add conversation search capabilities
+
+3. Finally, improve the overall chat experience:
+   - Add model performance metrics
+   - Implement user feedback mechanisms (thumbs up/down)
+   - Create suggestions for follow-up questions
+   - Add model-specific styling and avatars
+
+Let's start with implementing the streaming response feature since it provides immediate user experience benefits.
+```
+
+## Final Testing and Documentation:
+
+**Prompt:**
+```
+The AI chat integration is nearly complete! Let's finalize with comprehensive testing and documentation:
+
+1. First, conduct end-to-end testing:
+   - Test with various models (small, large, specialized)
+   - Verify all chat features work as expected
+   - Check error handling and recovery
+   - Test on different screen sizes and devices
+
+2. Then, update the documentation:
+   - Create user guide sections for AI chat features
+   - Document model selection and capabilities
+   - Add troubleshooting sections for common issues
+   - Update API documentation for all Ollama endpoints
+
+3. Finally, implement automated tests:
+   - Add unit tests for critical components
+   - Create integration tests for API endpoints
+   - Set up end-to-end tests for key user flows
+   - Document test coverage and maintenance procedures
+
+Let's start with the end-to-end testing to identify and fix any remaining issues before finalizing the documentation.
 ``` 

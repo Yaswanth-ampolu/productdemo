@@ -116,7 +116,8 @@ module.exports = function(config) {
    */
   router.post('/models/sync', requireAdmin, async (req, res) => {
     try {
-      const result = await ollamaService.syncModels();
+      const { selectedModelIds } = req.body;
+      const result = await ollamaService.syncModels(selectedModelIds);
       
       if (result.success) {
         res.json({
@@ -125,6 +126,7 @@ module.exports = function(config) {
           added: result.added,
           updated: result.updated,
           unchanged: result.unchanged,
+          inactivated: result.inactivated || 0,
           total: result.total
         });
       } else {

@@ -195,8 +195,9 @@ class OllamaService {
 
   /**
    * Syncs models from Ollama server to database
+   * @param {string[]} selectedModelIds - Array of model IDs to set as active
    */
-  async syncModels() {
+  async syncModels(selectedModelIds = []) {
     try {
       // Get models from Ollama
       const { success, models, error } = await this.getAvailableModels();
@@ -211,10 +212,12 @@ class OllamaService {
       let added = 0;
       let updated = 0;
       let unchanged = 0;
+      let inactivated = 0;
       
       // Process each model
       for (const model of models) {
         const modelId = model.name;
+        const isSelected = selectedModelIds.includes(modelId);
         
         // Check if model exists in database
         const result = await db.query('SELECT * FROM ai_models WHERE ollama_model_id = $1', [modelId]);
@@ -236,62 +239,129 @@ class OllamaService {
             model.name, 
             `Ollama model: ${model.name}`, 
             JSON.stringify({ size: model.size, modified_at: model.modified_at }), 
-            true
+            isSelected // Set is_active based on selection
           ]);
           
-          added++;
+          if (isSelected) {
+            added++;
+          } else {
+            inactivated++;
+          }
         } else {
           // Update existing model
           const existingModel = result.rows[0];
+          
+          // Safely parse parameters with error handling
           let parameters = {};
           try {
-            // Attempt to parse existing parameters, default to empty object on error
-            parameters = JSON.parse(existingModel.parameters || '{}');
-            if (typeof parameters !== 'object' || parameters === null) {
-              parameters = {}; // Ensure parameters is an object
+            if (existingModel.parameters) {
+              // Check if parameters is already an object (due to pg driver)
+              if (typeof existingModel.parameters === 'object' && existingModel.parameters !== null) {
+                parameters = existingModel.parameters;
+              } else {
+                parameters = JSON.parse(existingModel.parameters);
+              }
             }
-          } catch (parseError) {
-            logger.error(`Error parsing existing parameters for model ${existingModel.ollama_model_id}:`, parseError);
-            parameters = {}; // Fallback to empty object
+          } catch (err) {
+            logger.error(`Error parsing parameters for model ${model.name}:`, err);
+            parameters = {}; // Reset to empty object on error
           }
           
-          // Check if anything has changed (comparing with potentially new values)
-          const currentSize = parameters.size;
-          const currentModifiedAt = parameters.modified_at;
-          const newSize = model.size;
-          const newModifiedAt = model.modified_at;
-
-          if (currentSize !== newSize || currentModifiedAt !== newModifiedAt) {
-            // Safely update parameters
-            let updatedParams;
-            try {
-              updatedParams = {
-                ...parameters,
-                size: newSize, 
-                modified_at: newModifiedAt
-              };
-            } catch (err) {
-              logger.error(`Error constructing updated parameters for model ${model.name}:`, err);
-              // Fallback: only include new values if construction failed
-              updatedParams = { 
-                size: newSize, 
-                modified_at: newModifiedAt 
-              };
-            }
-              
-            await db.query(`
-              UPDATE ai_models SET 
-                parameters = $1,
-                updated_at = NOW()
-              WHERE id = $2
-            `, [
-              JSON.stringify(updatedParams), 
-              existingModel.id
-            ]);
+          // Check if anything has changed including active status
+          const statusChanged = existingModel.is_active !== isSelected;
+          const paramsChanged = parameters.size !== model.size || parameters.modified_at !== model.modified_at;
+          
+          if (statusChanged || paramsChanged) {
+            // Safely update parameters and status
+            let updatedParams = { 
+              size: model.size, 
+              modified_at: model.modified_at 
+            };
             
-            updated++;
+            try {
+              // Try updating with updated_at field
+              await db.query(`
+                UPDATE ai_models SET 
+                  parameters = $1,
+                  is_active = $2,
+                  updated_at = NOW()
+                WHERE id = $3
+              `, [
+                JSON.stringify(updatedParams),
+                isSelected,
+                existingModel.id
+              ]);
+            } catch (updateError) {
+              if (updateError.message.includes('column "updated_at" of relation "ai_models" does not exist')) {
+                // If updated_at doesn't exist, update without it
+                logger.warn('updated_at column not found, updating without timestamp');
+                await db.query(`
+                  UPDATE ai_models SET 
+                    parameters = $1,
+                    is_active = $2
+                  WHERE id = $3
+                `, [
+                  JSON.stringify(updatedParams),
+                  isSelected,
+                  existingModel.id
+                ]);
+              } else {
+                // If it's another error, rethrow it
+                throw updateError;
+              }
+            }
+            
+            if (statusChanged) {
+              if (isSelected) {
+                updated++;
+              } else {
+                inactivated++;
+              }
+            } else {
+              updated++;
+            }
           } else {
             unchanged++;
+          }
+        }
+      }
+      
+      // Handle any models in DB that were not in the server response
+      // Make sure they match the selected status
+      const dbModels = await db.query('SELECT * FROM ai_models');
+      const serverModelIds = models.map(m => m.name);
+      
+      for (const dbModel of dbModels.rows) {
+        if (!serverModelIds.includes(dbModel.ollama_model_id)) {
+          const isSelected = selectedModelIds.includes(dbModel.ollama_model_id);
+          
+          // Only update if status doesn't match selection
+          if (dbModel.is_active !== isSelected) {
+            try {
+              // Try updating with updated_at field
+              await db.query(
+                'UPDATE ai_models SET is_active = $1, updated_at = NOW() WHERE id = $2',
+                [isSelected, dbModel.id]
+              );
+            } catch (updateError) {
+              if (updateError.message.includes('column "updated_at" of relation "ai_models" does not exist')) {
+                // If updated_at doesn't exist, update without it
+                logger.warn('updated_at column not found, updating without timestamp');
+                await db.query(
+                  'UPDATE ai_models SET is_active = $1 WHERE id = $2',
+                  [isSelected, dbModel.id]
+                );
+              } else {
+                // If it's another error, rethrow it
+                throw updateError;
+              }
+            }
+            
+            if (isSelected) {
+              updated++;
+            } else {
+              inactivated++;
+            }
           }
         }
       }
@@ -302,6 +372,7 @@ class OllamaService {
         added,
         updated,
         unchanged,
+        inactivated,
         total: models.length
       };
     } catch (error) {

@@ -54,6 +54,7 @@ The project uses PostgreSQL as its database system. The schema is designed to su
 - Configuration for available AI models (including Ollama models)
 - Fields:
   - `id` (UUID, PK): Model identifier
+  - `model_id` (varchar): Model identifier used in chat interfaces
   - `ollama_model_id` (varchar): The ID used by Ollama (e.g., "llama3:latest")
   - `name` (varchar): Human-readable name
   - `description` (text): Model description
@@ -182,4 +183,31 @@ The schema represents a transition from the initial SQLite design to a more robu
 - Improved automation through triggers
 - Better performance through indexing
 - Support for more complex relationships
-- Integration with Ollama AI services 
+- Integration with Ollama AI services
+
+### Recent Schema Updates
+
+#### AI Models Schema Enhancement (2023-08-20)
+- Added `model_id` field to `ai_models` table to fix constraint violations
+- Created migration script `add_model_id_to_ai_models.sql` for backward compatibility
+- Populated existing records automatically using Ollama model IDs
+- Updated schema documentation and creation scripts
+- This change ensures proper model references in the chat interface and database integrity
+
+#### Updated Timestamp Column Addition (2024-06-15)
+- Added `updated_at` column to `ai_models` table to track changes
+- Created migration script `add_updated_at_to_ai_models.sql` for backward compatibility
+- Added conditional logic to check if column exists before attempting to add it
+- Enhanced OllamaService.js to handle cases where the column might not exist yet
+- Implemented proper error handling with fallback to non-timestamped queries
+- This update ensures consistent timestamp tracking across all database tables and enables proper sorting by recency
+
+#### Migration Process
+All schema migrations follow this process:
+1. Create a SQL script in `src/scripts/sql/` with schema changes
+2. Add SQL commands to check if changes are needed (conditional alters)
+3. Include appropriate indexes and constraints
+4. Add entry to `schema_migrations` table with version and description
+5. Update `copilotdbcreationscript.sql` for fresh installations
+6. Update `DatabaseStructure.md` to reflect changes
+7. Apply through the `runMigration` function in database.js 
