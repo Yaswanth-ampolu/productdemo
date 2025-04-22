@@ -86,6 +86,7 @@ export default function Login() {
                 id="username"
                 type="text"
                 required
+                autoComplete="username"
                 className="w-full mt-1 px-4 py-2 rounded"
                 style={{
                   backgroundColor: 'var(--color-surface-dark)',
@@ -109,6 +110,7 @@ export default function Login() {
                 id="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 className="w-full mt-1 px-4 py-2 rounded"
                 style={{
                   backgroundColor: 'var(--color-surface-dark)',

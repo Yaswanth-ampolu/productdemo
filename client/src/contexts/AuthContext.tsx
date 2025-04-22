@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import api from '../services/api';
+import { api } from '../services/api';
 
 interface User {
   id: number;
@@ -61,8 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
       setUser(response.data);
-      // Refresh auth check after successful login
-      await checkAuth();
     } finally {
       setLoading(false);
     }

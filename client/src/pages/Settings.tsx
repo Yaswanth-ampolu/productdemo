@@ -6,7 +6,9 @@ import {
   UserIcon, 
   PaintBrushIcon,
   KeyIcon,
+  ServerIcon,
 } from '@heroicons/react/24/outline';
+import OllamaSettings from '../components/settings/OllamaSettings';
 
 // Import ThemeType from the ThemeContext
 type ThemeType = 'dark' | 'light' | 'midnight';
@@ -131,6 +133,7 @@ export default function Settings() {
     { id: 'profile', name: 'Profile', icon: UserIcon },
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
     { id: 'api', name: 'API Keys', icon: KeyIcon },
+    { id: 'ollama', name: 'Ollama AI', icon: ServerIcon },
   ];
 
   return (
@@ -367,6 +370,13 @@ export default function Settings() {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+          
+          {activeTab === 'ollama' && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Ollama AI Settings</h2>
+              <OllamaSettings isAdmin={user?.role === 'admin'} />
             </div>
           )}
         </div>

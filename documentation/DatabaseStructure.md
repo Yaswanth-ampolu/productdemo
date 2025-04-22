@@ -51,15 +51,16 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `model_id` (UUID, FK): AI model used
 
 ### 5. `ai_models`
-- Configuration for available AI models
+- Configuration for available AI models (including Ollama models)
 - Fields:
   - `id` (UUID, PK): Model identifier
+  - `ollama_model_id` (varchar): The ID used by Ollama (e.g., "llama3:latest")
   - `name` (varchar): Human-readable name
-  - `model_id` (varchar): System model identifier
   - `description` (text): Model description
-  - `parameters` (jsonb): Configuration parameters
+  - `parameters` (jsonb): Configuration parameters (size, etc.)
   - `is_active` (boolean): Availability status
   - `created_at` (timestamp): Creation time
+  - `updated_at` (timestamp): Last update time
 
 ### 6. `pdfs`
 - Tracks uploaded PDF documents
@@ -101,6 +102,31 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `metric_value` (jsonb): Structured metric data
   - `updated_at` (timestamp): Last update time
 
+## AI Integration Tables
+
+### ollama_settings
+- Stores Ollama AI server connection details and default model for AI chat integration
+- Fields:
+  - `id` (SERIAL, PK): Unique identifier
+  - `host` (varchar): Ollama server host (default: 'localhost')
+  - `port` (integer): Ollama server port (default: 11434)
+  - `default_model` (varchar): Default AI model name
+  - `created_at` (timestamp): Creation time
+  - `updated_at` (timestamp): Last update time
+
+### schema_migrations
+- Tracks applied database migrations
+- Fields:
+  - `id` (PK): Unique identifier
+  - `version` (varchar): Migration version number
+  - `applied_at` (timestamp): When the migration was applied
+  - `description` (text): Description of the migration
+
+#### Protocol for Database Changes
+- All new tables and schema changes must be documented in this file.
+- For every schema change, provide a SQL migration script in `src/scripts/sql/`.
+- Document new relationships, triggers, and indexes as needed.
+
 ## Key Relationships
 
 1. A user can have multiple:
@@ -136,6 +162,10 @@ Triggers are set up to:
 - `idx_chat_sessions_timestamp`: Optimizes sorting chat sessions by last activity
 - `idx_chat_sessions_user_id`: Speeds up finding a user's chat sessions
 - `idx_messages_session_id`: Accelerates retrieving messages for a specific session
+- `idx_ollama_settings_updated_at`: Index on ollama_settings.updated_at
+- `idx_ai_models_ollama_model_id`: Fast lookup of AI models by their Ollama ID
+- `idx_ai_models_is_active`: Quick filtering of active models
+- `idx_ai_models_name`: Optimizes searching/sorting models by name
 
 ## Design Considerations
 
@@ -151,4 +181,5 @@ The schema represents a transition from the initial SQLite design to a more robu
 - Enhanced data types (UUID, JSONB)
 - Improved automation through triggers
 - Better performance through indexing
-- Support for more complex relationships 
+- Support for more complex relationships
+- Integration with Ollama AI services 

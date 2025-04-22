@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 import { ChatMessage, ChatSession, ChatSessionResponse } from '../types';
 
 export interface ChatMessageResponse extends ChatMessage {
