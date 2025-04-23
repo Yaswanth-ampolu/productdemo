@@ -10,7 +10,7 @@ This file tracks every step of the migration to a unified backend-served fronten
   - Command: `cp -r . ../productdemo-backup` (Linux/Mac) or create a zip archive
   - Files to backup: All project files
   - Mark complete after verifying backup is successful
-  
+
 - [x] 2. **Remove Vite and related dev dependencies** - Completed [2023-06-10]
   - File: `client/package.json`
     - Remove: `"vite": "^5.1.0"` - Removed
@@ -55,12 +55,12 @@ This file tracks every step of the migration to a unified backend-served fronten
 - [x] 7. **Update backend to serve static files** - Completed [2023-06-10]
   - File: `src/server.js`
     - Add path import: `const path = require('path');`
-    - Add static middleware (after routes): 
+    - Add static middleware (after routes):
       ```javascript
       // Serve static files from the React app build directory
       const staticPath = config.server.static_root_path || path.join(__dirname, '../client/build');
       app.use(express.static(staticPath));
-      
+
       // For any request that doesn't match an API route, send the React app's index.html
       app.get('*', (req, res) => {
         res.sendFile(path.join(staticPath, 'index.html'));
@@ -91,10 +91,10 @@ This file tracks every step of the migration to a unified backend-served fronten
       ```ini
       [paths]
       static_files = ./client/build
-      
+
       [server]
       static_root_path = ./client/build
-      
+
       [frontend]
       api_url = /api
       default_theme = light
@@ -106,7 +106,7 @@ This file tracks every step of the migration to a unified backend-served fronten
     ```javascript
     const express = require('express');
     const router = express.Router();
-    
+
     module.exports = function(config) {
       router.get('/frontend-config', (req, res) => {
         res.json({
@@ -116,7 +116,7 @@ This file tracks every step of the migration to a unified backend-served fronten
           defaultTheme: config.frontend.default_theme || 'light'
         });
       });
-      
+
       return router;
     };
     ```
@@ -136,12 +136,12 @@ This file tracks every step of the migration to a unified backend-served fronten
       apiUrl: string;
       defaultTheme: 'light' | 'dark';
     }
-    
+
     let cachedConfig: AppConfig | null = null;
-    
+
     export async function loadConfig(): Promise<AppConfig> {
       if (cachedConfig) return cachedConfig;
-      
+
       try {
         const response = await api.get('/frontend-config');
         cachedConfig = response.data;
@@ -159,7 +159,7 @@ This file tracks every step of the migration to a unified backend-served fronten
     - Updated to use config service for API URL
     ```typescript
     import { config } from '../config';
-    
+
     const api = axios.create({
       baseURL: config.apiBaseUrl || '/api',
       // other options...
@@ -217,7 +217,7 @@ This file tracks every step of the migration to a unified backend-served fronten
   - Enhanced Ollama UI with visual feedback for connection status
   - Added status indicators and alerts to show action results
   - Improved model display and management interface
-  
+
 - [x] 8. **Fix Database Issues and Improve UI** - Completed [2023-08-20]
   - Fixed database constraint violation for model_id in ai_models table
   - Enhanced OllamaSettings UI with better styling and layout
@@ -271,6 +271,34 @@ This file tracks every step of the migration to a unified backend-served fronten
   - Fixed oversized InfoIcon in the dialog box by adjusting its size and styling
   - Added proper tooltips and improved visual feedback for actions
   - Enhanced error handling to provide more specific error messages
+
+- [x] 13. **Fix UI styling and theme integration** - Completed [2024-06-18]
+  - Fixed CSS variable errors in Chakra UI components causing blank settings page
+  - Created chakraTheme.ts to properly map CSS variables to Chakra UI theme tokens
+    - Added proper mapping of CSS variables to Chakra UI color tokens
+    - Created component-specific theme configurations for Card, Button, Input, Select
+    - Added global scrollbar styling to match the application theme
+    - Fixed option styling for Select components
+  - Updated App.tsx to include ChakraProvider with custom theme
+    - Wrapped the application with ChakraProvider to apply the theme globally
+    - Ensured proper nesting with existing ThemeProvider
+  - Improved OllamaSettings component to use theme tokens instead of direct CSS variables
+    - Replaced all var(--color-*) references with theme tokens (e.g., brand.primary, surface.dark)
+    - Fixed gradient definitions to use theme tokens
+    - Updated hover and focus states to use theme-consistent styling
+  - Reduced UI component sizes to better match the rest of the interface
+    - Decreased card padding and border radius
+    - Reduced form element sizes (inputs, labels, buttons) for better UI consistency
+    - Made heading sizes smaller and more consistent with the application
+    - Adjusted icon sizes to match the smaller UI elements
+  - Enhanced scrollbar styling with improved aesthetics
+    - Added hover effects for better user experience
+    - Made scrollbars more subtle but still functional
+    - Ensured consistent scrollbar styling across the application
+  - Changed model selection layout from grid to vertical list
+    - Improved space utilization and readability
+    - Enhanced model item layout with better organization of information
+    - Made the interface more responsive for different screen sizes
 
 - [ ] 13. **Integrate chat component with Ollama** - Planned [2024-06-20]
   - Create ModelSelector component for chat interface
@@ -348,7 +376,7 @@ The migration to a unified backend-served frontend has been successfully complet
    - Improved security with better route isolation
 
 4. **Enhanced Development Workflow**
-   - Development mode with `npm run dev` for backend 
+   - Development mode with `npm run dev` for backend
    - Frontend build with watch mode via `npm run dev:client`
    - Production deployment with single command `npm run deploy`
 
@@ -393,16 +421,16 @@ Refer to `planfornextphases.md` for the detailed roadmap of the AI Integration p
 ## Ollama Integration
 
 - [x] 1. **Set up database schema for Ollama integration** - Completed [2023-07-15]
-  - Added table ollama_settings for server configuration 
+  - Added table ollama_settings for server configuration
   - Added table ai_models for storing available AI models
   - Added appropriate indexes and relationships
   - Updated DatabaseStructure.md with new schema information
-  
+
 - [x] 2. **Create Ollama Service for frontend** - Completed [2023-07-20]
   - Created client/src/services/ollamaService.ts
   - Implemented service functions for API interaction
   - Fixed TypeScript import error for API service
-  
+
 - [x] 3. **Create Ollama Settings UI component** - Completed [2023-07-25]
   - Created client/src/components/settings/OllamaSettings.tsx
   - Implemented admin UI for managing Ollama connection
@@ -412,28 +440,28 @@ Refer to `planfornextphases.md` for the detailed roadmap of the AI Integration p
   - Enhanced UI with better visual feedback for connection status (2023-08-17)
   - Improved display of available server models (2023-08-17)
   - Added status indicators and tooltips for better UX (2023-08-17)
-  
+
 - [x] 4. **Implement backend Ollama service** - Completed [2023-08-01]
   - Created src/services/ollamaService.js with OOP approach
   - Implemented functions for Ollama API communication
   - Added error handling and logging
   - Implemented database integration for settings and models
-  
+
 - [x] 5. **Create backend API routes for Ollama** - Completed [2023-08-01]
   - Created src/routes/ollama.js
   - Implemented endpoints for settings, models, and testing
-  - Added authentication and admin middleware 
+  - Added authentication and admin middleware
   - Updated server.js to properly initialize the Ollama routes
   - Fixed API imports throughout the codebase (from default to named exports) (2023-08-12)
   - Installed missing axios dependency for backend Ollama service (2023-08-12)
   - Created utils/logger.js module to fix missing dependency (2023-08-12)
-  
+
 - [x] 6. **Integrate Ollama Settings UI with main Settings page** - Completed [2023-08-16]
   - Added Ollama tab to Settings.tsx
   - Connected OllamaSettings component to main Settings UI
   - Implemented admin access check for Ollama Settings
   - Verified proper tab navigation and component rendering
-  
+
 - [x] 7. **Debug and Fix Post-Integration Issues** - Completed [2023-08-17]
   - Investigated login loop (401 on /api/auth/me) and unresponsive Ollama Settings buttons
   - Fixed redundant `checkAuth()` call in `AuthContext.tsx` after login
@@ -442,7 +470,7 @@ Refer to `planfornextphases.md` for the detailed roadmap of the AI Integration p
   - Enhanced Ollama UI with visual feedback for connection status
   - Added status indicators and alerts to show action results
   - Improved model display and management interface
-  
+
 - [x] 8. **Fix Database Issues and Improve UI** - Completed [2023-08-20]
   - Fixed database constraint violation for model_id in ai_models table
   - Enhanced OllamaSettings UI with better styling and layout
@@ -482,7 +510,7 @@ Refer to `planfornextphases.md` for the detailed roadmap of the AI Integration p
 
 - [ ] 12. **Create ModelSelector component for ChatBot** - Planned [2023-08-28]
 
-- [x] 13. **Integrate ModelSelector with Chat UI** - Planned [2023-08-30]
+- [ ] 13. **Integrate ModelSelector with Chat UI** - Planned [2023-08-30]
   - Update src/pages/Chatbot.tsx to include ModelSelector
   - Modify chat message handling to include model selection
   - Update API calls to use selected model

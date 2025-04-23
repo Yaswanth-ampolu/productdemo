@@ -49,10 +49,10 @@ import {
   TableContainer
 } from '@chakra-ui/table';
 import { Card, CardBody, CardHeader, CardFooter } from '@chakra-ui/card';
-import { 
-  CheckCircleIcon, 
-  WarningIcon, 
-  RepeatIcon, 
+import {
+  CheckCircleIcon,
+  WarningIcon,
+  RepeatIcon,
   RepeatClockIcon,
   SettingsIcon,
   LinkIcon,
@@ -87,7 +87,6 @@ type Settings = ServiceOllamaSettings;
 
 const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   const [settings, setSettings] = useState<Settings>(() => {
-    // Try to load from cache on initial render
     const cachedSettings = localStorage.getItem(SETTINGS_CACHE_KEY);
     return cachedSettings ? JSON.parse(cachedSettings) : {
       host: 'localhost',
@@ -97,19 +96,16 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   });
 
   const [models, setModels] = useState<OllamaModel[]>(() => {
-    // Try to load models from cache on initial render
     const cachedModels = localStorage.getItem(MODELS_CACHE_KEY);
     return cachedModels ? JSON.parse(cachedModels) : [];
   });
 
   const [availableModels, setAvailableModels] = useState<OllamaModel[]>(() => {
-    // Try to load available models from cache on initial render
     const cachedAvailableModels = localStorage.getItem(AVAILABLE_MODELS_CACHE_KEY);
     return cachedAvailableModels ? JSON.parse(cachedAvailableModels) : [];
   });
 
   const [selectedModels, setSelectedModels] = useState<string[]>(() => {
-    // Try to load selected models from cache on initial render
     const cachedSelectedModels = localStorage.getItem(SELECTED_MODELS_CACHE_KEY);
     return cachedSelectedModels ? JSON.parse(cachedSelectedModels) : [];
   });
@@ -127,7 +123,6 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   const retryModal = useDisclosure();
   const [retryOperation, setRetryOperation] = useState<() => Promise<void>>(() => async () => {});
 
-  // Load settings and models on component mount and when admin status changes
   useEffect(() => {
     if (isAdmin) {
       loadSettings();
@@ -135,33 +130,27 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     }
   }, [isAdmin]);
 
-  // Cache settings whenever they change
   useEffect(() => {
     localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
   }, [settings]);
-  
-  // Cache models whenever they change
+
   useEffect(() => {
     localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify(models));
   }, [models]);
 
-  // Cache available models whenever they change
   useEffect(() => {
     localStorage.setItem(AVAILABLE_MODELS_CACHE_KEY, JSON.stringify(availableModels));
   }, [availableModels]);
 
-  // Cache selected models whenever they change
   useEffect(() => {
     localStorage.setItem(SELECTED_MODELS_CACHE_KEY, JSON.stringify(selectedModels));
   }, [selectedModels]);
 
-  // Debounced load settings to prevent excessive API calls
   const loadSettings = useCallback(async () => {
-    // Only make API call if we don't have settings or if they're stale
     try {
       setLastAction('Loading settings...');
       const result = await getOllamaSettings();
-      
+
       if (result && typeof result === 'object') {
         setSettings(result);
         setLastAction('Settings loaded successfully');
@@ -178,14 +167,13 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       console.error('Error loading Ollama settings:', error);
       setLastAction('Failed to load settings');
       setLastError(error.response?.data?.message || error.message || 'Failed to load Ollama settings');
-      
+
       showToast({
         title: 'Error loading settings',
         description: error.response?.data?.message || error.message || 'Failed to load Ollama settings',
         status: 'error'
       });
-      
-      // Setup retry operation
+
       setRetryOperation(() => loadSettings);
     }
   }, []);
@@ -194,9 +182,9 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     try {
       setModelsLoading(true);
       setLastAction('Loading models from database...');
-      
+
       const models = await getOllamaModelsFromDB();
-      
+
       if (Array.isArray(models)) {
         setModels(models || []);
         setLastAction(`Loaded ${models.length || 0} models from database`);
@@ -208,22 +196,20 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: 'Could not load AI models from database',
           status: 'error'
         });
-        
-        // Setup retry operation
+
         setRetryOperation(() => loadModels);
       }
     } catch (error: any) {
       console.error('Error loading AI models:', error);
       setLastAction('Failed to load models from database');
       setLastError(error.response?.data?.message || error.message || 'Failed to load AI models from database');
-      
+
       showToast({
         title: 'Error loading models',
         description: error.response?.data?.message || error.message || 'Failed to load AI models from database',
         status: 'error'
       });
-      
-      // Setup retry operation
+
       setRetryOperation(() => loadModels);
     } finally {
       setModelsLoading(false);
@@ -243,22 +229,20 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       setSaveLoading(true);
       setLastAction('Saving settings...');
       setLastError('');
-      
+
       const result = await saveOllamaSettings(settings);
-      
+
       if (result && typeof result === 'object') {
         setLastAction('Settings saved successfully');
-        setConnectionStatus('unknown'); // Reset connection status after changing settings
+        setConnectionStatus('unknown');
         showToast({
           title: 'Settings saved',
           description: 'Ollama connection settings have been updated',
           status: 'success'
         });
-        
-        // Update cached settings
+
         localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
-        
-        // Test connection after saving settings
+
         await testConnection();
       } else {
         setLastAction('Failed to save settings: Invalid response format');
@@ -268,8 +252,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: 'There was a problem saving your settings',
           status: 'error'
         });
-        
-        // Setup retry operation
+
         setRetryOperation(() => saveSettings);
         retryModal.onOpen();
       }
@@ -277,14 +260,13 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       console.error('Error saving Ollama settings:', error);
       setLastAction('Failed to save settings');
       setLastError(error.response?.data?.message || error.message || 'Failed to save Ollama connection settings');
-      
+
       showToast({
         title: 'Error saving settings',
         description: error.response?.data?.message || error.message || 'Failed to save Ollama connection settings',
         status: 'error'
       });
-      
-      // Setup retry operation
+
       setRetryOperation(() => saveSettings);
       retryModal.onOpen();
     } finally {
@@ -298,9 +280,9 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       setConnectionStatus('testing');
       setLastAction('Testing connection to Ollama server...');
       setLastError('');
-      
+
       const result = await testOllamaConnection(settings.host, settings.port);
-      
+
       if (result.success) {
         setConnectionStatus('success');
         setLastAction(`Connection successful! Ollama ${result.version || 'server'} responded in ${result.responseTime || '?'}ms`);
@@ -309,8 +291,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: `Connected to Ollama ${result.version || 'server'} in ${result.responseTime || '?'}ms`,
           status: 'success'
         });
-        
-        // Auto-fetch models on successful connection
+
         fetchAvailableModels();
       } else {
         setConnectionStatus('error');
@@ -327,7 +308,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       setConnectionStatus('error');
       setLastAction('Connection test failed');
       setLastError(error.response?.data?.message || error.message || 'Failed to connect to Ollama server');
-      
+
       showToast({
         title: 'Connection failed',
         description: error.response?.data?.message || error.message || 'Failed to connect to Ollama server',
@@ -338,7 +319,6 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     }
   };
 
-  // Helper function for showing toast notifications
   const showToast = ({ title, description, status }: { title: string, description: string, status: 'success' | 'error' | 'info' | 'warning' }) => {
     toast({
       title,
@@ -346,6 +326,10 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       status,
       duration: 3000,
       isClosable: true,
+      position: 'top-right',
+      containerStyle: {
+        marginTop: '1rem',
+      },
     });
   };
 
@@ -364,17 +348,16 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       setFetchLoading(true);
       setLastAction('Fetching available models from Ollama server...');
       setLastError('');
-      
+
       const models = await getAvailableOllamaModels();
-      
+
       if (Array.isArray(models)) {
         setAvailableModels(models);
-        
-        // If no models are selected yet, auto-select all models
+
         if (selectedModels.length === 0) {
           setSelectedModels(models.map(model => model.ollama_model_id || model.name));
         }
-        
+
         setLastAction(`Found ${models.length} models on Ollama server`);
         showToast({
           title: 'Models fetched',
@@ -389,8 +372,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: 'Could not fetch models from Ollama server',
           status: 'error'
         });
-        
-        // Setup retry operation
+
         setRetryOperation(() => fetchAvailableModels);
         retryModal.onOpen();
       }
@@ -398,14 +380,13 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       console.error('Error fetching available models:', error);
       setLastAction('Failed to fetch models from Ollama server');
       setLastError(error.response?.data?.message || error.message || 'Error fetching models from Ollama server');
-      
+
       showToast({
         title: 'Fetch failed',
         description: error.response?.data?.message || error.message || 'Error fetching models from Ollama server',
         status: 'error'
       });
-      
-      // Setup retry operation
+
       setRetryOperation(() => fetchAvailableModels);
       retryModal.onOpen();
     } finally {
@@ -413,10 +394,9 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     }
   };
 
-  // Helper function to format model size
   const formatModelSize = (sizeInBytes: number): string => {
     if (!sizeInBytes) return 'Unknown';
-    
+
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(sizeInBytes) / Math.log(1024));
     return `${(sizeInBytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
@@ -427,36 +407,32 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       setSyncLoading(true);
       setLastAction('Saving model selections to database...');
       setLastError('');
-      
-      // Pass selected models to sync and set active status to true
-      // Non-selected models will be set to inactive (is_active=false)
+
       const result = await syncOllamaModels(selectedModels);
-      
+
       if (result && typeof result === 'object') {
         const totalSynced = (result.added || 0) + (result.updated || 0);
         const inactivatedCount = result.inactivated || 0;
-        
+
         setLastAction(`Models saved successfully: ${totalSynced} models updated (${result.added || 0} added, ${result.updated || 0} updated, ${inactivatedCount} deactivated)`);
-        
+
         showToast({
           title: 'Models saved',
           description: `Successfully saved ${selectedModels.length} models as active and deactivated ${inactivatedCount} models`,
           status: 'success'
         });
-        
-        // Reload models from the database to show updates
+
         await loadModels();
       } else {
         setLastAction('Failed to save models: Invalid response format');
         setLastError('Failed to save models to database - unexpected response format');
-        
+
         showToast({
           title: 'Save failed',
           description: 'Failed to save models to database - unexpected response format',
           status: 'error'
         });
-        
-        // Setup retry operation
+
         setRetryOperation(() => syncModels);
         retryModal.onOpen();
       }
@@ -464,14 +440,13 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       console.error('Error saving models:', error);
       setLastAction('Failed to save models to database');
       setLastError(error.response?.data?.message || error.message || 'Error saving models to database');
-      
+
       showToast({
         title: 'Save failed',
         description: error.response?.data?.message || error.message || 'Error saving models to database',
         status: 'error'
       });
-      
-      // Setup retry operation
+
       setRetryOperation(() => syncModels);
       retryModal.onOpen();
     } finally {
@@ -483,9 +458,9 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     try {
       setLastAction(`${isActive ? 'Activating' : 'Deactivating'} model ${modelId}...`);
       setLastError('');
-      
+
       const model = await toggleOllamaModelStatus(modelId, isActive);
-      
+
       if (model && typeof model === 'object') {
         setLastAction(`Model ${modelId} ${isActive ? 'activated' : 'deactivated'} successfully`);
         showToast({
@@ -493,14 +468,12 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: `The model has been ${isActive ? 'activated' : 'deactivated'} successfully`,
           status: 'success'
         });
-        
-        // Update local state to reflect the change
-        const updatedModels = models.map(m => 
+
+        const updatedModels = models.map(m =>
           m.id === modelId ? { ...m, is_active: isActive } : m
         );
         setModels(updatedModels);
-        
-        // Update cache
+
         localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify(updatedModels));
       } else {
         setLastAction(`Failed to ${isActive ? 'activate' : 'deactivate'} model: Invalid response format`);
@@ -510,8 +483,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           description: `Could not ${isActive ? 'activate' : 'deactivate'} the model`,
           status: 'error'
         });
-        
-        // Setup retry operation for the specific model toggle
+
         setRetryOperation(() => () => toggleModelStatus(modelId, isActive));
         retryModal.onOpen();
       }
@@ -519,14 +491,13 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
       console.error(`Error ${isActive ? 'activating' : 'deactivating'} model:`, error);
       setLastAction(`Failed to ${isActive ? 'activate' : 'deactivate'} model`);
       setLastError(error.response?.data?.message || error.message || `Error ${isActive ? 'activating' : 'deactivating'} the model`);
-      
+
       showToast({
         title: 'Status update failed',
         description: error.response?.data?.message || error.message || `Error ${isActive ? 'activating' : 'deactivating'} the model`,
         status: 'error'
       });
-      
-      // Setup retry operation for the specific model toggle
+
       setRetryOperation(() => () => toggleModelStatus(modelId, isActive));
       retryModal.onOpen();
     }
@@ -556,7 +527,6 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
     }
   };
 
-  // Function to handle setting default model
   const handleDefaultModelChange = (modelId: string) => {
     setSettings(prev => ({
       ...prev,
@@ -566,50 +536,68 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
 
   if (!isAdmin) {
     return (
-      <Box px={0} py={2} width="100%">
-        <Alert status="warning" borderRadius="md">
+      <Box px={4} py={4} width="100%">
+        <Alert
+          status="warning"
+          borderRadius="2xl"
+          boxShadow="md"
+          p={4}
+          bgGradient="linear(to-r, orange.50, orange.100)"
+          transition="all 0.3s ease"
+        >
           <AlertIcon />
-          <AlertDescription>You need administrator privileges to access Ollama settings.</AlertDescription>
+          <AlertDescription fontWeight="medium">
+            You need administrator privileges to access Ollama settings.
+          </AlertDescription>
         </Alert>
       </Box>
     );
   }
 
   return (
-    <Box width="100%" px={0} py={0}>
-      <VStack gap={6} align="stretch">
-        <Card 
-          variant="elevated" 
-          boxShadow="lg" 
-          borderRadius="xl" 
+    <Box width="100%" px={4} py={4}>
+      <VStack gap={8} align="stretch">
+        <Card
+          variant="elevated"
+          boxShadow="md"
+          borderRadius="xl"
           overflow="hidden"
           borderWidth="1px"
-          borderColor="var(--color-border)"
-          transition="all 0.2s"
-          _hover={{ boxShadow: "xl" }}
+          borderColor="border.base"
+          bgGradient="linear(to-b, surface.base, surface.dark)"
+          transition="all 0.3s ease"
+          _hover={{
+            boxShadow: "lg",
+            transform: "translateY(-2px)"
+          }}
         >
-          <CardHeader 
-            bg="var(--color-surface-light)" 
-            py={4} 
-            borderBottomWidth="1px" 
-            borderColor="var(--color-border)"
+          <CardHeader
+            bgGradient="linear(to-r, surface.light, surface.base)"
+            py={3}
+            px={5}
+            borderBottomWidth="1px"
+            borderColor="border.base"
             display="flex"
             alignItems="center"
+            borderTopRadius="xl"
           >
-            <Icon as={SettingsIcon} mr={2} color="var(--color-primary)" />
-            <Heading size="md" color="var(--color-text)">Ollama API Connection</Heading>
+            <Icon as={SettingsIcon} mr={2} color="brand.primary" boxSize={5} />
+            <Heading size="md" color="text.base" fontWeight="semibold">
+              Ollama API Connection
+            </Heading>
           </CardHeader>
-          
-          <CardBody p={6} bg="var(--color-surface)">
+
+          <CardBody p={5} bg="transparent">
             <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={6}>
               <FormControl>
-                <FormLabel 
-                  fontWeight="medium" 
-                  color="var(--color-text-secondary)"
+                <FormLabel
+                  fontWeight="semibold"
+                  color="text.secondary"
                   display="flex"
                   alignItems="center"
+                  fontSize="sm"
                 >
-                  <Icon as={LinkIcon} mr={2} boxSize={4} />
+                  <Icon as={LinkIcon} mr={2} boxSize={4} color="brand.primary" />
                   Host
                 </FormLabel>
                 <Input
@@ -617,26 +605,35 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
                   value={settings.host}
                   onChange={handleInputChange}
                   placeholder="localhost"
-                  bg="var(--color-surface-dark)"
-                  borderColor="var(--color-border)"
-                  _hover={{ borderColor: "var(--color-primary)" }}
-                  _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
-                  color="var(--color-text)"
-                  size="md"
+                  bg="surface.dark"
+                  borderColor="border.base"
+                  borderRadius="2xl"
+                  _hover={{
+                    borderColor: "brand.primary",
+                    boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.8)"
+                  }}
+                  _focus={{
+                    borderColor: "brand.primary",
+                    boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.3)"
+                  }}
+                  color="text.base"
+                  size="lg"
                   fontFamily="mono"
-                  borderRadius="md"
-                  transition="all 0.2s"
+                  px={5}
+                  py={6}
+                  transition="all 0.3s ease"
                 />
               </FormControl>
-              
+
               <FormControl>
-                <FormLabel 
-                  fontWeight="medium" 
-                  color="var(--color-text-secondary)"
+                <FormLabel
+                  fontWeight="semibold"
+                  color="text.secondary"
                   display="flex"
                   alignItems="center"
+                  fontSize="sm"
                 >
-                  <Icon as={RepeatIcon} mr={2} boxSize={4} />
+                  <Icon as={RepeatIcon} mr={2} boxSize={4} color="brand.primary" />
                   Port
                 </FormLabel>
                 <Input
@@ -645,42 +642,85 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
                   value={settings.port}
                   onChange={handleInputChange}
                   placeholder="11434"
-                  bg="var(--color-surface-dark)"
-                  borderColor="var(--color-border)"
-                  _hover={{ borderColor: "var(--color-primary)" }}
-                  _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
-                  color="var(--color-text)"
-                  size="md"
+                  bg="surface.dark"
+                  borderColor="border.base"
+                  borderRadius="2xl"
+                  _hover={{
+                    borderColor: "brand.primary",
+                    boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.8)"
+                  }}
+                  _focus={{
+                    borderColor: "brand.primary",
+                    boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.3)"
+                  }}
+                  color="text.base"
+                  size="lg"
                   fontFamily="mono"
-                  borderRadius="md"
-                  transition="all 0.2s"
+                  px={5}
+                  py={6}
+                  transition="all 0.3s ease"
                 />
               </FormControl>
-              
+
               <FormControl gridColumn={{ md: "span 2" }}>
-                <FormLabel 
-                  fontWeight="medium" 
-                  color="var(--color-text-secondary)"
+                <FormLabel
+                  fontWeight="semibold"
+                  color="text.secondary"
                   display="flex"
                   alignItems="center"
+                  fontSize="xs"
+                  mb={1}
                 >
-                  <Icon as={StarIcon} mr={2} boxSize={4} />
+                  <Icon as={StarIcon} mr={1} boxSize={3} color="brand.primary" />
                   Default Model
                 </FormLabel>
                 {models.length > 0 ? (
-                  <Select 
+                  <Select
                     name="default_model"
                     value={settings.default_model}
                     onChange={(e) => handleDefaultModelChange(e.target.value)}
                     placeholder="Select a default model"
-                    bg="var(--color-surface-dark)"
-                    borderColor="var(--color-border)"
-                    _hover={{ borderColor: "var(--color-primary)" }}
-                    _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
-                    color="var(--color-text)"
-                    icon={<ChevronRightIcon />}
+                    bg="surface.dark"
+                    borderColor="border.base"
                     borderRadius="md"
-                    transition="all 0.2s"
+                    _hover={{
+                      borderColor: "brand.primary",
+                      boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.8)"
+                    }}
+                    _focus={{
+                      borderColor: "brand.primary",
+                      boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.3)"
+                    }}
+                    color="text.base"
+                    size="md"
+                    icon={<ChevronRightIcon />}
+                    px={3}
+                    py={1}
+                    transition="all 0.3s ease"
+                    sx={{
+                      '& option': {
+                        background: 'var(--color-surface-dark)',
+                        color: 'var(--color-text)',
+                        padding: '6px',
+                        margin: '2px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      },
+                      '&::-webkit-scrollbar': {
+                        width: '8px',
+                      },
+                      '&::-webkit-scrollbar-track': {
+                        background: 'rgba(21, 28, 44, 0.5)',
+                        borderRadius: '4px'
+                      },
+                      '&::-webkit-scrollbar-thumb': {
+                        background: 'rgba(59, 130, 246, 0.7)',
+                        borderRadius: '4px',
+                        '&:hover': {
+                          background: 'rgba(59, 130, 246, 0.9)',
+                        }
+                      },
+                    }}
                   >
                     {models.filter(model => model.is_active).map(model => (
                       <option key={model.ollama_model_id} value={model.ollama_model_id}>
@@ -695,25 +735,34 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
                       value={settings.default_model}
                       onChange={handleInputChange}
                       placeholder="Sync models first to select a default model"
-                      bg="var(--color-surface-dark)"
-                      borderColor="var(--color-border)"
-                      _hover={{ borderColor: "var(--color-primary)" }}
-                      _focus={{ borderColor: "var(--color-primary)", boxShadow: "0 0 0 1px var(--color-primary)" }}
-                      color="var(--color-text)"
+                      bg="surface.dark"
+                      borderColor="border.base"
                       borderRadius="md"
+                      _hover={{
+                        borderColor: "brand.primary",
+                        boxShadow: "0 0 0 1px rgba(59, 130, 246, 0.8)"
+                      }}
+                      _focus={{
+                        borderColor: "brand.primary",
+                        boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.3)"
+                      }}
+                      color="text.base"
                       isDisabled={true}
-                      transition="all 0.2s"
+                      size="md"
+                      px={3}
+                      py={2}
+                      transition="all 0.3s ease"
                     />
-                    <Text mt={2} fontSize="sm" color="var(--color-text-muted)">
-                      <Box 
-                        as="span" 
-                        display="inline-block" 
-                        w="6px" 
-                        h="6px" 
-                        borderRadius="full" 
-                        bg="orange.300" 
+                    <Text mt={3} fontSize="sm" color="text.muted" display="flex" alignItems="center">
+                      <Box
+                        as="span"
+                        display="inline-block"
+                        w="8px"
+                        h="8px"
+                        borderRadius="full"
+                        bg="orange.400"
                         mr={2}
-                        verticalAlign="middle"
+                        animation={`${pulse} 2s infinite`}
                       />
                       Sync models to enable selection
                     </Text>
@@ -721,352 +770,457 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
                 )}
               </FormControl>
             </Grid>
-            
-            <Flex 
-              direction="column" 
-              gap={4} 
-              mt={8}
-              borderTop="1px solid var(--color-border)"
-              pt={6}
+
+            <Flex
+              direction="column"
+              gap={6}
+              mt={10}
+              borderTop="1px solid"
+              borderColor="border.base"
+              pt={8}
             >
-              <HStack 
-                gap={4} 
+              <HStack
+                gap={4}
                 flexWrap="wrap"
                 justifyContent="space-between"
               >
                 <Button
-                  bg="var(--color-primary)"
+                  bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
                   color="white"
                   onClick={saveSettings}
                   isLoading={saveLoading}
                   loadingText="Saving"
                   leftIcon={saveLoading ? undefined : <CheckCircleIcon />}
-                  _hover={{ 
-                    bg: 'var(--color-primary-dark)', 
+                  _hover={{
+                    bgGradient: "linear(to-r, brand.primary-dark, brand.primary)",
                     transform: "translateY(-1px)",
                     boxShadow: "md"
                   }}
+                  _active={{
+                    transform: "translateY(0)",
+                    boxShadow: "sm"
+                  }}
                   size="md"
-                  borderRadius="lg"
-                  px={6}
+                  borderRadius="md"
+                  px={4}
+                  py={2}
                   fontWeight="medium"
-                  transition="all 0.2s"
+                  transition="all 0.3s ease"
+                  boxShadow="sm"
                 >
                   Save Settings
                 </Button>
-                
+
                 <Button
-                  bg={connectionStatus === 'success' ? 'green.600' : 
-                      connectionStatus === 'error' ? 'red.600' : 
-                      connectionStatus === 'testing' ? 'blue.600' : 'gray.600'}
+                  bgGradient={
+                    connectionStatus === 'success' ? 'linear(to-r, green.500, green.600)' :
+                    connectionStatus === 'error' ? 'linear(to-r, red.500, red.600)' :
+                    connectionStatus === 'testing' ? 'linear(to-r, blue.500, blue.600)' :
+                    'linear(to-r, gray.500, gray.600)'
+                  }
                   color="white"
                   onClick={testConnection}
                   isLoading={testLoading}
                   loadingText="Testing"
                   leftIcon={renderConnectionStatusIcon()}
-                  _hover={{ 
-                    bg: connectionStatus === 'success' ? 'green.700' : 
-                        connectionStatus === 'error' ? 'red.700' : 
-                        connectionStatus === 'testing' ? 'blue.700' : 'gray.700',
+                  _hover={{
+                    bgGradient:
+                      connectionStatus === 'success' ? 'linear(to-r, green.600, green.700)' :
+                      connectionStatus === 'error' ? 'linear(to-r, red.600, red.700)' :
+                      connectionStatus === 'testing' ? 'linear(to-r, blue.600, blue.700)' :
+                      'linear(to-r, gray.600, gray.700)',
+                    transform: "translateY(-1px)",
+                    boxShadow: "md"
+                  }}
+                  _active={{
+                    transform: "translateY(0)",
+                    boxShadow: "sm"
                   }}
                   size="md"
-                  borderRadius="lg"
-                  px={6}
+                  borderRadius="md"
+                  px={4}
+                  py={2}
                   fontWeight="medium"
-                  transition="all 0.2s"
+                  transition="all 0.3s ease"
+                  boxShadow="sm"
                 >
-                  {connectionStatus === 'success' ? 'Connection Successful' : 
-                   connectionStatus === 'error' ? 'Connection Failed' : 
+                  {connectionStatus === 'success' ? 'Connection Successful' :
+                   connectionStatus === 'error' ? 'Connection Failed' :
                    connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
                 </Button>
               </HStack>
             </Flex>
           </CardBody>
         </Card>
-        
-        <Card 
-          variant="elevated" 
-          boxShadow="lg" 
-          borderRadius="xl" 
+
+        <Card
+          variant="elevated"
+          boxShadow="md"
+          borderRadius="xl"
           overflow="hidden"
           borderWidth="1px"
-          borderColor="var(--color-border)"
-          transition="all 0.2s"
-          _hover={{ boxShadow: "xl" }}
+          borderColor="border.base"
+          bgGradient="linear(to-b, surface.base, surface.dark)"
+          transition="all 0.3s ease"
+          _hover={{
+            boxShadow: "lg",
+            transform: "translateY(-2px)"
+          }}
           mt={6}
         >
-          <CardHeader 
-            bg="var(--color-surface-light)" 
-            py={4} 
-            borderBottomWidth="1px" 
-            borderColor="var(--color-border)"
+          <CardHeader
+            bgGradient="linear(to-r, surface.light, surface.base)"
+            py={3}
+            px={5}
+            borderBottomWidth="1px"
+            borderColor="border.base"
             display="flex"
             alignItems="center"
+            borderTopRadius="xl"
           >
-            <Icon as={RepeatIcon} mr={2} color="var(--color-primary)" />
-            <Heading size="md" color="var(--color-text)">Model Management</Heading>
+            <Icon as={RepeatIcon} mr={2} color="brand.primary" boxSize={5} />
+            <Heading size="md" color="text.base" fontWeight="semibold">
+              Model Management
+            </Heading>
           </CardHeader>
-          
-          <CardBody p={5} bg="var(--color-surface)">
-            <Box 
-              p={4} 
-              bg="var(--color-surface-dark)"
-              borderRadius="md"
+
+          <CardBody p={5} bg="transparent">
+            <Box
+              p={6}
+              bg="surface.dark"
+              borderRadius="2xl"
               borderWidth="1px"
-              borderColor="var(--color-border)"
+              borderColor="border.base"
               mb={6}
+              transition="all 0.3s ease"
+              _hover={{
+                bg: "surface.light",
+                borderColor: "brand.primary"
+              }}
             >
-              <Flex justify="space-between" align="center" mb={3}>
+              <Flex justify="space-between" align="center" mb={4}>
                 <Flex align="center">
-                  <Box 
+                  <Box
                     as="span"
-                    bg="var(--color-primary)"
+                    bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
                     color="white"
                     fontWeight="bold"
-                    w="24px"
-                    h="24px"
+                    w="32px"
+                    h="32px"
                     borderRadius="full"
                     display="flex"
                     alignItems="center"
                     justifyContent="center"
-                    mr={3}
-                    fontSize="sm"
+                    mr={4}
+                    fontSize="md"
+                    boxShadow="md"
                   >
                     1
                   </Box>
-                  <Text fontWeight="medium" color="var(--color-text)">Fetch Available Models</Text>
+                  <Text fontWeight="semibold" color="text.base" fontSize="lg">
+                    Fetch Available Models
+                  </Text>
                 </Flex>
-                
+
                 <Button
-                  bg="var(--color-primary)"
+                  bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
                   color="white"
                   onClick={fetchAvailableModels}
                   isLoading={fetchLoading}
                   loadingText="Fetching"
                   leftIcon={<RepeatIcon />}
-                  _hover={{ 
-                    bg: 'var(--color-primary-dark)', 
-                    transform: "translateY(-1px)",
+                  _hover={{
+                    bgGradient: "linear(to-r, brand.primary-dark, brand.primary)",
+                    transform: "translateY(-2px)",
+                    boxShadow: "lg"
+                  }}
+                  _active={{
+                    transform: "translateY(0)",
                     boxShadow: "md"
                   }}
-                  size="md"
-                  borderRadius="lg"
-                  fontWeight="medium"
-                  transition="all 0.2s"
+                  size="lg"
+                  borderRadius="full"
+                  px={8}
+                  py={6}
+                  fontWeight="semibold"
+                  transition="all 0.3s ease"
+                  boxShadow="md"
                 >
                   Fetch Models
                 </Button>
               </Flex>
-              
-              <Text fontSize="sm" color="var(--color-text-muted)" ml={10}>
+
+              <Text fontSize="sm" color="text.muted" ml={12}>
                 Retrieve all available models from your Ollama server
               </Text>
             </Box>
-            
+
             {availableModels.length > 0 && (
-              <Box 
-                p={4} 
-                bg="var(--color-surface-dark)"
-                borderRadius="md"
+              <Box
+                p={6}
+                bg="surface.dark"
+                borderRadius="2xl"
                 borderWidth="1px"
-                borderColor="var(--color-border)"
+                borderColor="border.base"
                 mb={6}
+                transition="all 0.3s ease"
+                _hover={{
+                  bg: "surface.light",
+                  borderColor: "brand.primary"
+                }}
               >
-                <Flex justify="space-between" align="center" mb={3}>
+                <Flex justify="space-between" align="center" mb={4}>
                   <Flex align="center">
-                    <Box 
+                    <Box
                       as="span"
-                      bg="var(--color-primary)"
+                      bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
                       color="white"
                       fontWeight="bold"
-                      w="24px"
-                      h="24px"
+                      w="32px"
+                      h="32px"
                       borderRadius="full"
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
-                      mr={3}
-                      fontSize="sm"
+                      mr={4}
+                      fontSize="md"
+                      boxShadow="md"
                     >
                       2
                     </Box>
-                    <Text fontWeight="medium" color="var(--color-text)">Select Models ({selectedModels.length} of {availableModels.length} selected)</Text>
+                    <Text fontWeight="semibold" color="text.base" fontSize="lg">
+                      Select Models ({selectedModels.length} of {availableModels.length} selected)
+                    </Text>
                   </Flex>
-                  
+
                   <Button
-                    size="sm"
+                    size="md"
                     onClick={() => setSelectedModels(availableModels.map(m => m.ollama_model_id || m.name))}
                     variant="outline"
+                    borderRadius="full"
+                    borderColor="brand.primary"
+                    color="brand.primary"
+                    _hover={{
+                      bg: "rgba(59, 130, 246, 0.1)",
+                      transform: "translateY(-1px)"
+                    }}
+                    transition="all 0.3s ease"
                   >
                     Select All
                   </Button>
                 </Flex>
-                
-                <Text fontSize="sm" color="var(--color-text-muted)" ml={10} mb={4}>
+
+                <Text fontSize="sm" color="text.muted" ml={12} mb={6}>
                   Choose which models to make available in your application
                 </Text>
-                
-                <Grid 
-                  templateColumns={{ 
-                    base: "1fr", 
-                    md: "repeat(2, 1fr)", 
-                    lg: "repeat(3, 1fr)" 
-                  }}
-                  gap={4}
-                  maxH={{ base: "300px", md: "240px" }}
+
+                <VStack
+                  spacing={3}
+                  align="stretch"
+                  maxH={{ base: "400px", md: "500px" }}
                   overflowY="auto"
-                  ml={10}
+                  ml={12}
                   pr={2}
                   css={{
                     '&::-webkit-scrollbar': {
-                      width: '4px',
+                      width: '8px',
                     },
                     '&::-webkit-scrollbar-track': {
-                      width: '6px',
-                      background: 'var(--color-surface-dark)'
+                      background: 'rgba(21, 28, 44, 0.5)',
+                      borderRadius: '4px'
                     },
                     '&::-webkit-scrollbar-thumb': {
-                      background: 'var(--color-primary)',
-                      borderRadius: '24px',
+                      background: 'rgba(59, 130, 246, 0.7)',
+                      borderRadius: '4px',
+                      '&:hover': {
+                        background: 'rgba(59, 130, 246, 0.9)',
+                      }
                     },
                   }}
                 >
                   {availableModels.map((model: any, index: number) => (
-                    <Flex 
+                    <Flex
                       key={index}
-                      p={3}
+                      p={4}
                       borderWidth="1px"
-                      borderRadius="lg"
-                      borderColor={selectedModels.includes(model.ollama_model_id || model.name) ? "var(--color-primary)" : "var(--color-border)"}
-                      bg={selectedModels.includes(model.ollama_model_id || model.name) ? "var(--color-surface-light)" : "var(--color-surface-dark)"}
-                      transition="all 0.2s"
+                      borderRadius="xl"
+                      borderColor={selectedModels.includes(model.ollama_model_id || model.name) ? "brand.primary" : "border.base"}
+                      bg={selectedModels.includes(model.ollama_model_id || model.name) ? "surface.light" : "surface.dark"}
+                      transition="all 0.3s ease"
                       cursor="pointer"
                       onClick={() => handleModelSelection(model.ollama_model_id || model.name)}
                       align="center"
+                      justify="space-between"
+                      _hover={{
+                        transform: "translateY(-2px)",
+                        boxShadow: "md",
+                        bg: "surface.light"
+                      }}
+                      width="100%"
                     >
-                      <Checkbox
-                        isChecked={selectedModels.includes(model.ollama_model_id || model.name)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleModelSelection(model.ollama_model_id || model.name);
-                        }}
-                        colorScheme="green"
-                        size="lg"
-                        mr={3}
-                      />
-                      
-                      <Box flex="1">
-                        <Text 
-                          fontSize="sm" 
-                          fontWeight="bold" 
-                          color="var(--color-text)"
-                        >
-                          {model.name}
-                        </Text>
-                        
-                        <Flex mt={1} gap={2}>
-                          {model.size && (
-                            <Tag 
-                              size="sm" 
-                              colorScheme="blue" 
-                              borderRadius="full" 
-                              variant="subtle"
-                            >
-                              {formatModelSize(model.size)}
-                            </Tag>
-                          )}
-                          
-                          {model.name.includes('code') && (
-                            <Tag 
-                              size="sm" 
-                              colorScheme="purple" 
-                              variant="subtle"
-                              borderRadius="full"
-                            >
-                              Code
-                            </Tag>
-                          )}
-                          
-                          {model.name.includes('embed') && (
-                            <Tag 
-                              size="sm" 
-                              colorScheme="orange" 
-                              variant="subtle"
-                              borderRadius="full"
-                            >
-                              Embed
-                            </Tag>
-                          )}
-                        </Flex>
-                      </Box>
+                      <Flex align="center" flex="1">
+                        <Checkbox
+                          isChecked={selectedModels.includes(model.ollama_model_id || model.name)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleModelSelection(model.ollama_model_id || model.name);
+                          }}
+                          colorScheme="green"
+                          size="lg"
+                          mr={4}
+                        />
+
+                        <Box>
+                          <Text
+                            fontSize="md"
+                            fontWeight="semibold"
+                            color="text.base"
+                          >
+                            {model.name}
+                          </Text>
+                        </Box>
+                      </Flex>
+
+                      <Flex gap={2} flexWrap="wrap" justify="flex-end">
+                        {model.size && (
+                          <Tag
+                            size="sm"
+                            colorScheme="blue"
+                            borderRadius="full"
+                            variant="subtle"
+                            px={3}
+                          >
+                            {formatModelSize(model.size)}
+                          </Tag>
+                        )}
+
+                        {model.name.includes('code') && (
+                          <Tag
+                            size="sm"
+                            colorScheme="purple"
+                            variant="subtle"
+                            borderRadius="full"
+                            px={3}
+                          >
+                            Code
+                          </Tag>
+                        )}
+
+                        {model.name.includes('embed') && (
+                          <Tag
+                            size="sm"
+                            colorScheme="orange"
+                            variant="subtle"
+                            borderRadius="full"
+                            px={3}
+                          >
+                            Embed
+                          </Tag>
+                        )}
+                      </Flex>
                     </Flex>
                   ))}
-                </Grid>
+                </VStack>
               </Box>
             )}
-            
+
             {availableModels.length > 0 && (
-              <Box 
-                p={4} 
-                bg="var(--color-surface-dark)"
-                borderRadius="md"
+              <Box
+                p={6}
+                bg="surface.dark"
+                borderRadius="2xl"
                 borderWidth="1px"
-                borderColor="var(--color-border)"
+                borderColor="border.base"
+                transition="all 0.3s ease"
+                _hover={{
+                  bg: "surface.light",
+                  borderColor: "brand.primary"
+                }}
               >
-                <Flex justify="space-between" align="center" mb={3}>
+                <Flex justify="space-between" align="center" mb={4}>
                   <Flex align="center">
-                    <Box 
+                    <Box
                       as="span"
-                      bg="var(--color-primary)"
+                      bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
                       color="white"
                       fontWeight="bold"
-                      w="24px"
-                      h="24px"
+                      w="32px"
+                      h="32px"
                       borderRadius="full"
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
-                      mr={3}
-                      fontSize="sm"
+                      mr={4}
+                      fontSize="md"
+                      boxShadow="md"
                     >
                       3
                     </Box>
-                    <Text fontWeight="medium" color="var(--color-text)">Save Selected Models to Database</Text>
+                    <Text fontWeight="semibold" color="text.base" fontSize="lg">
+                      Save Selected Models to Database
+                    </Text>
                   </Flex>
-                  
+
                   <Button
-                    colorScheme="blue"
+                    bgGradient="linear(to-r, blue.500, blue.600)"
+                    color="white"
                     isDisabled={selectedModels.length === 0}
                     onClick={syncModels}
                     isLoading={syncLoading}
                     loadingText="Saving"
-                    size="md"
-                    borderRadius="lg"
+                    size="lg"
+                    borderRadius="full"
+                    px={8}
+                    py={6}
+                    fontWeight="semibold"
+                    transition="all 0.3s ease"
+                    boxShadow="md"
+                    _hover={{
+                      bgGradient: "linear(to-r, blue.600, blue.700)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "lg"
+                    }}
+                    _active={{
+                      transform: "translateY(0)",
+                      boxShadow: "md"
+                    }}
+                    _disabled={{
+                      bgGradient: "linear(to-r, gray.500, gray.600)",
+                      cursor: "not-allowed",
+                      opacity: 0.7
+                    }}
                   >
                     Save {selectedModels.length} Models
                   </Button>
                 </Flex>
-                
-                <Text fontSize="sm" color="var(--color-text-muted)" ml={10}>
+
+                <Text fontSize="sm" color="text.muted" ml={12}>
                   Only the selected models will be available in your application. Unselected models will be deactivated.
                 </Text>
               </Box>
             )}
-            
+
             {models.length > 0 && (
-              <Box 
-                p={4} 
-                bg="var(--color-surface-light)" 
-                borderRadius="md" 
-                borderWidth="1px" 
-                borderColor="var(--color-border)"
+              <Box
+                p={6}
+                bgGradient="linear(to-r, surface.light, surface.dark)"
+                borderRadius="2xl"
+                borderWidth="1px"
+                borderColor="border.base"
                 mt={6}
+                transition="all 0.3s ease"
+                _hover={{
+                  bgGradient: "linear(to-r, surface.base, surface.light)",
+                  borderColor: "brand.primary"
+                }}
               >
-                <Flex align="center" mb={2}>
-                  <CheckCircleIcon color="green.500" mr={2} />
-                  <Text fontWeight="medium" color="var(--color-text)">Database Status</Text>
+                <Flex align="center" mb={3}>
+                  <CheckCircleIcon color="green.500" mr={3} boxSize={5} />
+                  <Text fontWeight="semibold" color="text.base" fontSize="lg">
+                    Database Status
+                  </Text>
                 </Flex>
-                <Text fontSize="sm" color="var(--color-text-muted)" ml={6}>
+                <Text fontSize="sm" color="text.muted" ml={8}>
                   <b>{models.filter(m => m.is_active).length}</b> active models in database out of <b>{models.length}</b> total
                   {models.filter(m => !m.is_active).length > 0 && (
                     <> • <b>{models.filter(m => !m.is_active).length}</b> inactive models</>
@@ -1074,95 +1228,130 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
                 </Text>
               </Box>
             )}
-            
+
             {lastAction && (
-              <Box mt={4}>
-                <Text fontSize="sm" color="var(--color-text-muted)">
-                  <b>Last action:</b> {lastAction}
+              <Box mt={6}>
+                <Text fontSize="sm" color="text.muted" display="flex" alignItems="center">
+                  <Box
+                    as="span"
+                    display="inline-block"
+                    w="8px"
+                    h="8px"
+                    borderRadius="full"
+                    bg="brand.primary"
+                    mr={2}
+                    animation={`${pulse} 2s infinite`}
+                  />
+                  <b>Last action:</b>&nbsp;{lastAction}
                 </Text>
               </Box>
             )}
           </CardBody>
         </Card>
       </VStack>
-      
+
       <Modal isOpen={retryModal.isOpen} onClose={retryModal.onClose}>
-        <ModalOverlay 
-          bg="blackAlpha.700"
-          backdropFilter="blur(5px)"
+        <ModalOverlay
+          bg="blackAlpha.800"
+          backdropFilter="blur(8px)"
         />
-        <ModalContent 
-          bg="var(--color-surface)" 
-          borderColor="var(--color-border)" 
+        <ModalContent
+          bg="surface.base"
+          borderColor="border.base"
           borderWidth="1px"
-          borderRadius="xl"
+          borderRadius="3xl"
           boxShadow="2xl"
+          maxW="32rem"
         >
-          <ModalHeader 
-            color="var(--color-text)"
+          <ModalHeader
+            color="text.base"
             borderBottomWidth="1px"
-            borderColor="var(--color-border)"
+            borderColor="border.base"
             display="flex"
             alignItems="center"
+            fontSize="lg"
+            fontWeight="semibold"
           >
-            <WarningIcon color="red.500" mr={2} />
+            <WarningIcon color="red.500" mr={3} boxSize={5} />
             Operation Failed
           </ModalHeader>
-          <ModalCloseButton color="var(--color-text)" />
-          
-          <ModalBody py={6}>
-            <Alert 
-              status="error" 
-              mb={4} 
-              borderRadius="md"
+          <ModalCloseButton
+            color="text.base"
+            borderRadius="full"
+            _hover={{ bg: "surface.light" }}
+            top={3}
+            right={3}
+          />
+
+          <ModalBody py={8}>
+            <Alert
+              status="error"
+              mb={6}
+              borderRadius="xl"
               variant="left-accent"
               borderWidth="1px"
-              borderColor="red.300"
+              borderColor="red.200"
+              bgGradient="linear(to-r, red.50, red.100)"
+              p={4}
             >
               <AlertIcon />
               <AlertDescription fontWeight="medium">{lastError}</AlertDescription>
             </Alert>
-            
-            <Text 
-              color="var(--color-text-secondary)"
+
+            <Text
+              color="text.secondary"
               fontSize="md"
               display="flex"
               alignItems="center"
             >
-              <Icon as={InfoIcon} mr={2} boxSize="3" color="blue.400" />
+              <Icon as={InfoIcon} mr={3} boxSize={4} color="blue.400" />
               Would you like to retry the operation?
             </Text>
           </ModalBody>
-          
-          <ModalFooter 
+
+          <ModalFooter
             borderTopWidth="1px"
-            borderColor="var(--color-border)"
+            borderColor="border.base"
+            gap={4}
           >
-            <Button 
-              variant="outline" 
-              mr={3} 
+            <Button
+              variant="outline"
               onClick={retryModal.onClose}
-              borderColor="var(--color-border)"
-              color="var(--color-text)"
-              _hover={{ bg: 'var(--color-surface-light)' }}
-              borderRadius="lg"
+              borderColor="border.base"
+              color="text.base"
+              borderRadius="full"
+              px={6}
+              py={5}
+              _hover={{
+                bg: 'surface.light',
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.3s ease"
             >
               Cancel
             </Button>
-            <Button 
-              bg="var(--color-primary)"
+            <Button
+              bgGradient="linear(to-r, brand.primary, brand.primary-dark)"
               color="white"
               onClick={handleRetry}
               isLoading={isRetrying}
               loadingText="Retrying"
               leftIcon={<RepeatClockIcon />}
-              _hover={{ 
-                bg: 'var(--color-primary-dark)',
-                transform: "translateY(-1px)",
-                boxShadow: "md"  
+              borderRadius="full"
+              px={6}
+              py={5}
+              fontWeight="semibold"
+              _hover={{
+                bgGradient: "linear(to-r, brand.primary-dark, brand.primary)",
+                transform: "translateY(-2px)",
+                boxShadow: "lg"
               }}
-              borderRadius="lg"
-              transition="all 0.2s"
+              _active={{
+                transform: "translateY(0)",
+                boxShadow: "md"
+              }}
+              transition="all 0.3s ease"
+              boxShadow="md"
             >
               Retry
             </Button>
@@ -1173,4 +1362,4 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
   );
 };
 
-export default OllamaSettings; 
+export default OllamaSettings;
