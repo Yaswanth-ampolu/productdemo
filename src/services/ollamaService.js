@@ -41,7 +41,7 @@ class OllamaService {
   async loadSettings() {
     try {
       const result = await db.query('SELECT * FROM ollama_settings ORDER BY id DESC LIMIT 1');
-      
+
       if (result.rows && result.rows.length > 0) {
         this.settings = result.rows[0];
         logger.info('Loaded Ollama settings from database');
@@ -56,7 +56,7 @@ class OllamaService {
         const result = await db.query('SELECT * FROM ollama_settings ORDER BY id DESC LIMIT 1');
         this.settings = result.rows[0];
       }
-      
+
       return this.settings;
     } catch (error) {
       logger.error('Error loading Ollama settings:', error);
@@ -70,7 +70,7 @@ class OllamaService {
   async saveSettings(settings) {
     try {
       const { host, port, default_model } = settings;
-      
+
       if (this.settings && this.settings.id) {
         // Update existing settings
         await db.query(
@@ -84,11 +84,11 @@ class OllamaService {
           [host, port, default_model]
         );
       }
-      
+
       // Reload settings
       await this.loadSettings();
       logger.info('Saved Ollama settings to database');
-      
+
       return this.settings;
     } catch (error) {
       logger.error('Error saving Ollama settings:', error);
@@ -103,10 +103,10 @@ class OllamaService {
     if (!this.settings) {
       throw new Error('Ollama settings not loaded');
     }
-    
+
     const { host, port } = this.settings;
     const baseURL = `http://${host}:${port}`;
-    
+
     return axios.create({
       baseURL,
       timeout: 30000, // 30 seconds
@@ -123,24 +123,24 @@ class OllamaService {
     try {
       const testHost = host || (this.settings && this.settings.host);
       const testPort = port || (this.settings && this.settings.port);
-      
+
       if (!testHost || !testPort) {
         return {
           success: false,
           message: 'Host or port not specified'
         };
       }
-      
+
       const url = `http://${testHost}:${testPort}`;
       const startTime = Date.now();
-      
+
       // Test connection using a simple ping request
       const response = await axios.get(`${url}/api/version`, {
         timeout: 5000 // 5 seconds timeout for test
       });
-      
+
       const responseTime = Date.now() - startTime;
-      
+
       return {
         success: true,
         message: 'Successfully connected to Ollama server',
@@ -149,7 +149,7 @@ class OllamaService {
       };
     } catch (error) {
       logger.error('Error testing connection to Ollama server:', error);
-      
+
       return {
         success: false,
         message: 'Failed to connect to Ollama server',
@@ -165,10 +165,10 @@ class OllamaService {
     try {
       const client = this.createClient();
       const response = await client.get('/api/tags');
-      
+
       // Process and normalize the Ollama model data
       let models = [];
-      
+
       if (response.data && response.data.models) {
         models = response.data.models.map(model => ({
           name: model.name || 'Unknown',
@@ -177,14 +177,14 @@ class OllamaService {
           details: model.details || {}
         }));
       }
-      
+
       return {
         success: true,
         models: models
       };
     } catch (error) {
       logger.error('Error fetching available models from Ollama server:', error);
-      
+
       return {
         success: false,
         models: [],
@@ -201,47 +201,47 @@ class OllamaService {
     try {
       // Get models from Ollama
       const { success, models, error } = await this.getAvailableModels();
-      
+
       if (!success) {
         return {
           success: false,
           error
         };
       }
-      
+
       let added = 0;
       let updated = 0;
       let unchanged = 0;
       let inactivated = 0;
-      
+
       // Process each model
       for (const model of models) {
         const modelId = model.name;
         const isSelected = selectedModelIds.includes(modelId);
-        
+
         // Check if model exists in database
         const result = await db.query('SELECT * FROM ai_models WHERE ollama_model_id = $1', [modelId]);
-        
+
         if (result.rows.length === 0) {
           // Add new model
           await db.query(`
             INSERT INTO ai_models (
-              name, 
+              name,
               model_id,
-              ollama_model_id, 
-              description, 
-              parameters, 
+              ollama_model_id,
+              description,
+              parameters,
               is_active
             ) VALUES ($1, $2, $3, $4, $5, $6)
           `, [
             model.name,
             model.name, // Use model name as model_id
-            model.name, 
-            `Ollama model: ${model.name}`, 
-            JSON.stringify({ size: model.size, modified_at: model.modified_at }), 
+            model.name,
+            `Ollama model: ${model.name}`,
+            JSON.stringify({ size: model.size, modified_at: model.modified_at }),
             isSelected // Set is_active based on selection
           ]);
-          
+
           if (isSelected) {
             added++;
           } else {
@@ -250,7 +250,7 @@ class OllamaService {
         } else {
           // Update existing model
           const existingModel = result.rows[0];
-          
+
           // Safely parse parameters with error handling
           let parameters = {};
           try {
@@ -266,22 +266,22 @@ class OllamaService {
             logger.error(`Error parsing parameters for model ${model.name}:`, err);
             parameters = {}; // Reset to empty object on error
           }
-          
+
           // Check if anything has changed including active status
           const statusChanged = existingModel.is_active !== isSelected;
           const paramsChanged = parameters.size !== model.size || parameters.modified_at !== model.modified_at;
-          
+
           if (statusChanged || paramsChanged) {
             // Safely update parameters and status
-            let updatedParams = { 
-              size: model.size, 
-              modified_at: model.modified_at 
+            let updatedParams = {
+              size: model.size,
+              modified_at: model.modified_at
             };
-            
+
             try {
               // Try updating with updated_at field
               await db.query(`
-                UPDATE ai_models SET 
+                UPDATE ai_models SET
                   parameters = $1,
                   is_active = $2,
                   updated_at = NOW()
@@ -296,7 +296,7 @@ class OllamaService {
                 // If updated_at doesn't exist, update without it
                 logger.warn('updated_at column not found, updating without timestamp');
                 await db.query(`
-                  UPDATE ai_models SET 
+                  UPDATE ai_models SET
                     parameters = $1,
                     is_active = $2
                   WHERE id = $3
@@ -310,7 +310,7 @@ class OllamaService {
                 throw updateError;
               }
             }
-            
+
             if (statusChanged) {
               if (isSelected) {
                 updated++;
@@ -325,16 +325,16 @@ class OllamaService {
           }
         }
       }
-      
+
       // Handle any models in DB that were not in the server response
       // Make sure they match the selected status
       const dbModels = await db.query('SELECT * FROM ai_models');
       const serverModelIds = models.map(m => m.name);
-      
+
       for (const dbModel of dbModels.rows) {
         if (!serverModelIds.includes(dbModel.ollama_model_id)) {
           const isSelected = selectedModelIds.includes(dbModel.ollama_model_id);
-          
+
           // Only update if status doesn't match selection
           if (dbModel.is_active !== isSelected) {
             try {
@@ -356,7 +356,7 @@ class OllamaService {
                 throw updateError;
               }
             }
-            
+
             if (isSelected) {
               updated++;
             } else {
@@ -365,7 +365,7 @@ class OllamaService {
           }
         }
       }
-      
+
       return {
         success: true,
         syncedCount: added + updated,
@@ -377,7 +377,7 @@ class OllamaService {
       };
     } catch (error) {
       logger.error('Error syncing models from Ollama server:', error);
-      
+
       return {
         success: false,
         error: error.message
@@ -391,14 +391,14 @@ class OllamaService {
   async getModelsFromDB() {
     try {
       const result = await db.query('SELECT * FROM ai_models ORDER BY name');
-      
+
       return {
         success: true,
         models: result.rows
       };
     } catch (error) {
       logger.error('Error fetching models from database:', error);
-      
+
       return {
         success: false,
         models: [],
@@ -413,14 +413,14 @@ class OllamaService {
   async getActiveModels() {
     try {
       const result = await db.query('SELECT * FROM ai_models WHERE is_active = true ORDER BY name');
-      
+
       return {
         success: true,
         models: result.rows
       };
     } catch (error) {
       logger.error('Error fetching active models from database:', error);
-      
+
       return {
         success: false,
         models: [],
@@ -438,18 +438,18 @@ class OllamaService {
         'UPDATE ai_models SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
         [isActive, id]
       );
-      
+
       if (result.rows.length === 0) {
         throw new Error('Model not found');
       }
-      
+
       return {
         success: true,
         model: result.rows[0]
       };
     } catch (error) {
       logger.error('Error updating model status:', error);
-      
+
       return {
         success: false,
         error: error.message
@@ -463,13 +463,13 @@ class OllamaService {
   async chat(model, messages, systemPrompt = null) {
     try {
       const client = this.createClient();
-      
+
       // Format messages for Ollama API
       const formattedMessages = messages.map(msg => ({
         role: msg.role || 'user',
         content: msg.content
       }));
-      
+
       // Add system prompt if provided
       if (systemPrompt) {
         formattedMessages.unshift({
@@ -477,20 +477,43 @@ class OllamaService {
           content: systemPrompt
         });
       }
-      
+
       const response = await client.post('/api/chat', {
         model,
         messages: formattedMessages,
         stream: false
       });
-      
+
+      // Format the response to match the expected structure for the frontend
+      const ollamaResponse = response.data;
+      const formattedResponse = {
+        id: ollamaResponse.id || `chat-${Date.now()}`,
+        created: ollamaResponse.created || Date.now(),
+        model: ollamaResponse.model || model,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: ollamaResponse.message?.content || ollamaResponse.content || ''
+            },
+            finish_reason: ollamaResponse.finish_reason || 'stop'
+          }
+        ],
+        usage: ollamaResponse.usage || {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      };
+
       return {
         success: true,
-        response: response.data
+        response: formattedResponse
       };
     } catch (error) {
       logger.error('Error sending chat message to Ollama:', error);
-      
+
       return {
         success: false,
         error: error.message
@@ -499,4 +522,4 @@ class OllamaService {
   }
 }
 
-module.exports = OllamaService; 
+module.exports = OllamaService;

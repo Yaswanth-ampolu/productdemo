@@ -397,4 +397,82 @@ The AI chat integration is nearly complete! Let's finalize with comprehensive te
    - Document test coverage and maintenance procedures
 
 Let's start with the end-to-end testing to identify and fix any remaining issues before finalizing the documentation.
+```
+
+## After Creating Chat Component Structure:
+
+**Prompt:**
+```
+I've created a modular component structure for the Chatbot feature to replace the large monolithic Chatbot.tsx file. Here's what's been implemented:
+
+1. Created these components in the client/src/components/chat directory:
+   - ChatMessage.tsx - For rendering individual messages with markdown/code support
+   - ChatInput.tsx - For message input and submission
+   - MessageList.tsx - For displaying messages with infinite scrolling
+   - ModelSelector.tsx - For selecting AI models
+   - ChatSidebar.tsx - For managing chat sessions
+
+2. Added a new service:
+   - client/src/services/aiChatService.ts - For Ollama API integration
+
+3. Created documentation:
+   - documentation/chatbot-structure.md - With component architecture details
+
+The next step is to refactor the existing Chatbot.tsx file to use these modular components while maintaining all current functionality. Please help me refactor Chatbot.tsx to:
+
+1. Import and use these new components
+2. Maintain the existing state management for sessions and messages
+3. Connect the Ollama API integration via the new aiChatService
+4. Ensure all current functionality remains working
+5. Update the message sending function to include selected model information
+
+This refactoring will improve code organization, maintainability, and prepare for the full Ollama AI integration.
+```
+
+## After Refactoring Chatbot.tsx:
+
+**Prompt:**
+```
+The Chatbot.tsx refactoring to use modular components is complete. Now let's implement the full Ollama AI integration by:
+
+1. Connecting the chat interface to the Ollama API:
+   - Update the message sending functionality to use the /api/ollama/chat endpoint
+   - Modify the backend to properly handle chat requests with model selection
+   - Implement conversation context management to maintain coherent discussions
+   - Add proper error handling for API failures
+
+2. Adding streaming response support:
+   - Implement server-sent events or WebSocket connection for streaming
+   - Add real-time display of AI responses as they're generated
+   - Create typing indicators during response generation
+   - Add the ability to cancel long-running responses
+
+This integration will enable users to have interactive conversations with different AI models, with responses streamed in real-time for a better user experience.
+```
+
+## After Implementing Ollama Integration:
+
+**Prompt:**
+```
+Now that we have the Ollama AI integration working with basic functionality, let's enhance the chat experience with these additional features:
+
+1. Implement session persistence and management:
+   - Add conversation export/import functionality
+   - Create automatic title generation based on conversation content
+   - Support file attachments for providing context
+   - Implement conversation search capabilities
+
+2. Add advanced UI features:
+   - Create model-specific styling for messages
+   - Implement syntax highlighting for different code languages
+   - Add copy-to-clipboard functionality for code blocks
+   - Support dark/light theme variants for chat interface
+
+3. Implement user feedback mechanisms:
+   - Add thumbs up/down reactions to messages
+   - Create a system for suggesting follow-up questions
+   - Implement a help/documentation panel for AI capabilities
+   - Add chat command shortcuts (e.g., "/help", "/clear")
+
+These enhancements will create a more polished and user-friendly AI chat experience.
 ``` 
