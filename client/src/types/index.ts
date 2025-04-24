@@ -13,6 +13,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  isStreaming?: boolean; // Added to support streaming messages
 }
 
 export interface ChatSession {

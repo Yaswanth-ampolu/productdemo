@@ -262,22 +262,39 @@ router.post('/message', isAuthenticated, async (req, res) => {
       }
     }
 
-    // Store message and response in database
-    const result = await pool.query(
-      'INSERT INTO messages (user_id, message, response, session_id, timestamp) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, timestamp',
-      [userId, message, response, activeSessionId]
-    );
+    // Log the message and response being saved
+    console.log(`Saving message to database - User: ${userId}, Session: ${activeSessionId}`);
+    console.log(`Message length: ${message.length}, Response length: ${response ? response.length : 0}`);
 
-    const messageId = result.rows[0].id;
-    const timestamp = result.rows[0].timestamp;
+    try {
+      // Store message and response in database
+      const result = await pool.query(
+        'INSERT INTO messages (user_id, message, response, session_id, timestamp) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, timestamp',
+        [userId, message, response, activeSessionId]
+      );
 
-    // Return formatted message data
-    res.json({
-      id: messageId,
-      content: response,
-      timestamp,
-      sessionId: activeSessionId
-    });
+      const messageId = result.rows[0].id;
+      const timestamp = result.rows[0].timestamp;
+
+      console.log(`Message saved successfully with ID: ${messageId}`);
+
+      // Update the session's last_message_timestamp
+      await pool.query(
+        'UPDATE chat_sessions SET last_message_timestamp = NOW() WHERE id = $1',
+        [activeSessionId]
+      );
+
+      // Return formatted message data
+      res.json({
+        id: messageId,
+        content: response,
+        timestamp,
+        sessionId: activeSessionId
+      });
+    } catch (dbError) {
+      console.error('Database error when saving message:', dbError);
+      throw dbError;
+    }
   } catch (error) {
     console.error('Error processing message:', error);
     res.status(500).json({ error: 'Error processing message' });

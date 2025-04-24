@@ -9,7 +9,8 @@ const { logger } = require('../utils/logger');
 const path = require('path');
 
 // Default timeout for Ollama API requests (in milliseconds)
-const DEFAULT_TIMEOUT = 60000;
+const DEFAULT_TIMEOUT = 120000; // Increased to 2 minutes for streaming
+const STREAMING_TIMEOUT = 300000; // 5 minutes for streaming requests
 
 /**
  * OllamaService manages communication with Ollama API and database operations
@@ -98,8 +99,9 @@ class OllamaService {
 
   /**
    * Creates an Ollama API client using current settings
+   * @param {boolean} forStreaming - Whether this client will be used for streaming requests
    */
-  createClient() {
+  createClient(forStreaming = false) {
     if (!this.settings) {
       throw new Error('Ollama settings not loaded');
     }
@@ -109,7 +111,7 @@ class OllamaService {
 
     return axios.create({
       baseURL,
-      timeout: 30000, // 30 seconds
+      timeout: forStreaming ? STREAMING_TIMEOUT : DEFAULT_TIMEOUT,
       headers: {
         'Content-Type': 'application/json'
       }
@@ -459,10 +461,16 @@ class OllamaService {
 
   /**
    * Sends a chat message to Ollama
+   * @param {string} model - The model ID to use
+   * @param {Array} messages - Array of message objects with role and content
+   * @param {string} systemPrompt - Optional system prompt
+   * @param {boolean} stream - Whether to stream the response
+   * @param {function} onChunk - Callback for each chunk when streaming
    */
-  async chat(model, messages, systemPrompt = null) {
+  async chat(model, messages, systemPrompt = null, stream = false, onChunk = null) {
     try {
-      const client = this.createClient();
+      // Use streaming client with longer timeout if streaming is enabled
+      const client = this.createClient(stream);
 
       // Format messages for Ollama API
       const formattedMessages = messages.map(msg => ({
@@ -478,39 +486,172 @@ class OllamaService {
         });
       }
 
-      const response = await client.post('/api/chat', {
-        model,
-        messages: formattedMessages,
-        stream: false
-      });
+      // If streaming is requested and a callback is provided
+      if (stream && typeof onChunk === 'function') {
+        try {
+          // Set up streaming response
+          const response = await client.post('/api/chat', {
+            model,
+            messages: formattedMessages,
+            stream: true
+          }, {
+            responseType: 'stream'
+          });
 
-      // Format the response to match the expected structure for the frontend
-      const ollamaResponse = response.data;
-      const formattedResponse = {
-        id: ollamaResponse.id || `chat-${Date.now()}`,
-        created: ollamaResponse.created || Date.now(),
-        model: ollamaResponse.model || model,
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: ollamaResponse.message?.content || ollamaResponse.content || ''
-            },
-            finish_reason: ollamaResponse.finish_reason || 'stop'
-          }
-        ],
-        usage: ollamaResponse.usage || {
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          total_tokens: 0
+          // Create a promise that will resolve when streaming is complete
+          return new Promise((resolve, reject) => {
+            let fullContent = '';
+            let messageId = `chat-${Date.now()}`;
+
+            response.data.on('data', (chunk) => {
+              try {
+                const chunkText = chunk.toString();
+                const lines = chunkText.split('\n').filter(line => line.trim());
+
+                for (const line of lines) {
+                  try {
+                    const data = JSON.parse(line);
+
+                    // Extract content from the chunk
+                    const content = data.message?.content || data.content || '';
+                    if (content) {
+                      fullContent += content;
+
+                      // Create a formatted chunk for the frontend
+                      const formattedChunk = {
+                        id: data.id || messageId,
+                        created: data.created || Date.now(),
+                        model: data.model || model,
+                        choices: [{
+                          index: 0,
+                          delta: {
+                            content: content
+                          },
+                          finish_reason: null
+                        }]
+                      };
+
+                      // Call the callback with the formatted chunk
+                      onChunk(formattedChunk);
+                    }
+
+                    // If this is the done message
+                    if (data.done) {
+                      // Create a final formatted response
+                      const formattedResponse = {
+                        id: data.id || messageId,
+                        created: data.created || Date.now(),
+                        model: data.model || model,
+                        choices: [{
+                          index: 0,
+                          message: {
+                            role: 'assistant',
+                            content: fullContent
+                          },
+                          finish_reason: 'stop'
+                        }],
+                        usage: data.usage || {
+                          prompt_tokens: 0,
+                          completion_tokens: 0,
+                          total_tokens: 0
+                        }
+                      };
+
+                      // Resolve the promise with the success response
+                      resolve({
+                        success: true,
+                        response: formattedResponse
+                      });
+                    }
+                  } catch (parseError) {
+                    logger.warn(`Error parsing streaming chunk: ${parseError.message}`);
+                    // Continue to next chunk even if one fails to parse
+                  }
+                }
+              } catch (chunkError) {
+                logger.error('Error processing stream chunk:', chunkError);
+                // Don't reject here, try to continue processing
+              }
+            });
+
+            response.data.on('end', () => {
+              // If stream ends without a done message, create a final response
+              const formattedResponse = {
+                id: messageId,
+                created: Date.now(),
+                model: model,
+                choices: [{
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: fullContent
+                  },
+                  finish_reason: 'stop'
+                }],
+                usage: {
+                  prompt_tokens: 0,
+                  completion_tokens: 0,
+                  total_tokens: 0
+                }
+              };
+
+              resolve({
+                success: true,
+                response: formattedResponse
+              });
+            });
+
+            response.data.on('error', (err) => {
+              logger.error('Stream error:', err);
+              reject({
+                success: false,
+                error: err.message
+              });
+            });
+          });
+        } catch (streamError) {
+          logger.error('Error setting up stream:', streamError);
+          return {
+            success: false,
+            error: `Streaming error: ${streamError.message}`
+          };
         }
-      };
+      } else {
+        // Non-streaming request
+        const response = await client.post('/api/chat', {
+          model,
+          messages: formattedMessages,
+          stream: false
+        });
 
-      return {
-        success: true,
-        response: formattedResponse
-      };
+        // Format the response to match the expected structure for the frontend
+        const ollamaResponse = response.data;
+        const formattedResponse = {
+          id: ollamaResponse.id || `chat-${Date.now()}`,
+          created: ollamaResponse.created || Date.now(),
+          model: ollamaResponse.model || model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: ollamaResponse.message?.content || ollamaResponse.content || ''
+              },
+              finish_reason: ollamaResponse.finish_reason || 'stop'
+            }
+          ],
+          usage: ollamaResponse.usage || {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0
+          }
+        };
+
+        return {
+          success: true,
+          response: formattedResponse
+        };
+      }
     } catch (error) {
       logger.error('Error sending chat message to Ollama:', error);
 

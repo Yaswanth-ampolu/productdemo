@@ -1,20 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PaperAirplaneIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, MicrophoneIcon, StopIcon } from '@heroicons/react/24/outline';
 import { chatInputStyles } from './chatStyles';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading: boolean;
   isEmpty?: boolean;
+  isStreaming?: boolean;
+  onStopGeneration?: () => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
   isLoading,
-  isEmpty = false
+  isEmpty = false,
+  isStreaming = false,
+  onStopGeneration
 }) => {
   const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Focus input when component mounts or loading state changes
   useEffect(() => {
@@ -22,6 +26,17 @@ const ChatInput: React.FC<ChatInputProps> = ({
       inputRef.current?.focus();
     }
   }, [isLoading]);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Set the height to scrollHeight to fit the content
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
+    }
+  }, [input]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +65,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
       }}
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', width: '100%', alignItems: 'center' }}>
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           placeholder={isEmpty ? "What can I help with?" : "Ask anything..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          rows={1}
           style={{
             ...chatInputStyles.input,
             padding: isEmpty ? '0.875rem 1rem' : '0.75rem 1rem',
+            height: 'auto',
+            minHeight: '44px',
+            maxHeight: '150px',
+            resize: 'none',
+            overflow: 'auto'
           }}
           disabled={isLoading}
         />
@@ -77,18 +97,35 @@ const ChatInput: React.FC<ChatInputProps> = ({
             <MicrophoneIcon className="h-5 w-5" />
           </button> */}
 
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            style={{
-              ...chatInputStyles.sendButton,
-              ...((!input.trim() || isLoading) && chatInputStyles.disabledSendButton),
-              transform: input.trim() && !isLoading ? 'scale(1.05)' : 'scale(1)',
-            }}
-            aria-label="Send message"
-          >
-            <PaperAirplaneIcon className="h-5 w-5" />
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={onStopGeneration}
+              style={{
+                ...chatInputStyles.sendButton,
+                backgroundColor: 'var(--color-error)',
+                transform: 'scale(1.05)',
+                transition: 'all 0.2s ease',
+              }}
+              aria-label="Stop generation"
+              title="Stop generation"
+            >
+              <StopIcon className="h-5 w-5" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              style={{
+                ...chatInputStyles.sendButton,
+                ...((!input.trim() || isLoading) && chatInputStyles.disabledSendButton),
+                transform: input.trim() && !isLoading ? 'scale(1.05)' : 'scale(1)',
+              }}
+              aria-label="Send message"
+            >
+              <PaperAirplaneIcon className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </form>
     </div>

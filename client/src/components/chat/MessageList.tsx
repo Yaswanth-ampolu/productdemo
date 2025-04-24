@@ -140,8 +140,8 @@ const MessageList: React.FC<MessageListProps> = ({
           </div>
         ))}
 
-        {/* Loading indicator */}
-        {isLoading && (
+        {/* Loading indicator - only show if there's no streaming message already */}
+        {isLoading && !messages.some(msg => msg.isStreaming) && (
           <div style={{ display: 'flex', marginBottom: '1rem', paddingBottom: '1rem' }}>
             <div style={messageBubbleStyles.ai.avatar}>
               AI

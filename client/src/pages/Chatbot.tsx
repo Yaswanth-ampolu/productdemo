@@ -7,7 +7,7 @@ import {
   PlusIcon
 } from '@heroicons/react/24/outline';
 import { chatbotService } from '../services/chatbotService';
-import { aiChatService } from '../services/aiChatService';
+import { aiChatService, StreamChunk } from '../services/aiChatService';
 import { getActiveOllamaModels } from '../services/ollamaService';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatMessage as ChatMessageType, ChatSession } from '../types';
@@ -18,8 +18,7 @@ import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
 
 const Chatbot: React.FC = () => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { user } = useAuth(); // Keep for future use
+  const { user } = useAuth();
   const { isExpanded: isMainSidebarExpanded } = useSidebar();
 
   // Session state
@@ -31,12 +30,12 @@ const Chatbot: React.FC = () => {
   // Message state
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [messageOffset, setMessageOffset] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [totalMessages, setTotalMessages] = useState(0); // Used in fetchSessionMessages
+  const [totalMessages, setTotalMessages] = useState(0);
 
   // UI state
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -47,9 +46,7 @@ const Chatbot: React.FC = () => {
     'Older': false
   });
   const [showSidebar, setShowSidebar] = useState(() => {
-    // Check if there's a saved preference in localStorage
     const savedPreference = localStorage.getItem('chatSidebarExpanded');
-    // Default to true if no preference is saved
     return savedPreference !== null ? savedPreference === 'true' : true;
   });
 
@@ -59,6 +56,8 @@ const Chatbot: React.FC = () => {
   });
 
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
+  const abortFunctionRef = useRef<(() => void) | null>(null); // Store the abort function
 
   // Fetch sessions on component mount
   useEffect(() => {
@@ -87,7 +86,6 @@ const Chatbot: React.FC = () => {
       const fetchedSessions = await chatbotService.getSessions();
       setSessions(fetchedSessions);
 
-      // If we have sessions but no active session, select the most recent one
       if (fetchedSessions.length > 0 && !activeSessionId) {
         setActiveSessionId(fetchedSessions[0].id);
         setSessionTitle(fetchedSessions[0].title);
@@ -110,16 +108,13 @@ const Chatbot: React.FC = () => {
       setHasMoreMessages(offset + fetchedMessages.length < total);
 
       if (append) {
-        // Prepend new messages to existing ones
         setMessages(prev => [...fetchedMessages, ...prev]);
         setMessageOffset(prev => prev + fetchedMessages.length);
       } else {
-        // Replace messages
         setMessages(fetchedMessages);
         setMessageOffset(fetchedMessages.length);
       }
 
-      // Update session title
       setSessionTitle(response.session.title);
     } catch (error) {
       console.error('Error fetching session messages:', error);
@@ -159,7 +154,6 @@ const Chatbot: React.FC = () => {
       await chatbotService.deleteSession(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
 
-      // If the deleted session was active, select another one or clear
       if (activeSessionId === sessionId) {
         const remainingSessions = sessions.filter(s => s.id !== sessionId);
         if (remainingSessions.length > 0) {
@@ -192,10 +186,7 @@ const Chatbot: React.FC = () => {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
-    // Create a unique ID for this message
     const tempId = `temp-${Date.now()}`;
-
-    // Add user message to local state immediately
     const userMessage: ChatMessageType = {
       id: tempId,
       role: 'user',
@@ -203,109 +194,147 @@ const Chatbot: React.FC = () => {
       timestamp: new Date(),
     };
 
-    // Add message to UI immediately
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
-      // If using Ollama AI and a model is selected
       if (selectedModelId) {
-        // Get the model data to retrieve the actual Ollama model ID (ollama_model_id)
         const modelsResponse = await getActiveOllamaModels();
         const selectedModel = modelsResponse.find(model => model.id === selectedModelId);
 
         if (!selectedModel) {
-          throw new Error('Selected model not found, please select another model');
+          throw new Error('Selected model not found');
         }
 
         const conversationHistory = messages.map(msg => ({
           role: msg.role as 'user' | 'assistant',
           content: msg.content
         }));
+        conversationHistory.push({ role: 'user', content: content.trim() });
 
-        // Add the new message to history
-        conversationHistory.push({
-          role: 'user',
-          content: content.trim()
-        });
-
-        // Call Ollama API with the correct model ID from the database
-        const response = await aiChatService.sendChatCompletion({
-          modelId: selectedModel.ollama_model_id, // Use the Ollama model ID from the database
-          messages: conversationHistory
-        });
-
-        // If this creates a new session, update our session info
-        if (!activeSessionId) {
-          await createNewSession();
-        }
-
-        // Save the message and response to the database
-        const aiResponseContent = response.choices[0].message.content;
-        const dbResponse = await chatbotService.sendMessage(
-          content.trim(),
-          activeSessionId || undefined,
-          aiResponseContent // Pass the AI response to be saved in the database
-        );
-
-        // If this creates a new session or updates the session ID, update our session info
-        if (!activeSessionId || activeSessionId !== dbResponse.sessionId) {
-          setActiveSessionId(dbResponse.sessionId);
-          await fetchSessions(); // Refresh sessions to get the new one
-        }
-
-        // Add AI response to messages using the response from Ollama
-        const aiResponse: ChatMessageType = {
-          id: dbResponse.id, // Use the database ID
+        // Create a temporary AI message for streaming
+        const aiMessageId = `ai-${Date.now()}`;
+        const aiMessage: ChatMessageType = {
+          id: aiMessageId,
           role: 'assistant',
-          content: response.choices[0].message.content,
+          content: '',
           timestamp: new Date(),
+          isStreaming: true, // Mark as streaming to show the loading indicator
         };
 
-        // Replace the temporary message with a permanent one and add the AI response
-        setMessages(prev => {
-          // Filter out the temporary message
-          const filteredMessages = prev.filter(m => m.id !== tempId);
-          // Add the confirmed user message and AI response
-          return [...filteredMessages,
-            {...userMessage, id: `user-${Date.now()}`},
-            aiResponse
-          ];
-        });
+        // Add the AI message to the messages array
+        setMessages(prev => [...prev, aiMessage]);
+
+        // Set isLoading and isStreaming to true to indicate we're waiting for a response
+        // The MessageList component will not show a separate loading indicator
+        // when there's already a message with isStreaming=true
+        setIsStreaming(true);
+
+        // Store the abort function so we can call it if the user clicks the stop button
+        abortFunctionRef.current = await aiChatService.streamChatCompletion(
+          {
+            modelId: selectedModel.ollama_model_id,
+            messages: conversationHistory,
+            options: { stream: true }
+          },
+          (chunk: StreamChunk) => {
+            const newContent = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
+            if (newContent) {
+              // Update the ref with the accumulated content
+              streamedContentRef.current[aiMessageId] = (streamedContentRef.current[aiMessageId] || '') + newContent;
+
+              // Update the UI
+              setMessages(prev => prev.map(msg =>
+                msg.id === aiMessageId ? { ...msg, content: streamedContentRef.current[aiMessageId] } : msg
+              ));
+            }
+          },
+          async () => {
+            // Get the final content from our ref which has been accumulating the streamed content
+            const finalContent = streamedContentRef.current[aiMessageId] || '';
+
+            console.log('Final AI message content:', finalContent);
+            console.log('Content length:', finalContent.length);
+
+            // Add a small delay to ensure all content is accumulated
+            // This helps with race conditions in state updates
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            try {
+              // Double-check the final content after the delay
+              const finalContentAfterDelay = streamedContentRef.current[aiMessageId] || '';
+              console.log('Final content after delay:', finalContentAfterDelay.length);
+
+              // Save the message to the database
+              const dbResponse = await chatbotService.sendMessage(
+                content.trim(),
+                activeSessionId || undefined,
+                finalContentAfterDelay
+              );
+              console.log('Database response:', dbResponse); // Debug: Log response
+
+              if (!activeSessionId || activeSessionId !== dbResponse.sessionId) {
+                setActiveSessionId(dbResponse.sessionId);
+                await fetchSessions();
+              }
+
+              // Update the existing message with the database ID instead of adding a new one
+              setMessages(prev => {
+                console.log('Updating message with DB ID:', dbResponse.id);
+                return prev.map(msg =>
+                  msg.id === aiMessageId ? {
+                    ...msg,
+                    id: dbResponse.id,
+                    isStreaming: false,
+                    // Ensure the content is the final content
+                    content: finalContentAfterDelay
+                  } : msg
+                );
+              });
+
+              // Clean up the ref
+              delete streamedContentRef.current[aiMessageId];
+            } catch (error) {
+              console.error('Error saving message to database:', error);
+              // Still mark the message as not streaming even if saving fails
+              setMessages(prev => prev.map(msg =>
+                msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
+              ));
+
+              // Clean up the ref even on error
+              delete streamedContentRef.current[aiMessageId];
+            }
+
+            setIsLoading(false);
+            setIsStreaming(false);
+            abortFunctionRef.current = null;
+          },
+          (error) => {
+            console.error('Streaming error:', error);
+            setMessages(prev => prev.filter(msg => msg.id !== aiMessageId));
+            // Clean up the ref on error
+            delete streamedContentRef.current[aiMessageId];
+            setIsLoading(false);
+            setIsStreaming(false);
+            abortFunctionRef.current = null;
+          }
+        );
       } else {
-        // Fall back to regular chatbot service
         const response = await chatbotService.sendMessage(userMessage.content, activeSessionId || undefined);
-
-        // If this creates a new session, update our session info
-        if (!activeSessionId || activeSessionId !== response.sessionId) {
-          setActiveSessionId(response.sessionId);
-          await fetchSessions(); // Refresh sessions to get the new one
-        }
-
-        // Add AI response to messages
-        const aiResponse: ChatMessageType = {
-          id: response.id,
-          role: 'assistant',
-          content: response.content,
-          timestamp: new Date(response.timestamp),
-        };
-
-        // Replace the temporary message with a permanent one and add the AI response
+        setActiveSessionId(response.sessionId);
         setMessages(prev => {
-          // Filter out the temporary message
           const filteredMessages = prev.filter(m => m.id !== tempId);
-          // Add the confirmed user message and AI response
-          return [...filteredMessages,
-            {...userMessage, id: `user-${Date.now()}`},
-            aiResponse
+          return [
+            ...filteredMessages,
+            { ...userMessage, id: `user-${Date.now()}` },
+            { id: response.id, role: 'assistant', content: response.content, timestamp: new Date() }
           ];
         });
+        await fetchSessions();
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      // Remove temporary message on error
       setMessages(prev => prev.filter(m => m.id !== tempId));
-    } finally {
       setIsLoading(false);
     }
   };
@@ -316,6 +345,13 @@ const Chatbot: React.FC = () => {
     }
   };
 
+  const handleStopGeneration = () => {
+    if (abortFunctionRef.current) {
+      abortFunctionRef.current();
+      // The abort function will call onComplete which will reset isStreaming and abortFunctionRef
+    }
+  };
+
   const toggleGroup = (groupLabel: string) => {
     setExpandedGroups(prev => ({
       ...prev,
@@ -323,7 +359,6 @@ const Chatbot: React.FC = () => {
     }));
   };
 
-  // Toggle sidebar and save preference
   const toggleSidebar = () => {
     setShowSidebar(prev => {
       const newValue = !prev;
@@ -332,10 +367,8 @@ const Chatbot: React.FC = () => {
     });
   };
 
-  // Determine if chat is empty (for positioning the input)
   const isEmpty = messages.length === 0;
 
-  // Add animation styles to the document head
   useEffect(() => {
     const styleElement = document.createElement('style');
     styleElement.textContent = `
@@ -343,7 +376,6 @@ const Chatbot: React.FC = () => {
       ${animations.fadeIn}
       ${animations.slideIn}
 
-      /* Input area blur effect */
       .input-area-blur {
         background-color: transparent !important;
         -webkit-backdrop-filter: blur(5px) !important;
@@ -354,7 +386,6 @@ const Chatbot: React.FC = () => {
         opacity: 1 !important;
       }
 
-      /* Ensure child elements are not affected by blur */
       .input-area-blur > * {
         isolation: isolate !important;
       }
@@ -367,22 +398,23 @@ const Chatbot: React.FC = () => {
   }, []);
 
   return (
-    <div className="fixed inset-0 flex flex-col"
+    <div
+      className="fixed inset-0 flex flex-col"
       style={{
         backgroundColor: 'var(--color-bg)',
         left: isMainSidebarExpanded ? '64px' : '63px',
         width: isMainSidebarExpanded ? 'calc(100% - 64px)' : 'calc(100% - 50px)'
-      }}>
-      {/* Chat Header with true transparency for floating effect */}
-      <div className="px-4 py-3 flex items-center justify-between z-10 relative" style={{
-        backgroundColor: 'transparent',
-        borderColor: 'transparent',
-        borderRadius: '0 0 12px 12px'
-      }}>
-        {/* Left side: Title only - sidebar toggle moved to ChatSidebar */}
+      }}
+    >
+      <div
+        className="px-4 py-3 flex items-center justify-between z-10 relative"
+        style={{
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          borderRadius: '0 0 12px 12px'
+        }}
+      >
         <div className="flex items-center space-x-4">
-
-          {/* Session title or editing field */}
           {editingTitle ? (
             <div className="flex items-center">
               <input
@@ -413,7 +445,10 @@ const Chatbot: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center">
-              <h2 className="text-base md:text-lg font-semibold truncate max-w-[200px] md:max-w-none" style={{ color: 'var(--color-text)' }}>
+              <h2
+                className="text-base md:text-lg font-semibold truncate max-w-[200px] md:max-w-none"
+                style={{ color: 'var(--color-text)' }}
+              >
                 {activeSessionId ? sessionTitle : 'New Chat'}
               </h2>
               {activeSessionId && (
@@ -433,15 +468,11 @@ const Chatbot: React.FC = () => {
           )}
         </div>
 
-        {/* Right side: Model selector and action buttons */}
         <div className="flex items-center space-x-4">
-          {/* Model Selector */}
           <ModelSelector
             onSelectModel={setSelectedModelId}
             selectedModelId={selectedModelId}
           />
-
-          {/* Reset chat button */}
           {!isEmpty && (
             <button
               onClick={resetChat}
@@ -459,15 +490,15 @@ const Chatbot: React.FC = () => {
         </div>
       </div>
 
-      {/* Redesigned main layout - Fixed position to work with main app layout */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Chat sessions sidebar - Only shown when expanded */}
         {showSidebar && (
-          <div className="absolute md:relative h-full transition-all duration-300 ease-in-out z-20 md:z-0"
+          <div
+            className="absolute md:relative h-full transition-all duration-300 ease-in-out z-20 md:z-0"
             style={{
               left: '0',
               width: window.innerWidth < 768 ? '100%' : '260px'
-            }}>
+            }}
+          >
             <ChatSidebar
               sessions={sessions}
               activeSessionId={activeSessionId}
@@ -483,7 +514,6 @@ const Chatbot: React.FC = () => {
           </div>
         )}
 
-        {/* Floating button when sidebar is collapsed */}
         {!showSidebar && (
           <ChatSidebar
             sessions={sessions}
@@ -499,13 +529,13 @@ const Chatbot: React.FC = () => {
           />
         )}
 
-        {/* Chat area - Adjusted to work with both sidebars */}
-        <div className={`absolute inset-0 transition-all duration-300 ease-in-out flex flex-col`}
+        <div
+          className={`absolute inset-0 transition-all duration-300 ease-in-out flex flex-col`}
           style={{
             backgroundColor: 'var(--color-bg)',
             marginLeft: showSidebar ? (window.innerWidth < 768 ? '0' : '260px') : '0'
-          }}>
-          {/* Messages List */}
+          }}
+        >
           <MessageList
             messages={messages}
             isLoading={isLoading}
@@ -515,7 +545,6 @@ const Chatbot: React.FC = () => {
             isEmpty={isEmpty}
           />
 
-          {/* Input area - Fixed positioning but with responsive width */}
           <div
             className={`${isEmpty ? "absolute left-1/2 bottom-[25%] transform -translate-x-1/2" : "absolute bottom-0 left-0 right-0"}
             ${!isEmpty && ""} py-4 px-4 md:px-8 lg:px-16 xl:px-24 input-area-blur`}
@@ -528,9 +557,10 @@ const Chatbot: React.FC = () => {
               onSendMessage={handleSendMessage}
               isLoading={isLoading}
               isEmpty={isEmpty}
+              isStreaming={isStreaming}
+              onStopGeneration={handleStopGeneration}
             />
 
-            {/* Action buttons shown only in empty state */}
             {isEmpty && (
               <div className="flex justify-center mt-8">
                 <div className="flex flex-wrap justify-center gap-2">

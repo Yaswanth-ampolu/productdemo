@@ -32,8 +32,25 @@ export const chatbotService = {
 
   // Message sending
   sendMessage: async (message: string, sessionId?: string, response?: string): Promise<ChatMessageResponse> => {
-    const apiResponse = await api.post('/chatbot/message', { message, sessionId, response });
-    return apiResponse.data;
+    try {
+      console.log('Sending message to database:', {
+        messageLength: message.length,
+        responseLength: response ? response.length : 0,
+        sessionId
+      });
+
+      const apiResponse = await api.post('/chatbot/message', {
+        message,
+        sessionId,
+        response
+      });
+
+      console.log('Message saved successfully:', apiResponse.data);
+      return apiResponse.data;
+    } catch (error) {
+      console.error('Error in chatbotService.sendMessage:', error);
+      throw error;
+    }
   }
 };
 
