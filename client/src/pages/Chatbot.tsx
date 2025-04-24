@@ -2,29 +2,24 @@ import React, { useState, useRef, useEffect } from 'react';
 import { animations } from '../components/chat/chatStyles';
 import {
   ArrowPathIcon,
-  XMarkIcon,
-  ChatBubbleLeftRightIcon,
   PencilIcon,
   CheckIcon,
   PlusIcon
 } from '@heroicons/react/24/outline';
-import { useTheme } from '../contexts/ThemeContext';
-import { chatbotService, ChatMessageResponse } from '../services/chatbotService';
+import { chatbotService } from '../services/chatbotService';
 import { aiChatService } from '../services/aiChatService';
 import { getActiveOllamaModels } from '../services/ollamaService';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatMessage as ChatMessageType, ChatSession } from '../types';
 import { useSidebar } from '../contexts/SidebarContext';
-
-// Import new modular components
-import ChatMessage from '../components/chat/ChatMessage';
 import ChatInput from '../components/chat/ChatInput';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
 
 const Chatbot: React.FC = () => {
-  const { user } = useAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user } = useAuth(); // Keep for future use
   const { isExpanded: isMainSidebarExpanded } = useSidebar();
 
   // Session state
@@ -40,7 +35,8 @@ const Chatbot: React.FC = () => {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [messageOffset, setMessageOffset] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [totalMessages, setTotalMessages] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [totalMessages, setTotalMessages] = useState(0); // Used in fetchSessionMessages
 
   // UI state
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
@@ -50,7 +46,12 @@ const Chatbot: React.FC = () => {
     'Previous 30 Days': false,
     'Older': false
   });
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(() => {
+    // Check if there's a saved preference in localStorage
+    const savedPreference = localStorage.getItem('chatSidebarExpanded');
+    // Default to true if no preference is saved
+    return savedPreference !== null ? savedPreference === 'true' : true;
+  });
 
   // Model selection state
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(() => {
@@ -322,6 +323,15 @@ const Chatbot: React.FC = () => {
     }));
   };
 
+  // Toggle sidebar and save preference
+  const toggleSidebar = () => {
+    setShowSidebar(prev => {
+      const newValue = !prev;
+      localStorage.setItem('chatSidebarExpanded', String(newValue));
+      return newValue;
+    });
+  };
+
   // Determine if chat is empty (for positioning the input)
   const isEmpty = messages.length === 0;
 
@@ -332,6 +342,22 @@ const Chatbot: React.FC = () => {
       ${animations.bounce}
       ${animations.fadeIn}
       ${animations.slideIn}
+
+      /* Input area blur effect */
+      .input-area-blur {
+        background-color: transparent !important;
+        -webkit-backdrop-filter: blur(5px) !important;
+        backdrop-filter: blur(5px) !important;
+        border: none !important;
+        box-shadow: none !important;
+        isolation: isolate !important;
+        opacity: 1 !important;
+      }
+
+      /* Ensure child elements are not affected by blur */
+      .input-area-blur > * {
+        isolation: isolate !important;
+      }
     `;
     document.head.appendChild(styleElement);
 
@@ -347,21 +373,14 @@ const Chatbot: React.FC = () => {
         left: isMainSidebarExpanded ? '64px' : '63px',
         width: isMainSidebarExpanded ? 'calc(100% - 64px)' : 'calc(100% - 50px)'
       }}>
-      {/* Chat Header with responsive design */}
-      <div className="px-4 py-3 flex items-center justify-between" style={{
-        backgroundColor: 'var(--color-bg)',
+      {/* Chat Header with true transparency for floating effect */}
+      <div className="px-4 py-3 flex items-center justify-between z-10 relative" style={{
+        backgroundColor: 'transparent',
         borderColor: 'transparent',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+        borderRadius: '0 0 12px 12px'
       }}>
-        <div className="flex items-center space-x-2">
-          {/* Mobile sidebar toggle - Only visible on small screens */}
-          <button
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="md:hidden p-1 rounded-md"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {showSidebar ? <XMarkIcon className="w-5 h-5" /> : <ChatBubbleLeftRightIcon className="w-5 h-5" />}
-          </button>
+        {/* Left side: Title only - sidebar toggle moved to ChatSidebar */}
+        <div className="flex items-center space-x-4">
 
           {/* Session title or editing field */}
           {editingTitle ? (
@@ -373,19 +392,23 @@ const Chatbot: React.FC = () => {
                 onChange={(e) => setSessionTitle(e.target.value)}
                 onBlur={updateSessionTitle}
                 onKeyDown={(e) => e.key === 'Enter' && updateSessionTitle()}
-                className="px-2 py-1 rounded-md"
+                className="px-3 py-1 rounded-full"
                 style={{
-                  backgroundColor: 'var(--color-surface-dark)',
+                  backgroundColor: 'transparent',
                   color: 'var(--color-text)',
-                  border: '1px solid var(--color-border)'
+                  border: '1px solid rgba(255, 255, 255, 0.15)'
                 }}
               />
               <button
                 onClick={updateSessionTitle}
-                className="ml-2 p-1 rounded-md"
-                style={{ color: 'var(--color-primary)' }}
+                className="ml-2 p-2 rounded-full hover:bg-opacity-20 hover:bg-gray-500 transition-all hover:scale-105"
+                style={{
+                  color: 'var(--color-primary)',
+                  backgroundColor: 'transparent',
+                  border: '1px solid rgba(255, 255, 255, 0.15)'
+                }}
               >
-                <CheckIcon className="w-4 h-4" />
+                <CheckIcon className="w-3 h-3" />
               </button>
             </div>
           ) : (
@@ -396,25 +419,41 @@ const Chatbot: React.FC = () => {
               {activeSessionId && (
                 <button
                   onClick={() => setEditingTitle(true)}
-                  className="ml-2 p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="ml-2 p-1 rounded-full hover:bg-opacity-20 hover:bg-gray-500 transition-all hover:scale-105"
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    backgroundColor: 'transparent',
+                    border: '1px solid rgba(255, 255, 255, 0.15)'
+                  }}
                 >
-                  <PencilIcon className="w-4 h-4" />
+                  <PencilIcon className="w-3 h-3" />
                 </button>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Right side: Model selector and action buttons */}
+        <div className="flex items-center space-x-4">
+          {/* Model Selector */}
+          <ModelSelector
+            onSelectModel={setSelectedModelId}
+            selectedModelId={selectedModelId}
+          />
+
+          {/* Reset chat button */}
           {!isEmpty && (
             <button
               onClick={resetChat}
-              className="p-1 rounded-md hover:bg-opacity-10 hover:bg-gray-500 transition-colors"
-              style={{ color: 'var(--color-text-muted)' }}
+              className="p-2 rounded-full hover:bg-opacity-20 hover:bg-gray-500 transition-all hover:scale-105"
+              style={{
+                color: 'var(--color-text-muted)',
+                backgroundColor: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.15)'
+              }}
               title="Clear current chat"
             >
-              <ArrowPathIcon className="w-5 h-5" />
+              <ArrowPathIcon className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -422,38 +461,50 @@ const Chatbot: React.FC = () => {
 
       {/* Redesigned main layout - Fixed position to work with main app layout */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Chat sessions sidebar - Positioned to not overlap with app sidebar */}
-        <div className={`absolute md:relative h-full transition-all ${showSidebar ? 'z-20 md:z-0 w-64 md:w-64' : 'w-0'}`}
-          style={{
-            backgroundColor: 'var(--color-surface-light)',
-            borderRight: '1px solid var(--color-border-subtle)',
-            left: '0' // Adjusted to match the new container position
-          }}>
+        {/* Chat sessions sidebar - Only shown when expanded */}
+        {showSidebar && (
+          <div className="absolute md:relative h-full transition-all duration-300 ease-in-out z-20 md:z-0"
+            style={{
+              left: '0',
+              width: window.innerWidth < 768 ? '100%' : '260px'
+            }}>
+            <ChatSidebar
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              expandedGroups={expandedGroups}
+              loadingSessions={loadingSessions}
+              isCollapsed={false}
+              onCreateSession={createNewSession}
+              onSelectSession={setActiveSessionId}
+              onDeleteSession={deleteSession}
+              onToggleGroup={toggleGroup}
+              onToggleCollapse={toggleSidebar}
+            />
+          </div>
+        )}
+
+        {/* Floating button when sidebar is collapsed */}
+        {!showSidebar && (
           <ChatSidebar
             sessions={sessions}
             activeSessionId={activeSessionId}
             expandedGroups={expandedGroups}
             loadingSessions={loadingSessions}
+            isCollapsed={true}
             onCreateSession={createNewSession}
             onSelectSession={setActiveSessionId}
             onDeleteSession={deleteSession}
             onToggleGroup={toggleGroup}
+            onToggleCollapse={toggleSidebar}
           />
-        </div>
+        )}
 
         {/* Chat area - Adjusted to work with both sidebars */}
-        <div className={`absolute inset-0 ${showSidebar ? 'ml-0 md:ml-64' : ''} flex flex-col`}
+        <div className={`absolute inset-0 transition-all duration-300 ease-in-out flex flex-col`}
           style={{
-            backgroundColor: 'var(--color-bg)'
+            backgroundColor: 'var(--color-bg)',
+            marginLeft: showSidebar ? (window.innerWidth < 768 ? '0' : '260px') : '0'
           }}>
-          {/* AI Model Selector */}
-          <div className="px-4 py-2">
-            <ModelSelector
-              onSelectModel={setSelectedModelId}
-              selectedModelId={selectedModelId}
-            />
-          </div>
-
           {/* Messages List */}
           <MessageList
             messages={messages}
@@ -467,13 +518,10 @@ const Chatbot: React.FC = () => {
           {/* Input area - Fixed positioning but with responsive width */}
           <div
             className={`${isEmpty ? "absolute left-1/2 bottom-[25%] transform -translate-x-1/2" : "absolute bottom-0 left-0 right-0"}
-            ${!isEmpty && ""} py-4 px-4 md:px-8 lg:px-16 xl:px-24`}
+            ${!isEmpty && ""} py-4 px-4 md:px-8 lg:px-16 xl:px-24 input-area-blur`}
             style={{
-              backgroundColor: isEmpty ? 'transparent' : 'var(--color-bg)',
-              borderColor: 'transparent',
               maxWidth: '100%',
-              margin: '0 auto',
-              boxShadow: isEmpty ? 'none' : '0 -8px 20px rgba(0,0,0,0.05)'
+              margin: '0 auto'
             }}
           >
             <ChatInput
