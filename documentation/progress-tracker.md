@@ -398,27 +398,48 @@ This file tracks every step of the migration to a unified backend-served fronten
 
 To further enhance the AI capabilities in the chatbot, we will follow these steps:
 
-1. **Implement Advanced Streaming Features** - Planned [2024-06-30]
+1. **Implement Intelligent Lazy Loading for Chat History** - Planned [2024-06-30]
+   - Replace full conversation loading with incremental message fetching
+   - Implement scroll-based detection for automatically loading older messages
+   - Add smooth loading indicators during message fetching
+   - Optimize message rendering with virtualization for large conversations
+   - Implement proper scroll position maintenance when loading older messages
+   - Add debounced scroll event handling to prevent performance issues
+   - Create backend pagination API with optimized database queries
+   - Implement memory usage optimizations for large chat histories
+
+2. **Add Message Search Functionality** - Planned [2024-07-03]
+   - Create search input in chat interface
+   - Implement backend search API with full-text search capabilities
+   - Add highlighting for search matches in messages
+   - Implement search result navigation
+   - Add filters for searching by date, sender, and content type
+   - Create search history for quick access to previous searches
+   - Optimize search performance for large conversations
+
+3. **Implement Advanced Streaming Features** - Planned [2024-07-05]
    - Add progress indicators for long-running responses
    - Implement token counting and display
    - Add model-specific styling for messages
    - Enhance streaming performance for large responses
    - Implement partial message saving for very long responses
+   - Add streaming analytics for performance monitoring
 
-2. **Add Advanced Features** - Planned [2024-07-05]
+4. **Add Advanced Chat Features** - Planned [2024-07-10]
    - Implement conversation export/import functionality
    - Add automatic chat title generation based on content
    - Support file attachments for context provision
    - Implement message reactions and feedback system
    - Add model parameter customization (temperature, top_p, etc.)
+   - Create chat templates for common conversation types
 
-3. **Enhance User Experience** - Planned [2024-07-10]
+5. **Enhance User Experience** - Planned [2024-07-15]
    - Add keyboard shortcuts for common actions
    - Implement chat command shortcuts (/help, /clear, etc.)
    - Create shortcut suggestions based on context
    - Add guidance panel for available commands
    - Improve mobile responsiveness and accessibility
-   - Implement message search functionality
+   - Implement dark/light theme toggle with persistent preference
 
 ---
 
@@ -616,6 +637,320 @@ Refer to `planfornextphases.md` for the detailed roadmap of the AI Integration p
   - Fixed edge cases and improved error handling
   - Ensured consistent behavior across different browsers
   - Verified database persistence for all chat interactions
+
+- [x] 16. **Implement multiline input with Shift+Enter support** - Completed [2024-06-28]
+  - Replaced single-line input with auto-resizing textarea
+  - Added Shift+Enter support for creating new lines
+  - Implemented dynamic height adjustment based on content
+  - Set appropriate min and max heights with scrolling for long messages
+  - Maintained existing keyboard shortcut behavior (Enter to send)
+  - Ensured consistent styling with the original input field
+  - Fixed focus management after sending messages
+
+- [x] 17. **Improve AI response streaming UX** - Completed [2024-06-28]
+  - Enhanced typing indicator animation for better visual feedback
+  - Removed loading animation from AI avatar for cleaner appearance
+  - Added proper abort handling for streaming responses
+  - Implemented proper cleanup of streaming resources
+  - Enhanced error handling for streaming failures
+  - Added detailed logging for debugging streaming issues
+  - Improved overall streaming performance and reliability
+
+- [x] 18. **Simplify Settings Interface** - Completed [2024-06-28]
+  - Removed unused API key functionality from settings page
+  - Streamlined settings tabs to focus on essential features
+  - Improved overall settings page organization
+  - Maintained backend compatibility for future extensions
+  - Enhanced user experience with cleaner interface
+  - Reduced cognitive load by removing unnecessary options
+
+## Implementation Plan for Intelligent Lazy Loading
+
+The current implementation loads all messages at once when a chat session is opened, which can cause performance issues with large conversations. We'll implement an intelligent lazy loading system that loads messages incrementally as the user scrolls up through the conversation history.
+
+### Backend Changes
+
+1. **Update the Messages API Endpoint**
+   ```javascript
+   // In src/routes/chatbot.js
+   router.get('/session/:sessionId', requireAuth, async (req, res) => {
+     try {
+       const { sessionId } = req.params;
+       const limit = parseInt(req.query.limit) || 20;
+       const offset = parseInt(req.query.offset) || 0;
+
+       // Get session details
+       const sessionResult = await pool.query(
+         'SELECT * FROM chat_sessions WHERE id = $1 AND user_id = $2',
+         [sessionId, req.user.id]
+       );
+
+       if (sessionResult.rows.length === 0) {
+         return res.status(404).json({ error: 'Session not found' });
+       }
+
+       // Get total message count
+       const countResult = await pool.query(
+         'SELECT COUNT(*) FROM messages WHERE session_id = $1',
+         [sessionId]
+       );
+       const total = parseInt(countResult.rows[0].count);
+
+       // Get messages with pagination
+       const messagesResult = await pool.query(
+         'SELECT * FROM messages WHERE session_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3',
+         [sessionId, limit, offset]
+       );
+
+       // Format and return the response
+       res.json({
+         session: sessionResult.rows[0],
+         messages: messagesResult.rows.map(formatMessage),
+         total,
+         hasMore: offset + messagesResult.rows.length < total
+       });
+     } catch (error) {
+       console.error('Error fetching session:', error);
+       res.status(500).json({ error: 'Failed to fetch session' });
+     }
+   });
+   ```
+
+### Frontend Changes
+
+1. **Update MessageList Component**
+   ```tsx
+   // In client/src/components/chat/MessageList.tsx
+   const MessageList: React.FC<MessageListProps> = ({
+     messages,
+     isLoading,
+     hasMore,
+     isLoadingMore,
+     onLoadMore
+   }) => {
+     const listRef = useRef<HTMLDivElement>(null);
+     const [scrollPosition, setScrollPosition] = useState(0);
+     const prevMessagesLength = useRef(messages.length);
+
+     // Handle scroll events to detect when to load more messages
+     const handleScroll = useCallback(() => {
+       if (!listRef.current) return;
+
+       const { scrollTop } = listRef.current;
+       setScrollPosition(scrollTop);
+
+       // If scrolled near the top (e.g., within 100px) and not already loading
+       if (scrollTop < 100 && hasMore && !isLoadingMore) {
+         onLoadMore();
+       }
+     }, [hasMore, isLoadingMore, onLoadMore]);
+
+     // Debounce scroll handler for better performance
+     const debouncedHandleScroll = useMemo(
+       () => debounce(handleScroll, 100),
+       [handleScroll]
+     );
+
+     // Add scroll event listener
+     useEffect(() => {
+       const listElement = listRef.current;
+       if (listElement) {
+         listElement.addEventListener('scroll', debouncedHandleScroll);
+       }
+
+       return () => {
+         if (listElement) {
+           listElement.removeEventListener('scroll', debouncedHandleScroll);
+         }
+         debouncedHandleScroll.cancel();
+       };
+     }, [debouncedHandleScroll]);
+
+     // Maintain scroll position when new messages are loaded at the top
+     useEffect(() => {
+       if (messages.length > prevMessagesLength.current && listRef.current) {
+         // Calculate height difference
+         const heightDifference = listRef.current.scrollHeight - listRef.current.clientHeight;
+
+         // Adjust scroll position to maintain the same relative position
+         listRef.current.scrollTop = heightDifference - scrollPosition;
+       }
+
+       prevMessagesLength.current = messages.length;
+     }, [messages.length, scrollPosition]);
+
+     return (
+       <div
+         ref={listRef}
+         className="message-list"
+         style={messageListStyles.container}
+       >
+         {hasMore && (
+           <div style={messageListStyles.loadingIndicator}>
+             {isLoadingMore ? (
+               <div className="loading-spinner">Loading...</div>
+             ) : (
+               <div className="scroll-indicator">Scroll up for more messages</div>
+             )}
+           </div>
+         )}
+
+         {messages.map((message) => (
+           <ChatMessage
+             key={message.id}
+             message={message}
+             isAI={message.role === 'assistant'}
+           />
+         ))}
+
+         {isLoading && (
+           <div style={messageListStyles.loadingIndicator}>
+             <div className="loading-spinner">Loading...</div>
+           </div>
+         )}
+       </div>
+     );
+   };
+   ```
+
+2. **Update Chatbot Component**
+   ```tsx
+   // In client/src/pages/Chatbot.tsx
+
+   // Add these state variables
+   const [messageOffset, setMessageOffset] = useState(0);
+   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+   const MESSAGES_PER_PAGE = 20;
+
+   // Update fetchSessionMessages function
+   const fetchSessionMessages = async (sessionId: string, append = false) => {
+     try {
+       setLoadingMessages(true);
+       const offset = append ? messageOffset : 0;
+       const response = await chatbotService.getSession(
+         sessionId,
+         MESSAGES_PER_PAGE,
+         offset
+       );
+
+       const { messages: fetchedMessages, total } = response;
+       setTotalMessages(total);
+       setHasMoreMessages(offset + fetchedMessages.length < total);
+
+       if (append) {
+         // Add older messages to the top
+         setMessages(prev => [...fetchedMessages, ...prev]);
+         setMessageOffset(prev => prev + fetchedMessages.length);
+       } else {
+         // Initial load
+         setMessages(fetchedMessages);
+         setMessageOffset(fetchedMessages.length);
+       }
+
+       setSessionTitle(response.session.title);
+     } catch (error) {
+       console.error('Error fetching session messages:', error);
+     } finally {
+       setLoadingMessages(false);
+     }
+   };
+
+   // Add loadMoreMessages function
+   const loadMoreMessages = async () => {
+     if (!activeSessionId || !hasMoreMessages || loadingMoreMessages) return;
+
+     setLoadingMoreMessages(true);
+     try {
+       await fetchSessionMessages(activeSessionId, true);
+     } finally {
+       setLoadingMoreMessages(false);
+     }
+   };
+
+   // Update the MessageList component in the render function
+   <MessageList
+     messages={messages}
+     isLoading={isLoading}
+     hasMore={hasMoreMessages}
+     isLoadingMore={loadingMoreMessages}
+     onLoadMore={loadMoreMessages}
+   />
+   ```
+
+3. **Update ChatbotService**
+   ```typescript
+   // In client/src/services/chatbotService.ts
+   getSession: async (sessionId: string, limit = 20, offset = 0) => {
+     const response = await api.get(`/chatbot/session/${sessionId}`, {
+       params: { limit, offset }
+     });
+     return response.data;
+   },
+   ```
+
+### Performance Optimizations
+
+1. **Add Database Indexes**
+   ```sql
+   -- Add index for faster message retrieval by timestamp
+   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+
+   -- Add composite index for session_id and timestamp
+   CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp);
+   ```
+
+2. **Implement Message Virtualization (Optional)**
+   For extremely large conversations, we can use a virtualized list that only renders visible messages:
+   ```tsx
+   import { FixedSizeList } from 'react-window';
+
+   // Inside MessageList component
+   return (
+     <div ref={listRef} style={messageListStyles.container}>
+       {hasMore && isLoadingMore && (
+         <div style={messageListStyles.loadingIndicator}>
+           <div className="loading-spinner">Loading...</div>
+         </div>
+       )}
+
+       <FixedSizeList
+         height={600}
+         width="100%"
+         itemCount={messages.length}
+         itemSize={100} // Average message height
+         itemData={{ messages }}
+       >
+         {({ index, style, data }) => (
+           <div style={style}>
+             <ChatMessage
+               message={data.messages[index]}
+               isAI={data.messages[index].role === 'assistant'}
+             />
+           </div>
+         )}
+       </FixedSizeList>
+     </div>
+   );
+   ```
+
+### Testing Plan
+
+1. Test with various conversation sizes:
+   - Small (10-20 messages)
+   - Medium (100-200 messages)
+   - Large (500+ messages)
+
+2. Verify scroll behavior:
+   - Smooth loading of older messages
+   - Proper maintenance of scroll position
+   - Correct loading indicators
+
+3. Performance metrics to measure:
+   - Initial load time
+   - Memory usage
+   - Scroll performance (frames per second)
+   - Time to load additional message batches
 
 ## Future Enhancements
 
