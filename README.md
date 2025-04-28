@@ -32,7 +32,7 @@ A modern, responsive web application built with React, TypeScript, and Express t
 ### Frontend
 - React 18
 - TypeScript
-- Vite (Build tool)
+- React Scripts (Build tool)
 - TailwindCSS (Styling)
 - React Router v6 (Routing)
 - Axios (API calls)
@@ -56,7 +56,7 @@ A modern, responsive web application built with React, TypeScript, and Express t
 │   │   ├── services/          # API services
 │   │   └── config.ts          # Frontend configuration
 │   ├── .env                   # Environment variables
-│   └── vite.config.ts         # Vite configuration
+│   └── build/                 # Build output directory
 │
 ├── src/                       # Backend application
 │   ├── routes/                # API routes
@@ -77,12 +77,72 @@ A modern, responsive web application built with React, TypeScript, and Express t
 └── package.json               # Project dependencies
 ```
 
+## 🏗️ Unified Architecture
+
+The Platform Dashboard uses a unified architecture where the Express backend serves both the API endpoints and the React frontend static files:
+
+### Key Architecture Points
+
+1. **Single Server Deployment**
+   - No separate frontend development server
+   - All traffic goes through a single port
+   - Simplified deployment and configuration
+
+2. **API Structure**
+   - All API endpoints are prefixed with `/api`
+   - Clear separation between API calls and static assets
+   - RESTful architecture for predictable interactions
+
+3. **Frontend Static Files**
+   - Built React app is served from `./client/build`
+   - Path configurable via `static_root_path` in config.ini
+   - Express serves all static assets (JS, CSS, images)
+
+4. **SPA Routing Support**
+   - Backend serves index.html for all non-API routes
+   - Allows direct URL access to React routes
+   - Client-side routing works seamlessly with server
+
+5. **Centralized Configuration**
+   - All settings in `conf/config.ini`
+   - Frontend fetches configuration from backend
+   - No hardcoded values in frontend code
+
+### Flow Diagram
+
+```
+┌─────────────┐     HTTP Request     ┌─────────────────────────┐
+│  Browser    │──────────────────────▶  Express Server         │
+└─────────────┘                      │                         │
+       ▲                             │  ┌─────────────────┐    │
+       │                             │  │ API Routes      │    │
+       │                             │  │ (/api/*)        │    │
+       │                             │  └─────────────────┘    │
+       │       HTTP Response         │                         │
+       └─────────────────────────────│  ┌─────────────────┐    │
+                                     │  │ Static Files    │    │
+                                     │  │ (React Build)   │    │
+                                     │  └─────────────────┘    │
+                                     │                         │
+                                     │  ┌─────────────────┐    │
+                                     │  │ SPA Fallback    │    │
+                                     │  │ Route           │    │
+                                     │  └─────────────────┘    │
+                                     └─────────────────────────┘
+                                              │
+                                              │ reads
+                                              ▼
+                                     ┌─────────────────────────┐
+                                     │ config.ini              │
+                                     └─────────────────────────┘
+```
+
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js (v14 or higher)
 - npm or yarn
-- PostgreSQL database
+- PostgreSQL database (or SQLite for simpler setup)
 
 ### Installation
 
@@ -101,31 +161,94 @@ npm install
 ```bash
 cd client
 npm install
+cd ..
 ```
 
 4. Configure the application:
-   - Copy `config.ini.example` to `config.ini` (if exists)
+   - Create a `conf/config.ini` file (you can copy from `conf/config.ini.example` if it exists)
    - Update configuration values as needed
-   - Set up environment variables in `client/.env`
+   - All configuration is managed from the backend's config.ini file
 
 ### Running the Application
 
-1. Start the backend server:
+#### Production Mode
+1. Build and run the application:
+```bash
+# In the root directory
+npm run deploy
+```
+
+#### Development Mode
+1. Start the backend development server:
 ```bash
 # In the root directory
 npm run dev
 ```
 
-2. Start the frontend development server:
+2. In a separate terminal, build the frontend with watch mode:
 ```bash
-# In the client directory
-cd client
-npm run dev
+# In the root directory
+npm run dev:client
 ```
 
 3. Access the application:
-   - Local: http://localhost:5173
-   - Network: http://<your-ip>:5173
+   - http://localhost:5634
+   - (Port can be configured in config.ini)
+
+### Configuration Options
+
+#### Essential Configuration Properties
+
+```ini
+[server]
+port = 5634                    # The port the server will listen on
+static_root_path = ./client/build  # Path to frontend static files
+
+[database]
+type = postgresql              # Database type (postgresql or sqlite)
+host = localhost               # Database host (for PostgreSQL)
+port = 5432                    # Database port (for PostgreSQL)
+name = copilot                 # Database name
+user = postgres                # Database username (for PostgreSQL)
+password = your_password       # Database password (for PostgreSQL)
+
+[frontend]
+title = Platform Dashboard     # Application title
+api_url = /api                 # API URL prefix
+default_theme = dark           # Default theme (dark, light)
+
+[security]
+cookie_secure = false          # Set to true for HTTPS environments
+cookie_max_age = 86400000      # Session cookie lifetime in milliseconds (1 day)
+secret_key = your_secret_key   # Secret for session encryption (change this!)
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Cannot connect to database**
+   - Verify database credentials in config.ini
+   - Ensure the database server is running
+   - For PostgreSQL, check that the database exists and user has proper permissions
+
+2. **Frontend assets not loading**
+   - Ensure you've built the frontend with `npm run build`
+   - Check that the static_root_path in config.ini points to the correct directory
+   - Verify that the build directory exists and contains the expected files
+
+3. **API endpoints returning 404**
+   - All API endpoints should be prefixed with `/api`
+   - Check network requests in browser developer tools to ensure correct URLs
+
+4. **Session not persisting**
+   - Ensure cookie settings in config.ini are appropriate for your environment
+   - For HTTPS environments, set cookie_secure=true
+   - Check browser cookie storage to verify cookies are being set
+
+5. **SPA routing issues (404 on page refresh)**
+   - The server is configured to serve index.html for all non-API routes
+   - If you see 404 errors, check the server.js SPA fallback route configuration
 
 ## 🔐 Authentication
 
@@ -142,12 +265,13 @@ npm run dev
 
 ## 🔧 Configuration
 
-### Backend Configuration (conf/config.ini)
+### Application Configuration (conf/config.ini)
 ```ini
 [server]
 domain = 0.0.0.0
 port = 5634
 session_secret = your_secret_key
+static_root_path = ./client/build
 
 [database]
 type = postgresql
@@ -157,6 +281,11 @@ name = copilot
 user = postgres
 password = your_password
 
+[frontend]
+title = Platform Dashboard
+api_url = /api
+default_theme = dark
+
 [admin]
 default_username = admin
 default_password = admin
@@ -164,11 +293,6 @@ default_password = admin
 [security]
 cookie_secure = false
 cookie_max_age = 86400000
-```
-
-### Frontend Configuration (client/.env)
-```env
-VITE_BACKEND_URL=/api
 ```
 
 ## 📱 Responsive Design Breakpoints

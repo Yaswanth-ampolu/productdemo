@@ -47,6 +47,21 @@ CREATE SEQUENCE public.messages_id_seq
     NO MAXVALUE
     CACHE 1;
 
+CREATE SEQUENCE public.ollama_settings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+-- Create schema_migrations table for tracking migrations
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+    id SERIAL PRIMARY KEY,
+    version VARCHAR(20) NOT NULL UNIQUE,
+    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    description TEXT
+);
+
 -- Create tables
 CREATE TABLE public.users (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -69,12 +84,23 @@ CREATE TABLE public.sessions (
 
 CREATE TABLE public.ai_models (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    model_id character varying(255) NOT NULL,
     name character varying(100) NOT NULL,
-    model_id character varying(100) NOT NULL,
     description text,
     parameters jsonb,
-    is_active boolean DEFAULT true,
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+    is_active boolean DEFAULT false,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    ollama_model_id character varying(255) NOT NULL
+);
+
+CREATE TABLE public.ollama_settings (
+    id SERIAL PRIMARY KEY,
+    host VARCHAR(255) NOT NULL DEFAULT 'localhost',
+    port INTEGER NOT NULL DEFAULT 11434,
+    default_model VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE public.chat_sessions (
@@ -158,6 +184,10 @@ ALTER TABLE ONLY public.users ADD CONSTRAINT users_username_key UNIQUE (username
 CREATE INDEX idx_chat_sessions_timestamp ON public.chat_sessions USING btree (last_message_timestamp);
 CREATE INDEX idx_chat_sessions_user_id ON public.chat_sessions USING btree (user_id);
 CREATE INDEX idx_messages_session_id ON public.messages USING btree (session_id);
+CREATE INDEX idx_ollama_settings_updated_at ON public.ollama_settings USING btree (updated_at);
+CREATE INDEX idx_ai_models_ollama_model_id ON public.ai_models USING btree (ollama_model_id);
+CREATE INDEX idx_ai_models_is_active ON public.ai_models USING btree (is_active);
+CREATE INDEX idx_ai_models_name ON public.ai_models USING btree (name);
 
 -- Add foreign key constraints
 ALTER TABLE ONLY public.chat_sessions ADD CONSTRAINT chat_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
@@ -240,6 +270,11 @@ CREATE TRIGGER pdfs_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.pd
 CREATE TRIGGER update_session_timestamp AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.update_chat_session_timestamp();
 CREATE TRIGGER users_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION public.trigger_update_dashboard_metrics();
 
+-- Insert default settings if the ollama_settings table is empty
+INSERT INTO public.ollama_settings (host, port, default_model)
+SELECT 'localhost', 11434, ''
+WHERE NOT EXISTS (SELECT 1 FROM public.ollama_settings);
+
 -- Grant ownership
 ALTER TABLE public.ai_models OWNER TO postgres;
 ALTER TABLE public.chat_sessions OWNER TO postgres;
@@ -247,7 +282,9 @@ ALTER TABLE public.dashboard_metrics OWNER TO postgres;
 ALTER TABLE public.mcp_connections OWNER TO postgres;
 ALTER TABLE public.message_files OWNER TO postgres;
 ALTER TABLE public.messages OWNER TO postgres;
+ALTER TABLE public.ollama_settings OWNER TO postgres;
 ALTER TABLE public.pdfs OWNER TO postgres;
+ALTER TABLE public.schema_migrations OWNER TO postgres;
 ALTER TABLE public.sessions OWNER TO postgres;
 ALTER TABLE public.users OWNER TO postgres;
 

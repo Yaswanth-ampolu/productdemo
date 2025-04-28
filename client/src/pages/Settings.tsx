@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import axios from 'axios';
-import { 
-  UserIcon, 
+import {
+  UserIcon,
   PaintBrushIcon,
-  KeyIcon,
+  ServerIcon,
 } from '@heroicons/react/24/outline';
+import OllamaSettings from '../components/settings/OllamaSettings';
 
 // Import ThemeType from the ThemeContext
 type ThemeType = 'dark' | 'light' | 'midnight';
@@ -14,10 +15,19 @@ type ThemeType = 'dark' | 'light' | 'midnight';
 export default function Settings() {
   const { user, refreshUser } = useAuth();
   const { currentTheme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    // Try to restore the last active tab from localStorage
+    const savedTab = localStorage.getItem('settings_active_tab');
+    return savedTab || 'profile';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Save active tab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('settings_active_tab', activeTab);
+  }, [activeTab]);
 
   // Define available themes
   const themes = [
@@ -33,8 +43,7 @@ export default function Settings() {
     email: user?.email || ''
   });
 
-  // API Key state
-  const [apiKey, setApiKey] = useState('');
+
 
   // Load user data
   useEffect(() => {
@@ -69,11 +78,11 @@ export default function Settings() {
   // Handle profile save
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!profileForm.username || !profileForm.email) {
       return showError('Username and email are required');
     }
-    
+
     setIsLoading(true);
     try {
       // Update user profile
@@ -82,7 +91,7 @@ export default function Settings() {
         name: profileForm.name,
         email: profileForm.email
       });
-      
+
       await refreshUser();
       showSuccess('Profile updated successfully');
     } catch (error: any) {
@@ -93,24 +102,7 @@ export default function Settings() {
     }
   };
 
-  // Save API key
-  const handleSaveApiKey = async () => {
-    if (!apiKey) {
-      return showError('API key is required');
-    }
-    
-    setIsLoading(true);
-    try {
-      // Save API key
-      await axios.post('/api/settings/api-key', { apiKey });
-      showSuccess('API key saved successfully');
-    } catch (error: any) {
-      console.error('Error saving API key:', error);
-      showError(error.response?.data?.error || 'Failed to save API key');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   // Show success message
   const showSuccess = (message: string) => {
@@ -130,13 +122,13 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', name: 'Profile', icon: UserIcon },
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
-    { id: 'api', name: 'API Keys', icon: KeyIcon },
+    { id: 'ollama', name: 'Ollama AI', icon: ServerIcon },
   ];
 
   return (
-    <div className="py-6 px-4 md:px-8" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="py-6 px-4 md:px-8 overflow-hidden max-w-[1400px] mx-auto" style={{ backgroundColor: 'var(--color-bg)' }}>
       <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--color-text)' }}>Settings</h1>
-      
+
       {/* Success/Error messages */}
       {successMessage && (
         <div className="mb-4 p-3 bg-green-900/30 border border-green-800 rounded-md text-green-400">
@@ -148,13 +140,13 @@ export default function Settings() {
           {errorMessage}
         </div>
       )}
-      
-      <div className="flex flex-col md:flex-row gap-8">
+
+      <div className="flex flex-col md:flex-row gap-6">
         {/* Settings tabs */}
         <div className="w-full md:w-64 flex-shrink-0">
-          <div className="rounded-lg overflow-hidden" style={{ 
-            backgroundColor: 'var(--color-surface)', 
-            borderColor: 'var(--color-border)' 
+          <div className="rounded-lg overflow-hidden sticky md:top-4" style={{
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)'
           }}>
             <ul>
               {tabs.map((tab) => (
@@ -164,10 +156,10 @@ export default function Settings() {
                     className={`w-full flex items-center px-4 py-3 transition-colors ${
                       activeTab === tab.id ? 'font-medium' : ''
                     }`}
-                    style={{ 
+                    style={{
                       color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-text)',
                       backgroundColor: activeTab === tab.id ? 'var(--color-surface-light)' : 'transparent',
-                      borderLeft: activeTab === tab.id ? `3px solid var(--color-primary)` : '3px solid transparent' 
+                      borderLeft: activeTab === tab.id ? `3px solid var(--color-primary)` : '3px solid transparent'
                     }}
                   >
                     <tab.icon className="w-5 h-5 mr-3" />
@@ -178,23 +170,24 @@ export default function Settings() {
             </ul>
           </div>
         </div>
-        
+
         {/* Settings content */}
-        <div className="flex-1 rounded-lg p-6" style={{ 
-          backgroundColor: 'var(--color-surface)', 
-          borderColor: 'var(--color-border)'
+        <div className="flex-1 rounded-lg p-5 overflow-auto" style={{
+          backgroundColor: 'var(--color-surface)',
+          borderColor: 'var(--color-border)',
+          maxHeight: 'calc(100vh - 150px)'
         }}>
           {activeTab === 'profile' && (
             <div>
               <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Profile Settings</h2>
               <div className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center gap-4 pb-6" style={{ 
-                  borderBottom: `1px solid var(--color-border)` 
+                <div className="flex flex-col md:flex-row md:items-center gap-4 pb-6" style={{
+                  borderBottom: `1px solid var(--color-border)`
                 }}>
-                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold" 
-                    style={{ 
-                      backgroundColor: `var(--color-primary-light)20`, 
-                      color: 'var(--color-primary)' 
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold"
+                    style={{
+                      backgroundColor: `var(--color-primary-light)20`,
+                      color: 'var(--color-primary)'
                     }}
                   >
                     {user?.username?.charAt(0).toUpperCase() || 'U'}
@@ -206,12 +199,12 @@ export default function Settings() {
                     </p>
                   </div>
                 </div>
-                
+
                 <form onSubmit={handleProfileSave} className="space-y-4">
                   <div>
                     <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Username</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="username"
                       value={profileForm.username}
                       onChange={handleProfileChange}
@@ -223,11 +216,11 @@ export default function Settings() {
                       }}
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Full Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       name="name"
                       value={profileForm.name}
                       onChange={handleProfileChange}
@@ -239,11 +232,11 @@ export default function Settings() {
                       }}
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>Email</label>
-                    <input 
-                      type="email" 
+                    <input
+                      type="email"
                       name="email"
                       value={profileForm.email}
                       onChange={handleProfileChange}
@@ -255,7 +248,7 @@ export default function Settings() {
                       }}
                     />
                   </div>
-                  
+
                   <button
                     type="submit"
                     disabled={isLoading}
@@ -272,15 +265,15 @@ export default function Settings() {
               </div>
             </div>
           )}
-          
+
           {activeTab === 'appearance' && (
             <div>
               <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Appearance Settings</h2>
               <p className="mb-4" style={{ color: 'var(--color-text-secondary)' }}>Choose your preferred theme for the application.</p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                 {themes.map((theme) => (
-                  <div 
+                  <div
                     key={theme.id}
                     onClick={() => handleThemeChange(theme.id)}
                     className={`relative rounded-lg p-4 cursor-pointer transition-all duration-200`}
@@ -293,20 +286,20 @@ export default function Settings() {
                     }}
                   >
                     <div className="flex items-center mb-3">
-                      <div 
+                      <div
                         className="w-10 h-10 rounded-full flex items-center justify-center mr-3"
                         style={{
-                          backgroundColor: theme.id === 'dark' ? '#1a1f2d' : 
-                                           theme.id === 'light' ? '#ffffff' : 
+                          backgroundColor: theme.id === 'dark' ? '#1a1f2d' :
+                                           theme.id === 'light' ? '#ffffff' :
                                            '#111827',
                           border: '1px solid var(--color-border)'
                         }}
                       >
-                        <div 
-                          className="w-5 h-5 rounded-full" 
+                        <div
+                          className="w-5 h-5 rounded-full"
                           style={{
-                            backgroundColor: theme.id === 'dark' ? '#3b82f6' : 
-                                             theme.id === 'light' ? '#3b82f6' : 
+                            backgroundColor: theme.id === 'dark' ? '#3b82f6' :
+                                             theme.id === 'light' ? '#3b82f6' :
                                              '#8b5cf6'
                           }}
                         ></div>
@@ -314,9 +307,9 @@ export default function Settings() {
                       <h3 className="font-medium" style={{ color: 'var(--color-text)' }}>{theme.name}</h3>
                     </div>
                     <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{theme.description}</p>
-                    
+
                     {currentTheme === theme.id && (
-                      <div 
+                      <div
                         className="absolute top-2 right-2 w-4 h-4 rounded-full"
                         style={{ backgroundColor: 'var(--color-primary)' }}
                       ></div>
@@ -326,51 +319,16 @@ export default function Settings() {
               </div>
             </div>
           )}
-          
-          {activeTab === 'api' && (
+
+
+          {activeTab === 'ollama' && (
             <div>
-              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>API Key Management</h2>
-              <p className="mb-4" style={{ color: 'var(--color-text-secondary)' }}>Manage your API keys for external integrations.</p>
-              
-              <div 
-                className="p-4 mb-6 rounded" 
-                style={{ 
-                  backgroundColor: 'var(--color-surface-dark)',
-                  borderColor: 'var(--color-border)'
-                }}
-              >
-                <h3 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>Add New API Key</h3>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <input 
-                    type="text" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Enter API key"
-                    className="flex-1 rounded px-3 py-2 focus:outline-none focus:ring-1"
-                    style={{
-                      backgroundColor: 'var(--color-surface)',
-                      borderColor: 'var(--color-border)',
-                      color: 'var(--color-text)'
-                    }}
-                  />
-                  <button
-                    onClick={handleSaveApiKey}
-                    disabled={isLoading || !apiKey}
-                    className="px-4 py-2 rounded transition-colors whitespace-nowrap"
-                    style={{
-                      backgroundColor: 'var(--color-primary)',
-                      color: 'white',
-                      opacity: (isLoading || !apiKey) ? 0.7 : 1
-                    }}
-                  >
-                    {isLoading ? 'Saving...' : 'Save Key'}
-                  </button>
-                </div>
-              </div>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Ollama AI Settings</h2>
+              <OllamaSettings isAdmin={user?.role === 'admin'} />
             </div>
           )}
         </div>
       </div>
     </div>
   );
-} 
+}

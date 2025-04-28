@@ -179,8 +179,40 @@ process.on('exit', () => {
   console.log('Database connection pool closed');
 });
 
+/**
+ * Runs a migration script file
+ */
+const runMigration = async (scriptPath) => {
+  try {
+    const scriptContent = fs.readFileSync(path.resolve(__dirname, scriptPath), 'utf8');
+    await db.query(scriptContent);
+    console.log(`Migration script ${scriptPath} executed successfully`);
+    return true;
+  } catch (error) {
+    console.error(`Error executing migration script ${scriptPath}:`, error);
+    return false;
+  }
+};
+
+/**
+ * Runs database migrations for model_id column
+ */
+const runModelIdMigration = async () => {
+  try {
+    await runMigration('scripts/sql/add_model_id_to_ai_models.sql');
+    console.log('Model ID migration completed');
+    return true;
+  } catch (error) {
+    console.error('Error running model_id migration:', error);
+    return false;
+  }
+};
+
+// Export functions
 module.exports = {
   db,
   pool, // Export the pool for direct access if needed
-  initializeDatabase
+  initializeDatabase,
+  runMigration,
+  runModelIdMigration
 }; 

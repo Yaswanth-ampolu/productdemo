@@ -1,27 +1,34 @@
 import axios from 'axios';
 
+// Create axios instance with defaults
 const api = axios.create({
-  // Use relative URLs instead of absolute URLs with baseURL
-  baseURL: '',
-  withCredentials: true, // Important for cookies
+  baseURL: '/api',
   headers: {
-    'Content-Type': 'application/json'
-  }
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true, // Important for session cookies
 });
 
-// Add response interceptor for error handling
+// Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    
-    // Don't redirect on 401 from auth endpoints
-    if (error.response?.status === 401 && 
-        !error.config.url?.includes('/auth/')) {
-      window.location.href = '/login';
+    // Handle session timeout or unauthorized access
+    if (error.response && error.response.status === 401) {
+      // Check if the error was from the /auth/me endpoint
+      const isAuthMeRequest = error.config.url === '/auth/me';
+      
+      // Only redirect if it's NOT the initial /auth/me check failing
+      if (!isAuthMeRequest) {
+        console.log('Redirecting to login due to 401 on non-/auth/me endpoint');
+        window.location.href = '/login';
+      } else {
+        // For /auth/me 401, just let the AuthContext handle setting user to null
+        console.log('/auth/me returned 401, user is likely not logged in.');
+      }
     }
     return Promise.reject(error);
   }
 );
 
-export default api; 
+export { api }; 
