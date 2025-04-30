@@ -11,6 +11,10 @@ const path = require('path');
 // Default timeout for Ollama API requests (in milliseconds)
 const DEFAULT_TIMEOUT = 120000; // Increased to 2 minutes for streaming
 const STREAMING_TIMEOUT = 300000; // 5 minutes for streaming requests
+const EMBEDDING_TIMEOUT = 60000; // 1 minute for embedding generation
+
+// Default embedding model to use if none specified
+const DEFAULT_EMBEDDING_MODEL = 'nomic-embed-text';
 
 /**
  * OllamaService manages communication with Ollama API and database operations
@@ -20,6 +24,7 @@ class OllamaService {
   constructor(config) {
     this.config = config;
     this.settings = null;
+    this.embeddingModel = this.config?.embedding?.model || DEFAULT_EMBEDDING_MODEL;
   }
 
   /**
@@ -455,6 +460,162 @@ class OllamaService {
       return {
         success: false,
         error: error.message
+      };
+    }
+  }
+
+  /**
+   * Generates embeddings for a single text input
+   * @param {string} text - The text to generate embeddings for
+   * @param {string} model - The embedding model to use (defaults to nomic-embed-text)
+   * @returns {Promise<Object>} - Object containing success status and embedding data or error
+   */
+  async generateEmbedding(text, model = null) {
+    try {
+      if (!text || typeof text !== 'string') {
+        throw new Error('Invalid text input for embedding generation');
+      }
+
+      const embeddingModel = model || this.embeddingModel;
+      const client = this.createClient();
+      // Set longer timeout specifically for embedding requests
+      client.defaults.timeout = EMBEDDING_TIMEOUT;
+
+      logger.info(`Generating embedding using model: ${embeddingModel}`);
+      
+      const response = await client.post('/api/embeddings', {
+        model: embeddingModel,
+        prompt: text,
+      });
+
+      if (response.data && response.data.embedding) {
+        return {
+          success: true,
+          embedding: response.data.embedding,
+          model: embeddingModel,
+          dimensions: response.data.embedding.length
+        };
+      } else {
+        throw new Error('Invalid response from Ollama embeddings API');
+      }
+    } catch (error) {
+      logger.error('Error generating embedding:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data || null
+      };
+    }
+  }
+
+  /**
+   * Generates embeddings for multiple text inputs in batch
+   * @param {string[]} texts - Array of text inputs to generate embeddings for
+   * @param {string} model - The embedding model to use (defaults to nomic-embed-text)
+   * @param {number} batchSize - Number of texts to process in each batch (default 10)
+   * @param {function} onProgress - Optional callback for progress updates
+   * @returns {Promise<Object>} - Object containing success status and array of embeddings or error
+   */
+  async generateEmbeddingsBatch(texts, model = null, batchSize = 10, onProgress = null) {
+    try {
+      if (!Array.isArray(texts) || texts.length === 0) {
+        throw new Error('Invalid texts input for batch embedding generation');
+      }
+
+      const embeddings = [];
+      const embeddingModel = model || this.embeddingModel;
+      const totalTexts = texts.length;
+      
+      logger.info(`Generating embeddings for ${totalTexts} texts using model: ${embeddingModel}`);
+
+      // Process in batches to avoid overloading the server
+      for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        const batchPromises = batch.map(text => this.generateEmbedding(text, embeddingModel));
+        
+        // Wait for all embeddings in this batch to complete
+        const batchResults = await Promise.all(batchPromises);
+        
+        // Add successful embeddings to the result array
+        for (const result of batchResults) {
+          if (result.success) {
+            embeddings.push(result.embedding);
+          } else {
+            // For failed embeddings, add a null placeholder
+            embeddings.push(null);
+            logger.warn(`Failed to generate embedding in batch: ${result.error}`);
+          }
+        }
+        
+        // Call progress callback if provided
+        if (typeof onProgress === 'function') {
+          const progress = Math.min(100, Math.round(((i + batch.length) / totalTexts) * 100));
+          onProgress(progress, i + batch.length, totalTexts);
+        }
+      }
+
+      return {
+        success: true,
+        embeddings: embeddings,
+        count: embeddings.length,
+        model: embeddingModel
+      };
+    } catch (error) {
+      logger.error('Error generating batch embeddings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Gets information about available embedding models
+   * @returns {Promise<Object>} - Object containing available embedding models
+   */
+  async getEmbeddingModels() {
+    try {
+      const { success, models } = await this.getModelsFromDB();
+      
+      if (!success) {
+        throw new Error('Failed to retrieve models from database');
+      }
+      
+      // Filter models that can be used for embeddings
+      // Currently focusing on nomic-embed-text but could be expanded
+      const embeddingModels = models.filter(model => 
+        model.is_active && (
+          model.ollama_model_id.includes('embed') || 
+          model.ollama_model_id === 'nomic-embed-text'
+        )
+      );
+      
+      if (embeddingModels.length === 0) {
+        // If no embedding models are active, return all models that could be used
+        const potentialModels = models.filter(model => 
+          model.ollama_model_id.includes('embed') || 
+          model.ollama_model_id === 'nomic-embed-text'
+        );
+        
+        return {
+          success: true,
+          models: potentialModels,
+          default: this.embeddingModel,
+          message: 'No active embedding models found. Please activate one of these models.'
+        };
+      }
+      
+      return {
+        success: true,
+        models: embeddingModels,
+        default: this.embeddingModel
+      };
+    } catch (error) {
+      logger.error('Error retrieving embedding models:', error);
+      return {
+        success: false,
+        error: error.message,
+        models: []
       };
     }
   }

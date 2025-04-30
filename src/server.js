@@ -14,6 +14,21 @@ const settingsRoutes = require('./routes/settings');
 const dashboardRoutes = require('./routes/dashboard');
 const configRoutes = require('./routes/config');
 const ollamaRoutes = require('./routes/ollama');
+
+// Try to require the documents routes, but don't fail if they're not available
+let documentsRoutes;
+try {
+  documentsRoutes = require('./routes/documents');
+} catch (error) {
+  console.error('Documents routes not available:', error.message);
+  // Create a dummy router that returns 503 for all routes
+  documentsRoutes = express.Router();
+  documentsRoutes.all('*', (req, res) => {
+    res.status(503).json({
+      error: 'Document service unavailable. Please install required dependencies: npm install multer uuid'
+    });
+  });
+}
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 
@@ -80,19 +95,20 @@ async function startServer() {
     apiRouter.use('/settings', settingsRoutes);
     apiRouter.use('/dashboard', dashboardRoutes);
     apiRouter.use('/ollama', ollamaRoutes(config));
+    apiRouter.use('/documents', documentsRoutes);
     apiRouter.use('/', configRoutes(config)); // Add config routes at the API root
-    
+
     // Mount all API routes under /api
     app.use('/api', apiRouter);
 
     // Serve static files from client/build
     const staticPath = config.server.static_root_path || path.join(__dirname, '../client/build');
     console.log(`Serving static files from: ${staticPath}`);
-    
+
     if (fs.existsSync(staticPath)) {
       // Serve static files
       app.use(express.static(staticPath));
-      
+
       // For any request that doesn't match an API route or static file,
       // send the React app's index.html (for client-side routing)
       app.get('*', (req, res) => {
@@ -140,4 +156,4 @@ async function startServer() {
 }
 
 // Start the server
-startServer(); 
+startServer();

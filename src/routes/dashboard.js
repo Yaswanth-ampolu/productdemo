@@ -61,7 +61,7 @@ router.get('/metrics', isAuthenticated, isAdmin, async (req, res) => {
         totalMessages: 0,
         recentMessages: 0,
         avgResponseTime: 0,
-        totalPdfs: 0
+        totalDocuments: 0
       },
       licenseUsage: {
         totalLicenses: 25,
@@ -154,20 +154,20 @@ router.get('/metrics', isAuthenticated, isAdmin, async (req, res) => {
         console.error('Error details:', messageError.message);
       }
 
-      // Count PDFs
-      let pdfCount = 0;
+      // Count documents
+      let documentCount = 0;
       try {
-        const pdfCountQuery = await pool.query(`
-          SELECT COUNT(*) as total_pdfs FROM pdfs
+        const documentCountQuery = await pool.query(`
+          SELECT COUNT(*) as total_documents FROM documents
         `);
         
-        pdfCount = pdfCountQuery.rows[0]?.total_pdfs || 0;
-        console.log('PDF count query result:', pdfCount);
+        documentCount = documentCountQuery.rows[0]?.total_documents || 0;
+        console.log('Document count query result:', documentCount);
         
-        responseData.messageStats.totalPdfs = parseInt(pdfCount) || 0;
-      } catch (pdfError) {
-        console.error('Error getting PDF count:', pdfError);
-        console.error('Error details:', pdfError.message);
+        responseData.messageStats.totalDocuments = parseInt(documentCount) || 0;
+      } catch (documentError) {
+        console.error('Error getting document count:', documentError);
+        console.error('Error details:', documentError.message);
       }
 
       // License usage - this is hardcoded since license information
@@ -199,7 +199,7 @@ router.get('/metrics', isAuthenticated, isAdmin, async (req, res) => {
         totalMessages: 0,
         recentMessages: 0,
         avgResponseTime: 0,
-        totalPdfs: 0
+        totalDocuments: 0
       },
       licenseUsage: {
         totalLicenses: 25,

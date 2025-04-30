@@ -57,12 +57,12 @@ const db = {
       throw error;
     }
   },
-  
+
   // For code compatibility with SQLite, we'll provide similar methods
   // but adapted for PostgreSQL
   prepare(text) {
     const convertedText = convertPlaceholders(text);
-    
+
     return {
       get: async (...params) => {
         try {
@@ -91,7 +91,7 @@ const db = {
           if (result.rows && result.rows[0] && result.rows[0].id) {
             lastInsertRowid = result.rows[0].id;
           }
-          
+
           return {
             changes: result.rowCount || 0,
             lastInsertRowid: lastInsertRowid
@@ -103,7 +103,7 @@ const db = {
       }
     };
   },
-  
+
   // Execute raw SQL
   async exec(text) {
     try {
@@ -117,8 +117,25 @@ const db = {
 
 async function initializeDatabase() {
   console.log('Checking PostgreSQL database connection');
-  
+
   try {
+    // Run migrations
+    await runMigrations();
+
+    // Run document table creation script
+    try {
+      // Check if the script exists before attempting to run it
+      const fixScriptPath = path.resolve(__dirname, 'scripts/sql/fix_documents_table.sql');
+      if (fs.existsSync(fixScriptPath)) {
+        await runMigration('scripts/sql/fix_documents_table.sql');
+        console.log('Documents table creation/fix completed');
+      } else {
+        console.log('Fix documents table script not found, skipping');
+      }
+    } catch (error) {
+      console.error('Error creating/fixing documents table:', error.message);
+    }
+
     // Add name column to users table if it doesn't exist
     try {
       console.log('Checking if name column exists in users table...');
@@ -145,10 +162,10 @@ async function initializeDatabase() {
 
     // Check if admin user exists, if not create default admin
     const userQuery = await pool.query("SELECT * FROM users WHERE username = $1", [config.admin.default_username]);
-    
+
     if (userQuery.rows.length === 0) {
       const hashedPassword = bcrypt.hashSync(config.admin.default_password, 10);
-      
+
       // Modified query to include name field
       await pool.query(
         "INSERT INTO users (username, password, email, role, name) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -184,7 +201,27 @@ process.on('exit', () => {
  */
 const runMigration = async (scriptPath) => {
   try {
-    const scriptContent = fs.readFileSync(path.resolve(__dirname, scriptPath), 'utf8');
+    // Attempt to find the script in multiple locations
+    let resolvedPath;
+    const possiblePaths = [
+      path.resolve(__dirname, '..', scriptPath), // Try relative to project root
+      path.resolve(__dirname, scriptPath),       // Try relative to src
+      path.resolve(scriptPath)                   // Try absolute path
+    ];
+    
+    for (const testPath of possiblePaths) {
+      if (fs.existsSync(testPath)) {
+        resolvedPath = testPath;
+        break;
+      }
+    }
+    
+    if (!resolvedPath) {
+      console.log(`Migration script not found: ${scriptPath}`);
+      return false;
+    }
+    
+    const scriptContent = fs.readFileSync(resolvedPath, 'utf8');
     await db.query(scriptContent);
     console.log(`Migration script ${scriptPath} executed successfully`);
     return true;
@@ -208,11 +245,105 @@ const runModelIdMigration = async () => {
   }
 };
 
+/**
+ * Runs all migrations in order
+ */
+const runMigrations = async () => {
+  try {
+    console.log('Running database migrations...');
+
+    // Get all migration files
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (!fs.existsSync(migrationsDir)) {
+      console.log('No migrations directory found, skipping migrations');
+      return;
+    }
+
+    const migrationFiles = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.js'))
+      .sort(); // Sort to ensure migrations run in order
+
+    // Get list of applied migrations
+    let appliedMigrationNames = [];
+    try {
+      // Create migrations table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          id SERIAL PRIMARY KEY,
+          version VARCHAR(255) NOT NULL UNIQUE,
+          applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          description TEXT,
+          name VARCHAR(255)
+        )
+      `);
+    } catch (error) {
+      console.error('Error creating migrations table:', error);
+      throw error;
+    }
+
+    // Get list of applied migrations
+    try {
+      // Try to get migrations by name first (for compatibility)
+      let appliedMigrations = await pool.query('SELECT name FROM schema_migrations WHERE name IS NOT NULL');
+      
+      if (appliedMigrations.rows.length === 0) {
+        // If no migrations found by name, try with version
+        appliedMigrations = await pool.query('SELECT version FROM schema_migrations WHERE version IS NOT NULL');
+        appliedMigrationNames = appliedMigrations.rows.map(row => row.version);
+      } else {
+        appliedMigrationNames = appliedMigrations.rows.map(row => row.name);
+      }
+      
+      console.log('Applied migrations:', appliedMigrationNames);
+    } catch (error) {
+      console.error('Error getting applied migrations, assuming none applied:', error.message);
+      // Continue with empty list - will try to apply all migrations
+    }
+
+    // Run each migration that hasn't been applied yet
+    for (const file of migrationFiles) {
+      if (!appliedMigrationNames.includes(file)) {
+        console.log(`Running migration: ${file}`);
+        const migration = require(path.join(migrationsDir, file));
+
+        try {
+          await migration.up();
+
+          // Record that the migration has been applied
+          // Extract version number from file name (e.g., 005_add_documents_table.js -> 005)
+          const versionMatch = file.match(/^(\d+)_/);
+          const version = versionMatch ? versionMatch[1] : file;
+          const description = file.replace(/\.js$/, '').replace(/^\d+_/, '').replace(/_/g, ' ');
+          
+          // Insert with both name and version for compatibility
+          await pool.query(
+            'INSERT INTO schema_migrations (name, version, description) VALUES ($1, $2, $3)',
+            [file, version, description]
+          );
+          
+          console.log(`Migration ${file} completed successfully`);
+        } catch (error) {
+          console.error(`Error running migration ${file}:`, error);
+          throw error;
+        }
+      } else {
+        console.log(`Migration ${file} already applied, skipping`);
+      }
+    }
+
+    console.log('All migrations completed successfully');
+  } catch (error) {
+    console.error('Error running migrations:', error);
+    throw error;
+  }
+};
+
 // Export functions
 module.exports = {
   db,
   pool, // Export the pool for direct access if needed
   initializeDatabase,
   runMigration,
-  runModelIdMigration
-}; 
+  runModelIdMigration,
+  runMigrations
+};

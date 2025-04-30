@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import LoadingScreen from '../components/LoadingScreen';
 import { motion, AnimatePresence } from 'framer-motion';
 // We'll use a simple span instead of the icon to avoid TypeScript issues
@@ -11,7 +12,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login, user, loading } = useAuth();
-  // Using useTheme hook to access theme variables in the component
+  const { currentTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -76,7 +77,7 @@ export default function Login() {
               className="mb-6"
             >
               <div className="text-4xl font-bold mb-2" style={{ color: 'var(--color-primary)' }}>
-                Pinnacleflow Ai 
+                Pinnacleflow Ai
               </div>
               <div className="h-1 w-16 mx-auto rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-dark)]"></div>
             </motion.div>
@@ -183,11 +184,12 @@ export default function Login() {
               type="submit"
               className="w-full py-3 rounded-lg font-medium relative overflow-hidden"
               style={{
-                background: 'linear-gradient(to-r, var(--color-primary), var(--color-primary-dark))',
-                color: 'white',
+                backgroundColor: 'var(--color-primary)',
+                color: currentTheme === 'light' ? '#ffffff' : '#ffffff',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
               }}
               disabled={isLoading}
-              whileHover={{ scale: 1.02 }}
+              whileHover={{ scale: 1.02, backgroundColor: 'var(--color-primary-dark)' }}
               whileTap={{ scale: 0.98 }}
             >
               {isLoading ? (
@@ -196,6 +198,7 @@ export default function Login() {
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                     className="inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full mr-2"
+                    style={{ borderColor: 'white', borderTopColor: 'transparent' }}
                   />
                   Signing in...
                 </span>

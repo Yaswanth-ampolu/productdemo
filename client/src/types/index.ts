@@ -8,12 +8,24 @@ export interface User {
 }
 
 // Chat-related types
+export interface FileAttachment {
+  name: string;
+  type: string;
+  size: number;
+  url?: string;
+  documentId?: string;
+  status?: string;
+  processingError?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   isStreaming?: boolean; // Added to support streaming messages
+  fileAttachment?: FileAttachment; // Added to support file attachments
+  isProcessingFile?: boolean; // Added to identify document processing messages
 }
 
 export interface ChatSession {
@@ -42,7 +54,7 @@ export interface MessageStats {
   totalMessages: number;
   recentMessages: number;
   avgResponseTime: number;
-  totalPdfs: number;
+  totalDocuments: number;
 }
 
 export interface LicenseUsage {
@@ -56,4 +68,4 @@ export interface DashboardMetrics {
   userStats: UserStats;
   messageStats: MessageStats;
   licenseUsage: LicenseUsage;
-} 
+}

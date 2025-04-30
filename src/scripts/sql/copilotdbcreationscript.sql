@@ -33,13 +33,6 @@ CREATE SEQUENCE public.mcp_connections_id_seq
     NO MAXVALUE
     CACHE 1;
 
-CREATE SEQUENCE public.message_files_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
 CREATE SEQUENCE public.messages_id_seq
     START WITH 1
     INCREMENT BY 1
@@ -109,7 +102,9 @@ CREATE TABLE public.chat_sessions (
     title character varying(255) NOT NULL,
     last_message_timestamp timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    is_active boolean DEFAULT true
+    is_active boolean DEFAULT true,
+    use_rag BOOLEAN DEFAULT TRUE,
+    rag_collections JSONB
 );
 
 CREATE TABLE public.dashboard_metrics (
@@ -126,17 +121,7 @@ CREATE TABLE public.mcp_connections (
     mcp_port integer NOT NULL,
     status character varying(20) DEFAULT 'disconnected'::character varying,
     last_file_path text,
-    last_pdf_id uuid,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE public.message_files (
-    id bigint NOT NULL,
-    message_id bigint NOT NULL,
-    user_id uuid NOT NULL,
-    file_path text NOT NULL,
-    file_type character varying(20) NOT NULL,
-    uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE public.messages (
@@ -145,25 +130,15 @@ CREATE TABLE public.messages (
     message text NOT NULL,
     response text,
     file_path text,
-    pdf_id uuid,
     "timestamp" timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     session_id uuid,
-    model_id uuid
-);
-
-CREATE TABLE public.pdfs (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id uuid NOT NULL,
-    file_path text NOT NULL,
-    file_name character varying(255) NOT NULL,
-    chroma_collection character varying(100),
-    uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+    model_id uuid,
+    retrieved_chunks JSONB
 );
 
 -- Set default values for sequences
 ALTER TABLE ONLY public.dashboard_metrics ALTER COLUMN id SET DEFAULT nextval('public.dashboard_metrics_id_seq'::regclass);
 ALTER TABLE ONLY public.mcp_connections ALTER COLUMN id SET DEFAULT nextval('public.mcp_connections_id_seq'::regclass);
-ALTER TABLE ONLY public.message_files ALTER COLUMN id SET DEFAULT nextval('public.message_files_id_seq'::regclass);
 ALTER TABLE ONLY public.messages ALTER COLUMN id SET DEFAULT nextval('public.messages_id_seq'::regclass);
 
 -- Add constraints
@@ -173,9 +148,7 @@ ALTER TABLE ONLY public.dashboard_metrics ADD CONSTRAINT dashboard_metrics_metri
 ALTER TABLE ONLY public.dashboard_metrics ADD CONSTRAINT dashboard_metrics_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.mcp_connections ADD CONSTRAINT mcp_connections_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.mcp_connections ADD CONSTRAINT mcp_connections_user_id_mcp_host_mcp_port_key UNIQUE (user_id, mcp_host, mcp_port);
-ALTER TABLE ONLY public.message_files ADD CONSTRAINT message_files_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.messages ADD CONSTRAINT messages_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.pdfs ADD CONSTRAINT pdfs_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.sessions ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.users ADD CONSTRAINT users_username_key UNIQUE (username);
@@ -191,15 +164,10 @@ CREATE INDEX idx_ai_models_name ON public.ai_models USING btree (name);
 
 -- Add foreign key constraints
 ALTER TABLE ONLY public.chat_sessions ADD CONSTRAINT chat_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.messages ADD CONSTRAINT fk_pdf FOREIGN KEY (pdf_id) REFERENCES public.pdfs(id) ON DELETE SET NULL;
 ALTER TABLE ONLY public.messages ADD CONSTRAINT fk_session FOREIGN KEY (session_id) REFERENCES public.chat_sessions(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.mcp_connections ADD CONSTRAINT mcp_connections_last_pdf_id_fkey FOREIGN KEY (last_pdf_id) REFERENCES public.pdfs(id) ON DELETE SET NULL;
 ALTER TABLE ONLY public.mcp_connections ADD CONSTRAINT mcp_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.message_files ADD CONSTRAINT message_files_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.messages(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.message_files ADD CONSTRAINT message_files_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.messages ADD CONSTRAINT messages_model_id_fkey FOREIGN KEY (model_id) REFERENCES public.ai_models(id);
 ALTER TABLE ONLY public.messages ADD CONSTRAINT messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-ALTER TABLE ONLY public.pdfs ADD CONSTRAINT pdfs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.sessions ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 -- Create functions
@@ -209,7 +177,7 @@ CREATE FUNCTION public.update_dashboard_metrics() RETURNS void
 DECLARE
   user_stats jsonb;
   message_stats jsonb;
-  pdf_count integer;
+  document_count integer;
 BEGIN
   -- Get user statistics
   SELECT jsonb_build_object(
@@ -224,10 +192,10 @@ BEGIN
     'recentMessages', COUNT(CASE WHEN timestamp > NOW() - INTERVAL '7 days' THEN 1 END),
     'avgResponseTime', 0
   ) INTO message_stats FROM messages;
-  -- Get PDF count
-  SELECT COUNT(*) INTO pdf_count FROM pdfs;
-  -- Update message_stats with PDF count
-  message_stats := message_stats || jsonb_build_object('totalPdfs', pdf_count);
+  -- Get document count
+  SELECT COUNT(*) INTO document_count FROM documents;
+  -- Update message_stats with document count
+  message_stats := message_stats || jsonb_build_object('totalDocuments', document_count);
   -- Update the dashboard metrics table
   UPDATE dashboard_metrics SET metric_value = user_stats, updated_at = NOW() WHERE metric_name = 'user_stats';
   UPDATE dashboard_metrics SET metric_value = message_stats, updated_at = NOW() WHERE metric_name = 'message_stats';
@@ -248,8 +216,8 @@ CREATE FUNCTION public.trigger_update_dashboard_metrics() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
-  PERFORM update_dashboard_metrics();
-  RETURN NEW;
+  PERFORM public.update_dashboard_metrics();
+  RETURN NULL;
 END;
 $$;
 
@@ -260,36 +228,39 @@ BEGIN
   UPDATE chat_sessions
   SET last_message_timestamp = NEW.timestamp
   WHERE id = NEW.session_id;
+  
   RETURN NEW;
 END;
 $$;
 
 -- Create triggers
 CREATE TRIGGER messages_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.messages FOR EACH STATEMENT EXECUTE FUNCTION public.trigger_update_dashboard_metrics();
-CREATE TRIGGER pdfs_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.pdfs FOR EACH STATEMENT EXECUTE FUNCTION public.trigger_update_dashboard_metrics();
 CREATE TRIGGER update_session_timestamp AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.update_chat_session_timestamp();
 CREATE TRIGGER users_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION public.trigger_update_dashboard_metrics();
+CREATE TRIGGER documents_update_metrics AFTER INSERT OR DELETE OR UPDATE ON public.documents FOR EACH STATEMENT EXECUTE FUNCTION public.trigger_update_dashboard_metrics();
 
--- Insert default settings if the ollama_settings table is empty
-INSERT INTO public.ollama_settings (host, port, default_model)
-SELECT 'localhost', 11434, ''
-WHERE NOT EXISTS (SELECT 1 FROM public.ollama_settings);
-
--- Grant ownership
+-- Set ownership
 ALTER TABLE public.ai_models OWNER TO postgres;
 ALTER TABLE public.chat_sessions OWNER TO postgres;
 ALTER TABLE public.dashboard_metrics OWNER TO postgres;
+ALTER TABLE public.dashboard_metrics_id_seq OWNER TO postgres;
 ALTER TABLE public.mcp_connections OWNER TO postgres;
-ALTER TABLE public.message_files OWNER TO postgres;
+ALTER TABLE public.mcp_connections_id_seq OWNER TO postgres;
 ALTER TABLE public.messages OWNER TO postgres;
+ALTER TABLE public.messages_id_seq OWNER TO postgres;
 ALTER TABLE public.ollama_settings OWNER TO postgres;
-ALTER TABLE public.pdfs OWNER TO postgres;
-ALTER TABLE public.schema_migrations OWNER TO postgres;
+ALTER TABLE public.ollama_settings_id_seq OWNER TO postgres;
 ALTER TABLE public.sessions OWNER TO postgres;
 ALTER TABLE public.users OWNER TO postgres;
+ALTER TABLE public.schema_migrations OWNER TO postgres;
 
-ALTER FUNCTION public.update_dashboard_metrics() OWNER TO postgres;
-ALTER FUNCTION public.trigger_update_dashboard_metrics() OWNER TO postgres;
-ALTER FUNCTION public.update_chat_session_timestamp() OWNER TO postgres;
+-- Insert default values
+INSERT INTO public.dashboard_metrics VALUES (1, 'user_stats', '{"totalUsers": 0, "adminUsers": 0, "regularUsers": 0, "recentUsers": 0}', '2023-01-01 00:00:00');
+INSERT INTO public.dashboard_metrics VALUES (2, 'message_stats', '{"totalMessages": 0, "recentMessages": 0, "avgResponseTime": 0, "totalDocuments": 0}', '2023-01-01 00:00:00');
+INSERT INTO public.dashboard_metrics VALUES (3, 'license_usage', '{"totalLicenses": 25, "activeLicenses": 0, "expirationDate": "2024-12-31", "daysRemaining": 245}', '2023-01-01 00:00:00');
+INSERT INTO public.ollama_settings (host, port, default_model) VALUES ('localhost', 11434, 'llama3');
+
+-- Record this as a migration
+INSERT INTO schema_migrations (version, applied_at, description) VALUES ('1.0.0', CURRENT_TIMESTAMP, 'Initial database creation');
 
 -- Completed

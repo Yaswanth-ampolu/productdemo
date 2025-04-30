@@ -36,6 +36,8 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `last_message_timestamp` (timestamp): Last activity
   - `created_at` (timestamp): Creation time
   - `is_active` (boolean): Session status
+  - `use_rag` (boolean): Whether to use RAG for this session (default: true)
+  - `rag_collections` (jsonb): Document collections to use for RAG
 
 ### 4. `messages`
 - Stores individual messages in chat sessions
@@ -45,10 +47,10 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `message` (text): User's message content
   - `response` (text): AI response
   - `file_path` (text): Optional reference to file
-  - `pdf_id` (UUID, FK): Optional reference to PDF
   - `timestamp` (timestamp): Message time
   - `session_id` (UUID, FK): Parent chat session
   - `model_id` (UUID, FK): AI model used
+  - `retrieved_chunks` (jsonb): Information about document chunks retrieved for this message
 
 ### 5. `ai_models`
 - Configuration for available AI models (including Ollama models)
@@ -63,27 +65,20 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `created_at` (timestamp): Creation time
   - `updated_at` (timestamp): Last update time
 
-### 6. `pdfs`
-- Tracks uploaded PDF documents
+### 6. `messages`
+- Stores individual messages in chat sessions
 - Fields:
-  - `id` (UUID, PK): Document identifier
-  - `user_id` (UUID, FK): Document owner
-  - `file_path` (text): Storage path
-  - `file_name` (varchar): Original filename
-  - `chroma_collection` (varchar): Vector DB collection
-  - `uploaded_at` (timestamp): Upload time
+  - `id` (bigint, PK): Message identifier
+  - `user_id` (UUID, FK): Message sender
+  - `message` (text): User's message content
+  - `response` (text): AI response
+  - `file_path` (text): Optional reference to file
+  - `timestamp` (timestamp): Message time
+  - `session_id` (UUID, FK): Parent chat session
+  - `model_id` (UUID, FK): AI model used
+  - `retrieved_chunks` (jsonb): Information about document chunks retrieved for this message
 
-### 7. `message_files`
-- Tracks files attached to messages
-- Fields:
-  - `id` (bigint, PK): File entry identifier
-  - `message_id` (bigint, FK): Parent message
-  - `user_id` (UUID, FK): File owner
-  - `file_path` (text): Storage path
-  - `file_type` (varchar): MIME type
-  - `uploaded_at` (timestamp): Upload time
-
-### 8. `mcp_connections`
+### 7. `mcp_connections`
 - Tracks connections to external MCP systems
 - Fields:
   - `id` (bigint, PK): Connection identifier
@@ -92,10 +87,9 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `mcp_port` (integer): Connection port
   - `status` (varchar): Connection status
   - `last_file_path` (text): Last accessed file
-  - `last_pdf_id` (UUID, FK): Last accessed PDF
   - `created_at` (timestamp): Creation time
 
-### 9. `dashboard_metrics`
+### 8. `dashboard_metrics`
 - Stores aggregated metrics for dashboard
 - Fields:
   - `id` (integer, PK): Metric identifier
@@ -103,7 +97,83 @@ The project uses PostgreSQL as its database system. The schema is designed to su
   - `metric_value` (jsonb): Structured metric data
   - `updated_at` (timestamp): Last update time
 
+### 9. `schema_migrations`
+- Tracks applied database migrations
+- Fields:
+  - `id` (PK): Unique identifier
+  - `version` (varchar): Migration version number
+  - `applied_at` (timestamp): When the migration was applied
+  - `description` (text): Description of the migration
+
 ## AI Integration Tables
+
+### vector_stores
+- Stores vector database configurations
+- Fields:
+  - `id` (UUID, PK): Store identifier
+  - `name` (varchar): Store name
+  - `store_type` (varchar): Type (e.g., "chroma")
+  - `connection_string` (text): Connection details
+  - `is_active` (boolean): Availability flag
+  - `created_at`/`updated_at` (timestamp): Tracking dates
+  - `config` (jsonb): Configuration parameters
+
+### document_collections
+- Organizes documents into searchable collections
+- Fields:
+  - `id` (UUID, PK): Collection identifier
+  - `name` (varchar): Collection name
+  - `description` (text): Collection description
+  - `user_id` (UUID, FK): Collection owner
+  - `vector_store_id` (UUID, FK): Associated vector store
+  - `embedding_model` (varchar): Model for embeddings
+  - `created_at`/`updated_at` (timestamp): Tracking dates
+  - `is_active` (boolean): Availability flag
+  - `metadata` (jsonb): Additional metadata
+
+### documents
+- Manages document storage and metadata
+- Fields:
+  - `id` (UUID, PK): Document identifier
+  - `user_id` (UUID, FK): Document owner
+  - `collection_id` (UUID, FK): Parent collection
+  - `title` (varchar): Document title
+  - `file_path` (text): Storage path
+  - `file_name` (varchar): Original filename
+  - `file_type` (varchar): Document type (e.g., "pdf", "docx")
+  - `content_text` (text): Extracted text content
+  - `content_hash` (varchar): Content checksum for deduplication
+  - `vector_id` (varchar): Vector store reference
+  - `processing_status` (varchar): Status of processing pipeline (e.g., "pending", "processing", "indexed", "error")
+  - `is_indexed` (boolean): Whether document is indexed in vector store
+  - `chunk_count` (integer): Number of chunks created from document
+  - `uploaded_at`/`processed_at`/`indexed_at`/`last_accessed_at` (timestamp): Tracking dates
+  - `metadata` (jsonb): Additional document metadata
+
+### document_chunks
+- Stores document segments for retrieval
+- Fields:
+  - `id` (UUID, PK): Chunk identifier
+  - `document_id` (UUID, FK): Parent document
+  - `chunk_index` (integer): Position in document
+  - `content` (text): Chunk textual content
+  - `vector_id` (varchar): Vector store reference identifier
+  - `embedding` (vector or bytea): Embedding vector (vector type if pg_vector extension available, bytea otherwise)
+  - `token_count` (integer): Estimated token count
+  - `created_at` (timestamp): Creation time
+  - `metadata` (jsonb): Additional chunk metadata (e.g., page number, section)
+
+### rag_settings
+- Configures RAG parameters system-wide
+- Fields:
+  - `id` (serial, PK): Setting identifier
+  - `embedding_model` (varchar): Default embedding model
+  - `chunk_size` (integer): Default chunk size
+  - `chunk_overlap` (integer): Chunk overlap size
+  - `similarity_top_k` (integer): Number of chunks to retrieve
+  - `search_type` (varchar): Search algorithm type
+  - `created_at`/`updated_at` (timestamp): Tracking dates
+  - `config` (jsonb): Additional configuration parameters
 
 ### ollama_settings
 - Stores Ollama AI server connection details and default model for AI chat integration
@@ -133,7 +203,7 @@ The project uses PostgreSQL as its database system. The schema is designed to su
 1. A user can have multiple:
    - Chat sessions (1:N)
    - Messages (1:N)
-   - PDFs (1:N)
+   - Documents (1:N)
    - MCP connections (1:N)
    - Sessions (1:N)
 
@@ -144,9 +214,12 @@ The project uses PostgreSQL as its database system. The schema is designed to su
 3. A message:
    - Belongs to one user (N:1)
    - Belongs to one chat session (N:1)
-   - Can reference one PDF (N:1)
    - Can reference one AI model (N:1)
-   - Can have multiple attached files (1:N)
+
+4. A document:
+   - Belongs to one user (N:1)
+   - Belongs to one collection (N:1)
+   - Has multiple document chunks (1:N)
 
 ## Functions & Triggers
 
@@ -167,6 +240,18 @@ Triggers are set up to:
 - `idx_ai_models_ollama_model_id`: Fast lookup of AI models by their Ollama ID
 - `idx_ai_models_is_active`: Quick filtering of active models
 - `idx_ai_models_name`: Optimizes searching/sorting models by name
+- `idx_vector_stores_is_active`: Quick filtering of active vector stores
+- `idx_vector_stores_name`: Optimizes searching/sorting vector stores by name
+- `idx_document_collections_user_id`: Speeds up finding a user's collections
+- `idx_document_collections_is_active`: Quick filtering of active collections
+- `idx_document_collections_vector_store_id`: Accelerates finding collections for a vector store
+- `idx_documents_user_id`: Speeds up finding a user's documents
+- `idx_documents_collection_id`: Accelerates finding documents in a collection
+- `idx_documents_content_hash`: Fast lookup for document deduplication
+- `idx_documents_processing_status`: Filters documents by processing status
+- `idx_documents_is_indexed`: Filters indexed documents
+- `idx_document_chunks_document_id`: Accelerates retrieving chunks for a document
+- `idx_document_chunks_vector_id`: Fast lookup of chunks by vector ID
 
 ## Design Considerations
 
@@ -211,3 +296,14 @@ All schema migrations follow this process:
 5. Update `copilotdbcreationscript.sql` for fresh installations
 6. Update `DatabaseStructure.md` to reflect changes
 7. Apply through the `runMigration` function in database.js 
+
+#### RAG Integration Schema Implementation (2024-07-01)
+- Successfully implemented the complete RAG database schema
+- Created tables: vector_stores, document_collections, documents, document_chunks, rag_settings, and schema_migrations
+- Added fallback support for PostgreSQL installations without vector extension using BYTEA type
+- Created helper functions for document processing workflow: upload_document, update_document_status, store_document_chunk
+- Added retrieval functions for document management: get_recent_documents, get_unembedded_chunks, update_chunk_embedding
+- Implemented triggers for updating timestamps and managing document directories
+- Used IF EXISTS/IF NOT EXISTS clauses for safe execution in any environment
+- This implementation enables Retrieval-Augmented Generation (RAG) capabilities using the existing Ollama integration
+- **Note**: The new documents and document_chunks tables replace the previously used pdfs and message_files tables, which have been removed from the database

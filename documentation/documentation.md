@@ -324,6 +324,71 @@ default_password = admin
 | `/chatbot/message` | POST | Send a message | Yes |
 | `/chatbot/history` | GET | Get chat history | Yes |
 
+## AI Integration with Ollama
+
+### Overview
+The Platform Dashboard has integrated AI capabilities through Ollama, an open-source large language model framework. This integration enables AI-powered chat functionalities, allowing users to interact with various AI models directly within the application.
+
+### Current Implementation
+1. **Ollama Service**:
+   - Backend service (`src/services/ollamaService.js`) handles communication with the Ollama server, managing model synchronization, chat interactions, and settings.
+   - API routes (`src/routes/ollama.js`) are grouped under `/api/ollama/*` with proper authentication and authorization for admin and user access.
+
+2. **Database Support**:
+   - `ollama_settings` table stores connection details (host, port) for the Ollama server.
+   - `ai_models` table manages available AI models, tracking their status (`is_active`), parameters, and identifiers for both internal use and Ollama API calls.
+   - `messages` table links chat messages to specific AI models used for responses.
+
+3. **Frontend Components**:
+   - Admin UI in `client/src/components/settings/OllamaSettings.tsx` allows configuration of Ollama server settings and model management, with input validation and connection testing.
+   - Chat interface (`client/src/components/chat/*`) includes components like `ModelSelector.tsx` for choosing AI models, `ChatInput.tsx` for message input with Shift+Enter support, and `MessageList.tsx` for displaying conversation history with streaming responses.
+   - `aiChatService.ts` manages API calls to Ollama for chat interactions, ensuring proper handling of conversation history.
+
+4. **Key Features**:
+   - Real-time streaming of AI responses with database persistence.
+   - Model selection in the chat UI, showing only active models from the database.
+   - Error handling for scenarios like Ollama server unavailability during model synchronization.
+
+### API Endpoints for AI Integration
+
+| Endpoint | Method | Description | Auth Required | Admin Only |
+|----------|--------|-------------|--------------|------------|
+| `/api/ollama/settings` | GET | Get Ollama server settings | Yes | Yes |
+| `/api/ollama/settings` | POST | Update Ollama server settings | Yes | Yes |
+| `/api/ollama/models` | GET | List available models from Ollama server | Yes | Yes |
+| `/api/ollama/models/sync` | POST | Sync models with Ollama server, optionally selecting specific models | Yes | Yes |
+| `/api/ollama/test` | POST | Test connection to Ollama server | Yes | Yes |
+| `/api/chat` | POST | Send chat messages to Ollama for AI response | Yes | No |
+
+### Using Ollama API
+The application leverages Ollama's RESTful API for various functionalities:
+- **Chat Interaction**: Using `/api/chat` endpoint for sending messages and receiving streaming responses.
+- **Model Management**: Using `/api/tags` to list available models and `/api/create` for potential future custom model creation.
+- **Model Copy and Deletion**: Endpoints like `/api/copy` and `/api/delete` are planned for advanced model management.
+
+### Security Considerations
+- **Authentication**: All AI-related endpoints require authentication, with admin endpoints further restricted.
+- **Data Privacy**: Sensitive connection details are not logged excessively to prevent exposure.
+
+### Future Enhancements
+1. **Multiple AI Providers**:
+   - Extend integration to support other AI providers like OpenAI or Anthropic through a provider-agnostic service layer.
+2. **Custom Model Parameters**:
+   - Allow users to customize model parameters (temperature, top_p) via UI, storing preferences in the database.
+3. **Advanced Chat Features**:
+   - Implement context-aware suggestions, specialized chat modes (e.g., coding assistant), and image analysis in chats using Ollama's capabilities.
+4. **Model Creation**:
+   - Enable admin users to create custom models using Ollama's `Modelfile` through the UI.
+5. **Performance**:
+   - Implement intelligent lazy loading for chat history and enhance model synchronization with retry mechanisms for robustness.
+
+### Troubleshooting
+- **Connection Issues**: Ensure the Ollama server is running and accessible at the configured host/port. Use the test connection feature in the admin UI to verify.
+- **Model Sync Failures**: Check server logs for detailed error messages if model synchronization fails. Ensure the Ollama server is responsive.
+- **Chat Errors**: Verify the selected model is active and properly synced. Review chat history for context issues that might affect responses.
+
+Refer to `ai_integration.md` and `ollama-integration.md` for detailed workflows and additional troubleshooting steps.
+
 ## Database Schema
 
 ### Users Table

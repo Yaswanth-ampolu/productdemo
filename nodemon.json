@@ -1,0 +1,12 @@
+{
+  "ignore": [
+    "documents/*",
+    "embeddings/*",
+    "chroma_db/*"
+  ],
+  "watch": [
+    "src/",
+    "client/src/"
+  ],
+  "ext": "js,json,jsx,ts,tsx"
+}

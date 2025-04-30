@@ -177,7 +177,7 @@ export const chatInputStyles = {
   container: {
     position: 'relative' as const,
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column' as const,
     backgroundColor: 'var(--color-surface)',
     borderRadius: '0.75rem',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
@@ -185,6 +185,11 @@ export const chatInputStyles = {
     margin: '0 auto',
     maxWidth: '100%',
     transition: 'all 0.3s ease',
+  },
+  inputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
   },
   input: {
     flex: 1,
@@ -219,6 +224,27 @@ export const chatInputStyles = {
   },
   placeholder: {
     color: 'var(--color-text-muted)',
+  },
+  iconButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '2rem',
+    height: '2rem',
+    borderRadius: '50%',
+    backgroundColor: 'transparent',
+    color: 'var(--color-text)',
+    border: 'none',
+    padding: 0,
+    marginRight: '0.5rem',
+  },
+  filePreviewContainer: {
+    marginBottom: '0.5rem',
+    width: '100%',
+  },
+  buttonsContainer: {
+    display: 'flex',
+    alignItems: 'center',
   },
 };
 

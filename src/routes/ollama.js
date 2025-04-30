@@ -313,5 +313,70 @@ module.exports = function(config) {
     }
   });
 
+  /**
+   * Send a RAG-enhanced chat message to Ollama (Authenticated users)
+   * POST /api/ollama/rag-chat
+   *
+   * Request body:
+   * {
+   *   "model": "model-name",
+   *   "message": "User question about documents",
+   *   "sessionId": "optional-session-id"
+   * }
+   */
+  router.post('/rag-chat', requireAuth, async (req, res) => {
+    try {
+      // Import the RAG service
+      const ragService = require('../services/ragService');
+
+      const { model, message, sessionId } = req.body;
+      const userId = req.session.userId;
+
+      if (!model) {
+        return res.status(400).json({ error: 'Model is required' });
+      }
+
+      if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
+
+      // Check if RAG is available
+      const ragAvailable = await ragService.isRagAvailable();
+      if (!ragAvailable) {
+        return res.status(400).json({
+          error: 'RAG is not available. No documents have been processed yet.',
+          ragAvailable: false
+        });
+      }
+
+      // Process the message with RAG
+      const result = await ragService.processRagChat(message, model, {
+        userId,
+        sessionId
+      });
+
+      if (!result.success) {
+        return res.status(500).json({
+          error: result.error || 'RAG chat request failed',
+          ragAvailable: true
+        });
+      }
+
+      // Return the response with sources
+      res.json({
+        content: result.response,
+        sources: result.sources || [],
+        ragAvailable: true
+      });
+    } catch (error) {
+      logger.error(`Error in RAG chat: ${error.message}`, error);
+      res.status(500).json({
+        error: `RAG chat request failed: ${error.message}`,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details: error.response?.data || error.cause || 'No additional details available'
+      });
+    }
+  });
+
   return router;
 };

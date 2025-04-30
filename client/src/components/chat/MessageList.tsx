@@ -4,8 +4,30 @@ import ChatMessage from './ChatMessage';
 import { ChatBubbleLeftRightIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
 import { messageListStyles, messageBubbleStyles } from './chatStyles';
 
+// Import RagSource type
+import { RagSource } from '../../services/ragChatService';
+
+// Allow for extended message types that include system messages
 interface MessageListProps {
-  messages: ChatMessageType[];
+  messages: {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
+    isStreaming?: boolean;
+    fileAttachment?: {
+      name: string;
+      type: string;
+      size: number;
+      url?: string;
+      documentId?: string;
+      status?: string;
+      processingError?: string;
+    };
+    isProcessingFile?: boolean;
+    sources?: RagSource[]; // Add sources for RAG responses
+    useRag?: boolean; // Flag to indicate if RAG was used
+  }[];
   isLoading: boolean;
   hasMoreMessages: boolean;
   loadMoreMessages: () => void;

@@ -1,21 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { UserIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
+import {
+  UserIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+  DocumentTextIcon,
+  DocumentIcon,
+  ArrowDownTrayIcon,
+  InformationCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
+} from '@heroicons/react/24/outline';
 import { messageBubbleStyles, markdownStyles } from './chatStyles';
 import { useTheme } from '../../contexts/ThemeContext';
+import { RagSource } from '../../services/ragChatService';
 
 interface ChatMessageProps {
-  message: ChatMessageType;
+  message: ChatMessageType & {
+    sources?: RagSource[];
+    useRag?: boolean;
+  };
   isAI?: boolean;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
-  const [copiedCode, setCopiedCode] = React.useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [showSources, setShowSources] = useState<boolean>(false);
   const { currentTheme } = useTheme();
   const isDarkTheme = currentTheme !== 'light';
 
@@ -24,6 +39,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000); // Reset after 2 seconds
+  };
+
+  // Format file size to human-readable format
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Render code blocks with syntax highlighting and copy button
@@ -115,6 +139,40 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
     }
   };
 
+  // Add or update these helper functions for the status display
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'UPLOADED':
+        return 'var(--color-info)';
+      case 'PROCESSING':
+      case 'EMBEDDING':
+        return 'var(--color-warning)';
+      case 'PROCESSED':
+        return 'var(--color-success)';
+      case 'ERROR':
+        return 'var(--color-error)';
+      default:
+        return 'var(--color-text-muted)';
+    }
+  };
+
+  const getStatusText = (status: string): string => {
+    switch (status) {
+      case 'UPLOADED':
+        return 'Uploaded';
+      case 'PROCESSING':
+        return 'Processing';
+      case 'EMBEDDING':
+        return 'Generating embeddings';
+      case 'PROCESSED':
+        return 'Ready';
+      case 'ERROR':
+        return 'Error';
+      default:
+        return status;
+    }
+  };
+
   return (
     <div style={isAI ? messageBubbleStyles.ai.container : messageBubbleStyles.user.container}>
       <div style={isAI ? messageBubbleStyles.ai.header : messageBubbleStyles.user.header}>
@@ -133,6 +191,112 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
       </div>
 
       <div style={isAI ? messageBubbleStyles.ai.content : messageBubbleStyles.user.content}>
+        {/* File attachment for user messages */}
+        {!isAI && message.fileAttachment && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0.5rem',
+            backgroundColor: 'var(--color-surface-light)',
+            borderRadius: '0.5rem',
+            marginBottom: '0.5rem',
+            maxWidth: '100%',
+            overflow: 'hidden'
+          }}>
+            <div style={{ marginRight: '0.5rem' }}>
+              {message.fileAttachment.type === 'application/pdf' ? (
+                <DocumentTextIcon className="h-6 w-6 text-red-500" />
+              ) : message.fileAttachment.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? (
+                <DocumentTextIcon className="h-6 w-6 text-blue-500" />
+              ) : message.fileAttachment.type === 'text/plain' ? (
+                <DocumentTextIcon className="h-6 w-6 text-gray-500" />
+              ) : (
+                <DocumentIcon className="h-6 w-6 text-gray-500" />
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {message.fileAttachment.name}
+              </div>
+              <div style={{
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                color: message.fileAttachment.status === 'ERROR' ? 'var(--color-error)' : 'var(--color-text-muted)'
+              }}>
+                {formatFileSize(message.fileAttachment.size)}
+                {message.fileAttachment.status && (
+                  <>
+                    <span style={{ margin: '0 0.25rem' }}>•</span>
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: getStatusColor(message.fileAttachment.status)
+                    }}>
+                      {message.fileAttachment.status === 'PROCESSING' && (
+                        <span className="loading-dot-animation" style={{ marginRight: '0.25rem' }}></span>
+                      )}
+                      {message.fileAttachment.status === 'EMBEDDING' && (
+                        <span className="loading-dot-animation" style={{ marginRight: '0.25rem' }}></span>
+                      )}
+                      {getStatusText(message.fileAttachment.status)}
+                    </span>
+                  </>
+                )}
+                {message.fileAttachment.documentId && message.fileAttachment.status === 'PROCESSED' && (
+                  <a
+                    href={`/api/documents/download/${message.fileAttachment.documentId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      marginLeft: '0.5rem',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
+                    Download
+                  </a>
+                )}
+              </div>
+              {message.fileAttachment.processingError && (
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--color-error)',
+                  marginTop: '0.25rem'
+                }}>
+                  Error: {message.fileAttachment.processingError}
+                </div>
+              )}
+            </div>
+            {message.fileAttachment.url && (
+              <a
+                href={message.fileAttachment.url}
+                download={message.fileAttachment.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.25rem',
+                  borderRadius: '0.25rem',
+                  color: 'var(--color-primary)',
+                  transition: 'all 0.2s ease',
+                  textDecoration: 'none'
+                }}
+                title="Download file"
+              >
+                <ArrowDownTrayIcon className="h-5 w-5" />
+              </a>
+            )}
+          </div>
+        )}
+
         {isAI ? (
           <div style={{
             ...markdownStyles.container,
@@ -298,6 +462,75 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
         ) : (
           <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {message.content}
+          </div>
+        )}
+
+        {/* Sources section for RAG responses */}
+        {isAI && message.sources && message.sources.length > 0 && (
+          <div style={{
+            marginTop: '0.75rem',
+            borderTop: `1px solid ${isDarkTheme ? '#444' : '#e2e8f0'}`,
+            paddingTop: '0.5rem'
+          }}>
+            <button
+              onClick={() => setShowSources(!showSources)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-primary)',
+                padding: '0.25rem 0',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+            >
+              <InformationCircleIcon className="w-4 h-4 mr-1" />
+              {showSources ? 'Hide sources' : `Show sources (${message.sources.length})`}
+              {showSources ? <ChevronUpIcon className="w-3 h-3 ml-1" /> : <ChevronDownIcon className="w-3 h-3 ml-1" />}
+            </button>
+
+            {showSources && (
+              <div style={{
+                marginTop: '0.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--color-text-muted)'
+              }}>
+                <div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>Sources:</div>
+                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  {message.sources.map((source, index) => (
+                    <div key={index} style={{
+                      padding: '0.5rem',
+                      marginBottom: '0.5rem',
+                      backgroundColor: isDarkTheme ? 'var(--color-surface-dark)' : 'var(--color-surface-light)',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.8rem'
+                    }}>
+                      <div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>
+                        {source.metadata.fileName || 'Document'}
+                        {source.score && (
+                          <span style={{
+                            marginLeft: '0.5rem',
+                            color: 'var(--color-success)',
+                            fontSize: '0.75rem'
+                          }}>
+                            {(source.score * 100).toFixed(1)}% match
+                          </span>
+                        )}
+                      </div>
+                      <div style={{
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: isDarkTheme ? '#ccc' : '#555'
+                      }}>
+                        {source.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

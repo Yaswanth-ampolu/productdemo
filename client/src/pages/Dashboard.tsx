@@ -17,7 +17,7 @@ interface DashboardMetrics {
     totalMessages: number;
     recentMessages: number;
     avgResponseTime: number;
-    totalPdfs: number;
+    totalDocuments: number;
   };
   licenseUsage?: {
     totalLicenses: number;
@@ -65,7 +65,7 @@ export default function Dashboard() {
             totalMessages: Number(metricsData.messageStats?.totalMessages ?? 0),
             recentMessages: Number(metricsData.messageStats?.recentMessages ?? 0),
             avgResponseTime: Number(metricsData.messageStats?.avgResponseTime ?? 0),
-            totalPdfs: Number(metricsData.messageStats?.totalPdfs ?? 0)
+            totalDocuments: Number(metricsData.messageStats?.totalDocuments ?? 0)
           },
           licenseUsage: metricsData.licenseUsage || {
             totalLicenses: 25,
@@ -90,7 +90,7 @@ export default function Dashboard() {
             totalMessages: 0,
             recentMessages: 0,
             avgResponseTime: 0,
-            totalPdfs: 0
+            totalDocuments: 0
           },
           licenseUsage: {
             totalLicenses: 25,
@@ -208,7 +208,7 @@ export default function Dashboard() {
                   primaryLabel="Total Messages"
                   details={[
                     { label: 'Recent Messages', value: metrics?.messageStats.recentMessages ?? 0 },
-                    { label: 'Total PDFs', value: metrics?.messageStats.totalPdfs ?? 0 },
+                    { label: 'Total Documents', value: metrics?.messageStats.totalDocuments ?? 0 },
                   ]}
                   link={{ to: '/chatbot', label: 'Go to Chatbot' }}
                 />
@@ -307,7 +307,7 @@ export default function Dashboard() {
                             backgroundColor: 'var(--color-warning)20',
                             color: 'var(--color-warning)',
                           }}>
-                            {metrics?.messageStats.totalPdfs ?? 0}
+                            {metrics?.messageStats.totalDocuments ?? 0}
                           </span>
                         </li>
                       </ul>

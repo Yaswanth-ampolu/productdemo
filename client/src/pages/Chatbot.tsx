@@ -8,17 +8,41 @@ import {
 } from '@heroicons/react/24/outline';
 import { chatbotService } from '../services/chatbotService';
 import { aiChatService, StreamChunk } from '../services/aiChatService';
+import { ragChatService, RagSource } from '../services/ragChatService';
 import { getActiveOllamaModels } from '../services/ollamaService';
 import { useAuth } from '../contexts/AuthContext';
-import { ChatMessage as ChatMessageType, ChatSession } from '../types';
+import { ChatMessage, ChatSession } from '../types';
 import { useSidebar } from '../contexts/SidebarContext';
 import ChatInput from '../components/chat/ChatInput';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
 
+// Define a custom message type that includes all needed properties
+interface ExtendedChatMessageType {
+  id: string;
+  role: 'user' | 'assistant' | 'system'; // Include 'system' role
+  content: string;
+  timestamp: Date;
+  isStreaming?: boolean;
+  fileAttachment?: {
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    documentId?: string;
+    status?: string;
+    processingError?: string;
+  };
+  isProcessingFile?: boolean;
+  documentId?: string;
+  documentStatus?: string;
+  sources?: RagSource[]; // Add sources for RAG responses
+  useRag?: boolean; // Flag to indicate if RAG should be used for this message
+}
+
 const Chatbot: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { isExpanded: isMainSidebarExpanded } = useSidebar();
 
   // Session state
@@ -28,9 +52,11 @@ const Chatbot: React.FC = () => {
   const [editingTitle, setEditingTitle] = useState(false);
 
   // Message state
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  const [messages, setMessages] = useState<ExtendedChatMessageType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [messageOffset, setMessageOffset] = useState(0);
@@ -55,6 +81,10 @@ const Chatbot: React.FC = () => {
     return localStorage.getItem('selectedModelId') || undefined;
   });
 
+  // RAG state
+  const [isRagAvailable, setIsRagAvailable] = useState<boolean>(false);
+  const [isRagEnabled, setIsRagEnabled] = useState<boolean>(true); // Default to enabled if available
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
   const abortFunctionRef = useRef<(() => void) | null>(null); // Store the abort function
@@ -62,6 +92,7 @@ const Chatbot: React.FC = () => {
   // Fetch sessions on component mount
   useEffect(() => {
     fetchSessions();
+    checkRagAvailability();
   }, []);
 
   // Fetch messages when active session changes
@@ -72,6 +103,18 @@ const Chatbot: React.FC = () => {
       setMessages([]);
     }
   }, [activeSessionId]);
+
+  // Check if RAG is available
+  const checkRagAvailability = async () => {
+    try {
+      const available = await ragChatService.isRagAvailable();
+      setIsRagAvailable(available);
+      console.log(`RAG availability checked: ${available ? 'Available' : 'Not available'}`);
+    } catch (error) {
+      console.error('Error checking RAG availability:', error);
+      setIsRagAvailable(false);
+    }
+  };
 
   // Focus title input when editing
   useEffect(() => {
@@ -183,18 +226,312 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const handleSendMessage = async (content: string, file?: File) => {
+    // Allow sending if there's text or a file
+    if ((content.trim() === '' && !file) || isLoading || isUploading) return;
 
     const tempId = `temp-${Date.now()}`;
-    const userMessage: ChatMessageType = {
+
+    // For file uploads, create a descriptive message if content is empty
+    const displayContent = (file && content.trim() === '')
+      ? `I'm uploading ${file.name} for analysis.`
+      : content.trim();
+
+    const userMessage: ExtendedChatMessageType = {
       id: tempId,
       role: 'user',
-      content: content.trim(),
+      content: displayContent,
       timestamp: new Date(),
+      // Add file metadata if a file is provided
+      fileAttachment: file ? {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      } : undefined
     };
 
     setMessages(prev => [...prev, userMessage]);
+
+    // Handle file upload if a file is provided
+    if (file) {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      try {
+        // Add an immediate system message about processing
+        const processingMessage: ExtendedChatMessageType = {
+          id: `system-${Date.now()}`,
+          role: 'assistant',
+          content: 'I\'m processing your document. This may take a moment...',
+          timestamp: new Date(),
+          isProcessingFile: true // Add a flag to identify processing messages
+        };
+
+        setMessages(prev => [...prev, processingMessage]);
+
+        // Send message with file
+        const response = await chatbotService.sendMessageWithFile(
+          displayContent, // Use the display content
+          file,
+          activeSessionId || undefined,
+          (progress) => setUploadProgress(progress)
+        );
+
+        // Update the user message with the server-generated ID
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === tempId
+              ? {
+                  ...msg,
+                  id: response.id,
+                  fileAttachment: {
+                    ...msg.fileAttachment!,
+                    url: `/api/documents/download/${response.fileAttachment?.documentId}`,
+                    documentId: response.fileAttachment?.documentId,
+                    status: 'UPLOADED'
+                  }
+                }
+              : msg
+          )
+        );
+
+        // Remove the temporary processing message
+        setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
+
+        setIsUploading(false);
+        setIsLoading(true);
+
+        // Poll document status
+        if (response.fileAttachment?.documentId) {
+          const documentId = response.fileAttachment.documentId;
+
+          // Add a status polling message
+          const pollingMessage: ExtendedChatMessageType = {
+            id: `system-polling-${Date.now()}`,
+            role: 'assistant',
+            content: 'Processing document...',
+            timestamp: new Date(),
+            isProcessingFile: true,
+            documentId: documentId,
+            documentStatus: 'PROCESSING'
+          };
+
+          setMessages(prev => [...prev, pollingMessage]);
+
+          // Keep track of the polling message ID to update it later
+          const pollingMessageId = pollingMessage.id;
+
+          // Create a timeout for overall processing
+          const processingTimeout = setTimeout(() => {
+            clearInterval(statusInterval);
+
+            // Check if we're still loading
+            if (isLoading) {
+              // Add a fallback message
+              const timeoutMessage: ExtendedChatMessageType = {
+                id: `system-timeout-${Date.now()}`,
+                role: 'assistant',
+                content: "I've received your file, but the processing is taking longer than expected. " +
+                         "I'll continue processing it in the background, and you can ask questions about it later.",
+                timestamp: new Date()
+              };
+
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === pollingMessageId
+                    ? { ...msg, documentStatus: 'TIMEOUT' }
+                    : msg
+                )
+              );
+
+              setMessages(prev => [...prev, timeoutMessage]);
+              setIsLoading(false);
+            }
+          }, 60000); // 1 minute timeout
+
+          // Start polling for document status
+          const statusInterval = setInterval(async () => {
+            try {
+              // Check if component is still mounted (use a ref to track this)
+              if (!document.body.contains(document.getElementById('chatbot-container'))) {
+                clearInterval(statusInterval);
+                clearTimeout(processingTimeout);
+                return;
+              }
+
+              const statusResponse = await chatbotService.getDocumentStatus(documentId);
+              console.log(`Document ${documentId} status:`, statusResponse);
+
+              // Update the polling message
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === pollingMessageId
+                    ? { ...msg, documentStatus: statusResponse.status }
+                    : msg
+                )
+              );
+
+              // Handle based on status
+              if (statusResponse.status === 'PROCESSED') {
+                // Clear the interval since processing is complete
+                clearInterval(statusInterval);
+                clearTimeout(processingTimeout);
+
+                // Remove polling message
+                setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
+
+                // Add the final success message
+                const successMessage: ExtendedChatMessageType = {
+                  id: `system-success-${Date.now()}`,
+                  role: 'assistant',
+                  content: "I've processed your document! You can now ask me questions about it. I'll use the document content to provide more accurate answers.",
+                  timestamp: new Date()
+                };
+
+                // Check RAG availability again since we've just processed a document
+                checkRagAvailability();
+
+                setMessages(prev => [...prev, successMessage]);
+                setIsLoading(false);
+              } else if (statusResponse.status === 'ERROR') {
+                // Clear the interval on error
+                clearInterval(statusInterval);
+                clearTimeout(processingTimeout);
+
+                // Show error message
+                const errorMessage: ExtendedChatMessageType = {
+                  id: `system-error-${Date.now()}`,
+                  role: 'assistant',
+                  content: "I encountered an error processing your document. " +
+                           (statusResponse.error || "Please try uploading it again."),
+                  timestamp: new Date()
+                };
+
+                setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
+                setMessages(prev => [...prev, errorMessage]);
+                setIsLoading(false);
+              } else if (statusResponse.status === 'EMBEDDING') {
+                // Update the polling message with embedding status
+                setMessages(prev =>
+                  prev.map(msg =>
+                    msg.id === pollingMessageId
+                    ? {
+                        ...msg,
+                          content: 'Generating embeddings for document... This may take a few minutes for large documents.',
+                          documentStatus: 'EMBEDDING'
+                      }
+                    : msg
+                )
+              );
+
+                // Don't clear interval yet, keep polling
+              }
+            } catch (error) {
+              console.error('Error checking document status:', error);
+
+              try {
+                // Error could be due to auth issues, verify we're still logged in
+                // This should refresh the auth token if needed
+                await refreshUser();
+
+                // If we get here, user is still authenticated
+                console.log('Auth check successful during document processing');
+              } catch (authError) {
+                console.error('Authentication failure during document processing:', authError);
+
+                // Clear intervals and timeouts
+                clearInterval(statusInterval);
+                clearTimeout(processingTimeout);
+
+                // We won't redirect here, let the API interceptor handle it
+                setIsLoading(false);
+                return;
+              }
+
+              // If the error wasn't auth-related, reduce polling frequency but continue
+              clearInterval(statusInterval);
+
+              // New interval with longer delay (10 seconds instead of 2)
+              const newInterval = setInterval(async () => {
+                // Same code as above, but we won't nest another recovery mechanism
+                try {
+                  const statusResponse = await chatbotService.getDocumentStatus(documentId);
+                  console.log(`Document ${documentId} status (recovery polling):`, statusResponse);
+
+                  // Same status handling as above
+                  if (statusResponse.status === 'PROCESSED' || statusResponse.status === 'ERROR') {
+                    clearInterval(newInterval);
+                    clearTimeout(processingTimeout);
+
+                    const finalMessage: ExtendedChatMessageType = {
+                      id: `system-${statusResponse.status.toLowerCase()}-${Date.now()}`,
+                      role: 'assistant',
+                      content: statusResponse.status === 'PROCESSED'
+                        ? "Your document has been processed. You can now ask questions about it."
+                        : "There was an error processing your document. " + (statusResponse.error || "Please try again."),
+                      timestamp: new Date()
+                    };
+
+                    setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
+                    setMessages(prev => [...prev, finalMessage]);
+                    setIsLoading(false);
+                  }
+                } catch (recoveryError) {
+                  console.error('Error in recovery polling:', recoveryError);
+                  // Just log the error but don't take further action
+                }
+              }, 10000); // Poll every 10 seconds in recovery mode
+            }
+
+          }, 2000); // Poll every 2 seconds
+
+          // Clean up interval after 30 seconds (reduced from 5 minutes) to prevent waiting too long
+          setTimeout(() => {
+            clearInterval(statusInterval);
+
+            // Only add a timeout message if we're still loading
+            if (isLoading) {
+              const timeoutMessage: ExtendedChatMessageType = {
+                id: `system-timeout-${Date.now()}`,
+                role: 'assistant',
+                content: "I've received your file, but the processing is taking longer than expected. " +
+                         "I'll continue processing it in the background, and you can ask questions about it later.",
+                timestamp: new Date()
+              };
+
+              setMessages(prev => [...prev, timeoutMessage]);
+              setIsLoading(false);
+            }
+          }, 30000);
+
+          return; // Return early, we'll handle the AI response after processing
+        }
+
+        // Process AI response as usual
+        handleAIResponse(response.id, displayContent);
+
+        return;
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        setIsUploading(false);
+        setIsLoading(false);
+
+        // Show error message
+        setMessages(prev => [
+          ...prev.filter(msg => msg.id !== tempId && !msg.isProcessingFile),
+          {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content: 'Sorry, there was an error uploading your file. Please try again.',
+            timestamp: new Date()
+          }
+        ]);
+
+        return;
+      }
+    }
+
+    // Regular message without file
     setIsLoading(true);
 
     try {
@@ -206,24 +543,88 @@ const Chatbot: React.FC = () => {
           throw new Error('Selected model not found');
         }
 
-        const conversationHistory = messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content
-        }));
-        conversationHistory.push({ role: 'user', content: content.trim() });
+        // Check if we should use RAG for this message
+        const shouldUseRag = isRagAvailable && isRagEnabled;
 
         // Create a temporary AI message for streaming
         const aiMessageId = `ai-${Date.now()}`;
-        const aiMessage: ChatMessageType = {
+        const aiMessage: ExtendedChatMessageType = {
           id: aiMessageId,
           role: 'assistant',
           content: '',
           timestamp: new Date(),
           isStreaming: true, // Mark as streaming to show the loading indicator
+          useRag: shouldUseRag // Mark if we're using RAG
         };
 
-        // Add the AI message to the messages array
+        // Add the message to the UI immediately to show streaming
         setMessages(prev => [...prev, aiMessage]);
+        setIsStreaming(true);
+
+        // If RAG is available and enabled, use it
+        if (shouldUseRag) {
+          try {
+            console.log('Using RAG for this message');
+
+            // Call the RAG service
+            const ragResponse = await ragChatService.sendRagChatMessage({
+              model: selectedModel.ollama_model_id,
+              message: content.trim(),
+              sessionId: activeSessionId || undefined
+            });
+
+            // Update the message with the RAG response
+            setMessages(prev => prev.map(msg =>
+              msg.id === aiMessageId ? {
+                ...msg,
+                content: ragResponse.content,
+                sources: ragResponse.sources,
+                isStreaming: false
+              } : msg
+            ));
+
+            // Save the message to the database
+            const dbResponse = await chatbotService.sendMessage(
+              content.trim(),
+              activeSessionId || undefined,
+              ragResponse.content
+            );
+
+            if (!activeSessionId || activeSessionId !== dbResponse.sessionId) {
+              setActiveSessionId(dbResponse.sessionId);
+              await fetchSessions();
+            }
+
+            setIsLoading(false);
+            setIsStreaming(false);
+            return;
+          } catch (ragError) {
+            console.error('Error using RAG:', ragError);
+            // Fall back to regular chat if RAG fails
+            console.log('Falling back to regular chat');
+
+            // Update the message to indicate RAG failed
+            setMessages(prev => prev.map(msg =>
+              msg.id === aiMessageId ? {
+                ...msg,
+                content: 'RAG processing failed, falling back to regular chat...',
+                useRag: false
+              } : msg
+            ));
+          }
+        }
+
+        // If we get here, either RAG is not available/enabled or it failed
+        // Use regular chat with conversation history
+        const conversationHistory = messages
+          .filter(msg => msg.role !== 'system') // Filter out system messages
+          .map(msg => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content
+          }));
+
+        // Add the current message
+        conversationHistory.push({ role: 'user', content: content.trim() });
 
         // Set isLoading and isStreaming to true to indicate we're waiting for a response
         // The MessageList component will not show a separate loading indicator
@@ -349,6 +750,173 @@ const Chatbot: React.FC = () => {
     if (abortFunctionRef.current) {
       abortFunctionRef.current();
       // The abort function will call onComplete which will reset isStreaming and abortFunctionRef
+    }
+  };
+
+  // Helper function to handle AI response generation
+  const handleAIResponse = async (messageId: string, content: string) => {
+    try {
+      if (selectedModelId) {
+        const modelsResponse = await getActiveOllamaModels();
+        const selectedModel = modelsResponse.find(model => model.id === selectedModelId);
+
+        if (!selectedModel) {
+          throw new Error('Selected model not found');
+        }
+
+        const conversationHistory = messages.map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        }));
+        conversationHistory.push({ role: 'user', content });
+
+        // Create a temporary AI message for streaming
+        const aiMessageId = `ai-${Date.now()}`;
+        const aiMessage: ExtendedChatMessageType = {
+          id: aiMessageId,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          isStreaming: true, // Mark as streaming to show the loading indicator
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+        setIsStreaming(true);
+
+        // Initialize streaming content for this message
+        streamedContentRef.current[aiMessageId] = '';
+
+        // Set up abort function
+        abortFunctionRef.current = () => {
+          // This will be called when the user clicks the stop button
+          console.log('Aborting generation');
+
+          // Mark the message as no longer streaming
+          setMessages(prev => prev.map(msg =>
+            msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
+          ));
+
+          setIsStreaming(false);
+          setIsLoading(false);
+          abortFunctionRef.current = null;
+        };
+
+        // Stream the response
+        abortFunctionRef.current = await aiChatService.streamChatCompletion(
+          {
+            modelId: selectedModel.ollama_model_id,
+            messages: conversationHistory,
+            options: { stream: true }
+          },
+          (chunk: StreamChunk) => {
+            const newContent = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
+            if (newContent) {
+              // Update the streamed content
+              streamedContentRef.current[aiMessageId] = (streamedContentRef.current[aiMessageId] || '') + newContent;
+
+              // Update the message in state
+              setMessages(prev => prev.map(msg =>
+                msg.id === aiMessageId ? {
+                  ...msg,
+                  content: streamedContentRef.current[aiMessageId]
+                } : msg
+              ));
+            }
+          },
+          async () => {
+            // This is called when streaming completes
+            setIsStreaming(false);
+
+            try {
+              // Get the final content
+              const finalContent = streamedContentRef.current[aiMessageId] || '';
+
+              // Add a small delay to ensure all content is accumulated
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              // Get the final content after delay
+              const finalContentAfterDelay = streamedContentRef.current[aiMessageId] || '';
+
+              // Save to database
+              const dbResponse = await chatbotService.sendMessage(
+                content,
+                activeSessionId || undefined,
+                finalContentAfterDelay
+              );
+
+              // Update the message with the database ID
+              setMessages(prev => {
+                return prev.map(msg =>
+                  msg.id === aiMessageId ? {
+                    ...msg,
+                    id: dbResponse.id,
+                    isStreaming: false,
+                    content: finalContentAfterDelay
+                  } : msg
+                );
+              });
+
+              // Clean up
+              delete streamedContentRef.current[aiMessageId];
+              setIsLoading(false);
+              abortFunctionRef.current = null;
+            } catch (error) {
+              console.error('Error saving message to database:', error);
+
+              // Still mark as not streaming
+              setMessages(prev => prev.map(msg =>
+                msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
+              ));
+
+              // Clean up
+              delete streamedContentRef.current[aiMessageId];
+              setIsLoading(false);
+              abortFunctionRef.current = null;
+            }
+          },
+          (error) => {
+            // This is called on error
+            console.error('Streaming error:', error);
+
+            // Show error message
+            setMessages(prev => {
+              const filteredMessages = prev.filter(msg => msg.id !== aiMessageId);
+              return [
+                ...filteredMessages,
+                {
+                  id: `error-${Date.now()}`,
+                  role: 'assistant',
+                  content: 'Sorry, there was an error generating a response. Please try again.',
+                  timestamp: new Date(),
+                }
+              ];
+            });
+
+            // Clean up
+            delete streamedContentRef.current[aiMessageId];
+            setIsLoading(false);
+            setIsStreaming(false);
+            abortFunctionRef.current = null;
+          }
+        );
+      } else {
+        throw new Error('No model selected');
+      }
+    } catch (error) {
+      console.error('Error in AI response:', error);
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: 'Sorry, there was an error generating a response. Please try again.',
+          timestamp: new Date(),
+        }
+      ]);
+
+      setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -537,7 +1105,7 @@ const Chatbot: React.FC = () => {
           }}
         >
           <MessageList
-            messages={messages}
+            messages={messages.filter(msg => msg.role !== 'system') as any}
             isLoading={isLoading}
             hasMoreMessages={hasMoreMessages}
             loadMoreMessages={loadMoreMessages}
@@ -558,6 +1126,8 @@ const Chatbot: React.FC = () => {
               isLoading={isLoading}
               isEmpty={isEmpty}
               isStreaming={isStreaming}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
               onStopGeneration={handleStopGeneration}
             />
 
