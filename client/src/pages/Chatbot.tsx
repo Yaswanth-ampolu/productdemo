@@ -95,13 +95,133 @@ const Chatbot: React.FC = () => {
   const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
   const abortFunctionRef = useRef<(() => void) | null>(null); // Store the abort function
 
+  // Function to force check document status and update UI
+  const forceCheckDocumentStatus = async () => {
+    // Find any processing messages
+    const processingMessages = messages.filter(msg => msg.isProcessingFile && msg.documentId);
+
+    if (processingMessages.length > 0) {
+      console.log('Found processing messages, checking status:', processingMessages.length);
+
+      // Check each document status
+      for (const msg of processingMessages) {
+        if (msg.documentId) {
+          try {
+            const statusResponse = await chatbotService.getDocumentStatus(msg.documentId);
+            console.log(`Force checking document ${msg.documentId} status:`, statusResponse);
+
+            // If document is processed, update UI
+            if (statusResponse.status === 'PROCESSED') {
+              console.log('Document is processed, updating UI');
+
+              // Remove processing message
+              setMessages(prev => prev.filter(m => m.id !== msg.id));
+
+              // Add success message
+              const successMessage: ExtendedChatMessageType = {
+                id: `system-success-${Date.now()}`,
+                role: 'assistant',
+                content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
+                timestamp: new Date()
+              };
+              setMessages(prev => [...prev, successMessage]);
+
+              // Mark notification as shown
+              setRagNotificationShown(true);
+
+              // Check RAG availability
+              await checkRagAvailability();
+
+              // Reset loading states
+              setIsLoading(false);
+              setIsStreaming(false);
+
+              // Enable RAG mode automatically
+              setIsRagEnabled(true);
+              localStorage.setItem('ragEnabled', 'true');
+            } else if (statusResponse.status === 'ERROR') {
+              // Handle error
+              console.log('Document processing error, updating UI');
+
+              // Remove processing message
+              setMessages(prev => prev.filter(m => m.id !== msg.id));
+
+              // Add error message
+              const errorMessage: ExtendedChatMessageType = {
+                id: `system-error-${Date.now()}`,
+                role: 'assistant',
+                content: "I encountered an error processing your document. " +
+                         (statusResponse.error || "Please try uploading it again."),
+                timestamp: new Date()
+              };
+              setMessages(prev => [...prev, errorMessage]);
+
+              // Reset loading states
+              setIsLoading(false);
+              setIsStreaming(false);
+            } else {
+              // Check how long the message has been processing
+              const messageTime = new Date(msg.timestamp).getTime();
+              const currentTime = new Date().getTime();
+              const processingTime = currentTime - messageTime;
+
+              // If processing for more than 2 minutes, force reset UI
+              if (processingTime > 120000) { // 2 minutes
+                console.log('Document processing timeout, force resetting UI');
+
+                // Remove processing message
+                setMessages(prev => prev.filter(m => m.id !== msg.id));
+
+                // Add timeout message
+                const timeoutMessage: ExtendedChatMessageType = {
+                  id: `system-timeout-${Date.now()}`,
+                  role: 'assistant',
+                  content: "I've received your file, but the processing is taking longer than expected. " +
+                           "I'll continue processing it in the background, and you can ask questions about it later.",
+                  timestamp: new Date()
+                };
+                setMessages(prev => [...prev, timeoutMessage]);
+
+                // Reset loading states
+                setIsLoading(false);
+                setIsStreaming(false);
+              }
+            }
+          } catch (error) {
+            console.error('Error force checking document status:', error);
+          }
+        }
+      }
+    } else if (isLoading || isStreaming) {
+      // If no processing messages but still loading, check if we should reset
+      const loadingStartTime = messages.find(msg => msg.isStreaming)?.timestamp;
+
+      if (loadingStartTime) {
+        const messageTime = new Date(loadingStartTime).getTime();
+        const currentTime = new Date().getTime();
+        const loadingTime = currentTime - messageTime;
+
+        // If loading for more than 1 minute, force reset UI
+        if (loadingTime > 60000) { // 1 minute
+          console.log('Loading timeout, force resetting UI');
+
+          // Reset loading states
+          setIsLoading(false);
+          setIsStreaming(false);
+        }
+      }
+    }
+  };
+
   // Fetch sessions on component mount
   useEffect(() => {
     fetchSessions();
     checkRagAvailability();
 
-    // Set up periodic RAG availability check (every 30 seconds)
-    // This is a background check and doesn't need to run frequently
+    // Force check document status on mount
+    forceCheckDocumentStatus();
+
+    // Set up periodic RAG availability check (every 15 seconds)
     const ragCheckInterval = setInterval(() => {
       // Only check if we haven't already shown the notification
       // This prevents unnecessary checks once RAG is known to be available
@@ -109,13 +229,16 @@ const Chatbot: React.FC = () => {
         console.log('Performing periodic RAG availability check');
         checkRagAvailability();
       }
-    }, 30000); // Increased from 10s to 30s to reduce unnecessary checks
+
+      // Always force check document status
+      forceCheckDocumentStatus();
+    }, 15000); // Reduced to 15s to be more responsive
 
     // Clean up interval on unmount
     return () => {
       clearInterval(ragCheckInterval);
     };
-  }, [ragNotificationShown]); // Add dependency to re-setup interval when notification state changes
+  }, [ragNotificationShown, messages]); // Add dependencies to re-setup interval when state changes
 
   // Fetch messages when active session changes
   useEffect(() => {
@@ -135,6 +258,17 @@ const Chatbot: React.FC = () => {
       // If RAG is now available but wasn't before, show a notification (only once)
       if (available && !isRagAvailable && !ragNotificationShown) {
         console.log('RAG is now available, showing notification (first time)');
+
+        // Find and remove any processing messages
+        setMessages(prev => {
+          const processingMessages = prev.filter(msg => msg.isProcessingFile);
+          if (processingMessages.length > 0) {
+            console.log('Removing processing messages:', processingMessages.length);
+            return prev.filter(msg => !msg.isProcessingFile);
+          }
+          return prev;
+        });
+
         // Add a system message to notify the user
         const ragAvailableMessage: ExtendedChatMessageType = {
           id: `system-rag-available-${Date.now()}`,
@@ -147,11 +281,19 @@ const Chatbot: React.FC = () => {
         // Mark that we've shown the notification
         setRagNotificationShown(true);
 
+        // Reset loading and streaming states
+        setIsLoading(false);
+        setIsStreaming(false);
+
         // Enable RAG mode automatically
         setIsRagEnabled(true);
         localStorage.setItem('ragEnabled', 'true');
       } else if (available && !isRagAvailable && ragNotificationShown) {
         console.log('RAG is now available, but notification already shown');
+
+        // Still make sure loading states are reset
+        setIsLoading(false);
+        setIsStreaming(false);
       }
 
       // Update the state after checking for changes
@@ -321,6 +463,10 @@ const Chatbot: React.FC = () => {
       // Reset the RAG notification state for the new document
       setRagNotificationShown(false);
 
+      // Reset loading and streaming states to ensure we start fresh
+      setIsLoading(false);
+      setIsStreaming(false);
+
       try {
         // Add an immediate system message about processing
         const processingMessage: ExtendedChatMessageType = {
@@ -376,6 +522,7 @@ const Chatbot: React.FC = () => {
             content: 'Processing document...',
             timestamp: new Date(),
             isProcessingFile: true,
+            isStreaming: true, // Add streaming indicator to show loading animation
             documentId: documentId,
             documentStatus: 'PROCESSING'
           };
@@ -430,7 +577,12 @@ const Chatbot: React.FC = () => {
               setMessages(prev =>
                 prev.map(msg =>
                   msg.id === pollingMessageId
-                    ? { ...msg, documentStatus: statusResponse.status }
+                    ? {
+                        ...msg,
+                        documentStatus: statusResponse.status,
+                        // Keep streaming indicator on while processing
+                        isStreaming: statusResponse.status !== 'PROCESSED' && statusResponse.status !== 'ERROR'
+                      }
                     : msg
                 )
               );
@@ -483,7 +635,9 @@ const Chatbot: React.FC = () => {
                 }
 
                 setMessages(prev => [...prev, successMessage]);
+                // Reset both loading and streaming states
                 setIsLoading(false);
+                setIsStreaming(false);
               } else if (statusResponse.status === 'ERROR') {
                 // Clear the interval on error
                 clearInterval(statusInterval);
@@ -508,8 +662,9 @@ const Chatbot: React.FC = () => {
                     msg.id === pollingMessageId
                     ? {
                         ...msg,
-                          content: 'Generating embeddings for document... This may take a few minutes for large documents.',
-                          documentStatus: 'EMBEDDING'
+                        content: 'Generating embeddings for document... This may take a few minutes for large documents.',
+                        documentStatus: 'EMBEDDING',
+                        isStreaming: true // Ensure streaming indicator stays on during embedding
                       }
                     : msg
                 )
@@ -570,7 +725,9 @@ const Chatbot: React.FC = () => {
 
                     setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
                     setMessages(prev => [...prev, finalMessage]);
+                    // Reset both loading and streaming states
                     setIsLoading(false);
+                    setIsStreaming(false);
 
                     // If document was processed successfully, check RAG availability
                     if (statusResponse.status === 'PROCESSED') {
@@ -623,7 +780,9 @@ const Chatbot: React.FC = () => {
               };
 
               setMessages(prev => [...prev, timeoutMessage]);
+              // Reset both loading and streaming states
               setIsLoading(false);
+              setIsStreaming(false);
             }
           }, 30000);
 
