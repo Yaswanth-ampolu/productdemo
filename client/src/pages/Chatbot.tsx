@@ -83,7 +83,13 @@ const Chatbot: React.FC = () => {
 
   // RAG state
   const [isRagAvailable, setIsRagAvailable] = useState<boolean>(false);
-  const [isRagEnabled, setIsRagEnabled] = useState<boolean>(true); // Default to enabled if available
+  const [isRagEnabled, setIsRagEnabled] = useState<boolean>(() => {
+    // Get from localStorage or default to true
+    const savedPreference = localStorage.getItem('ragEnabled');
+    return savedPreference !== null ? savedPreference === 'true' : true;
+  });
+  // Track if we've already shown a RAG notification for the current document
+  const [ragNotificationShown, setRagNotificationShown] = useState<boolean>(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
@@ -93,7 +99,23 @@ const Chatbot: React.FC = () => {
   useEffect(() => {
     fetchSessions();
     checkRagAvailability();
-  }, []);
+
+    // Set up periodic RAG availability check (every 30 seconds)
+    // This is a background check and doesn't need to run frequently
+    const ragCheckInterval = setInterval(() => {
+      // Only check if we haven't already shown the notification
+      // This prevents unnecessary checks once RAG is known to be available
+      if (!ragNotificationShown) {
+        console.log('Performing periodic RAG availability check');
+        checkRagAvailability();
+      }
+    }, 30000); // Increased from 10s to 30s to reduce unnecessary checks
+
+    // Clean up interval on unmount
+    return () => {
+      clearInterval(ragCheckInterval);
+    };
+  }, [ragNotificationShown]); // Add dependency to re-setup interval when notification state changes
 
   // Fetch messages when active session changes
   useEffect(() => {
@@ -108,11 +130,38 @@ const Chatbot: React.FC = () => {
   const checkRagAvailability = async () => {
     try {
       const available = await ragChatService.isRagAvailable();
+      console.log(`RAG availability checked: ${available ? 'Available' : 'Not available'} at ${new Date().toISOString()}`);
+
+      // If RAG is now available but wasn't before, show a notification (only once)
+      if (available && !isRagAvailable && !ragNotificationShown) {
+        console.log('RAG is now available, showing notification (first time)');
+        // Add a system message to notify the user
+        const ragAvailableMessage: ExtendedChatMessageType = {
+          id: `system-rag-available-${Date.now()}`,
+          role: 'assistant',
+          content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, ragAvailableMessage]);
+
+        // Mark that we've shown the notification
+        setRagNotificationShown(true);
+
+        // Enable RAG mode automatically
+        setIsRagEnabled(true);
+        localStorage.setItem('ragEnabled', 'true');
+      } else if (available && !isRagAvailable && ragNotificationShown) {
+        console.log('RAG is now available, but notification already shown');
+      }
+
+      // Update the state after checking for changes
       setIsRagAvailable(available);
-      console.log(`RAG availability checked: ${available ? 'Available' : 'Not available'}`);
+
+      return available;
     } catch (error) {
       console.error('Error checking RAG availability:', error);
       setIsRagAvailable(false);
+      return false;
     }
   };
 
@@ -194,7 +243,19 @@ const Chatbot: React.FC = () => {
     if (!confirm('Are you sure you want to delete this chat?')) return;
 
     try {
+      // Delete the chat session from the database
       await chatbotService.deleteSession(sessionId);
+
+      // Also clear any RAG data associated with this session
+      try {
+        await ragChatService.clearRagData(sessionId);
+        console.log('RAG data cleared for session:', sessionId);
+      } catch (ragError) {
+        console.error('Error clearing RAG data:', ragError);
+        // Continue with session deletion even if RAG data clearing fails
+      }
+
+      // Update the UI
       setSessions(prev => prev.filter(s => s.id !== sessionId));
 
       if (activeSessionId === sessionId) {
@@ -256,6 +317,9 @@ const Chatbot: React.FC = () => {
     if (file) {
       setIsUploading(true);
       setUploadProgress(0);
+
+      // Reset the RAG notification state for the new document
+      setRagNotificationShown(false);
 
       try {
         // Add an immediate system message about processing
@@ -384,12 +448,39 @@ const Chatbot: React.FC = () => {
                 const successMessage: ExtendedChatMessageType = {
                   id: `system-success-${Date.now()}`,
                   role: 'assistant',
-                  content: "I've processed your document! You can now ask me questions about it. I'll use the document content to provide more accurate answers.",
+                  content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
                   timestamp: new Date()
                 };
 
-                // Check RAG availability again since we've just processed a document
-                checkRagAvailability();
+                // Mark that we've shown the notification to prevent duplicates
+                setRagNotificationShown(true);
+
+                // Check RAG availability multiple times with increasing delays
+                // Sometimes the vector store needs a moment to be fully available after processing
+                console.log('Document processed, checking RAG availability immediately');
+                const immediateCheck = await checkRagAvailability();
+
+                if (!immediateCheck) {
+                  console.log('First RAG check failed, scheduling additional checks');
+                  // Schedule additional checks with increasing delays and frequency
+                  const checkIntervals = [1000, 2000, 3000, 5000, 8000, 13000];
+
+                  for (const interval of checkIntervals) {
+                    setTimeout(async () => {
+                      console.log(`Checking RAG availability after ${interval}ms`);
+                      const available = await checkRagAvailability();
+                      if (available) {
+                        console.log(`RAG became available after ${interval}ms delay`);
+                      }
+                    }, interval);
+                  }
+                }
+
+                // Enable RAG mode automatically when a document is processed
+                if (!isRagEnabled) {
+                  setIsRagEnabled(true);
+                  localStorage.setItem('ragEnabled', 'true');
+                }
 
                 setMessages(prev => [...prev, successMessage]);
                 setIsLoading(false);
@@ -467,14 +558,46 @@ const Chatbot: React.FC = () => {
                       id: `system-${statusResponse.status.toLowerCase()}-${Date.now()}`,
                       role: 'assistant',
                       content: statusResponse.status === 'PROCESSED'
-                        ? "Your document has been processed. You can now ask questions about it."
+                        ? "Your document has been processed! You can now ask questions about it using the RAG feature."
                         : "There was an error processing your document. " + (statusResponse.error || "Please try again."),
                       timestamp: new Date()
                     };
 
+                    // If processed successfully, mark notification as shown
+                    if (statusResponse.status === 'PROCESSED') {
+                      setRagNotificationShown(true);
+                    }
+
                     setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
                     setMessages(prev => [...prev, finalMessage]);
                     setIsLoading(false);
+
+                    // If document was processed successfully, check RAG availability
+                    if (statusResponse.status === 'PROCESSED') {
+                      // Check RAG availability multiple times with increasing delays
+                      console.log('Document processed (recovery path), checking RAG availability');
+                      const immediateCheck = await checkRagAvailability();
+
+                      if (!immediateCheck) {
+                        console.log('First RAG check failed (recovery path), scheduling additional checks');
+                        // Schedule additional checks with increasing delays and frequency
+                        const checkIntervals = [1000, 2000, 3000, 5000, 8000, 13000];
+
+                        for (const interval of checkIntervals) {
+                          setTimeout(async () => {
+                            console.log(`Checking RAG availability after ${interval}ms (recovery path)`);
+                            const available = await checkRagAvailability();
+                            if (available) {
+                              console.log(`RAG became available after ${interval}ms delay (recovery path)`);
+                            }
+                          }, interval);
+                        }
+                      }
+
+                      // Enable RAG mode automatically
+                      setIsRagEnabled(true);
+                      localStorage.setItem('ragEnabled', 'true');
+                    }
                   }
                 } catch (recoveryError) {
                   console.error('Error in recovery polling:', recoveryError);
@@ -544,6 +667,7 @@ const Chatbot: React.FC = () => {
         }
 
         // Check if we should use RAG for this message
+        // Only use RAG if it's available, enabled, and there are documents to search
         const shouldUseRag = isRagAvailable && isRagEnabled;
 
         // Create a temporary AI message for streaming
@@ -651,11 +775,8 @@ const Chatbot: React.FC = () => {
             }
           },
           async () => {
-            // Get the final content from our ref which has been accumulating the streamed content
-            const finalContent = streamedContentRef.current[aiMessageId] || '';
-
-            console.log('Final AI message content:', finalContent);
-            console.log('Content length:', finalContent.length);
+            console.log('Preparing to get final AI message content');
+            console.log('Checking content length');
 
             // Add a small delay to ensure all content is accumulated
             // This helps with race conditions in state updates
@@ -754,7 +875,7 @@ const Chatbot: React.FC = () => {
   };
 
   // Helper function to handle AI response generation
-  const handleAIResponse = async (messageId: string, content: string) => {
+  const handleAIResponse = async (_messageId: string, content: string) => {
     try {
       if (selectedModelId) {
         const modelsResponse = await getActiveOllamaModels();
@@ -828,9 +949,6 @@ const Chatbot: React.FC = () => {
             setIsStreaming(false);
 
             try {
-              // Get the final content
-              const finalContent = streamedContentRef.current[aiMessageId] || '';
-
               // Add a small delay to ensure all content is accumulated
               await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -931,6 +1049,15 @@ const Chatbot: React.FC = () => {
     setShowSidebar(prev => {
       const newValue = !prev;
       localStorage.setItem('chatSidebarExpanded', String(newValue));
+      return newValue;
+    });
+  };
+
+  // Toggle RAG mode
+  const toggleRagMode = () => {
+    setIsRagEnabled(prev => {
+      const newValue = !prev;
+      localStorage.setItem('ragEnabled', String(newValue));
       return newValue;
     });
   };
@@ -1129,6 +1256,9 @@ const Chatbot: React.FC = () => {
               isUploading={isUploading}
               uploadProgress={uploadProgress}
               onStopGeneration={handleStopGeneration}
+              isRagAvailable={isRagAvailable}
+              isRagEnabled={isRagEnabled}
+              onToggleRag={toggleRagMode}
             />
 
             {isEmpty && (

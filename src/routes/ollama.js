@@ -314,6 +314,70 @@ module.exports = function(config) {
   });
 
   /**
+   * Delete RAG data for a session
+   * DELETE /api/ollama/rag-data/:sessionId
+   */
+  router.delete('/rag-data/:sessionId', requireAuth, async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const userId = req.session.userId;
+
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Session ID is required'
+        });
+      }
+
+      // Import the vector store service
+      const vectorStoreService = require('../services/vectorStoreService');
+
+      // Delete the collection for this session
+      const result = await vectorStoreService.deleteSessionData(sessionId, userId);
+
+      res.json({
+        success: result.success,
+        message: result.success
+          ? `Successfully deleted RAG data for session ${sessionId}`
+          : `Failed to delete RAG data: ${result.error}`
+      });
+    } catch (error) {
+      logger.error(`Error deleting RAG data for session: ${error.message}`, error);
+      res.status(500).json({
+        success: false,
+        error: `Failed to delete RAG data: ${error.message}`
+      });
+    }
+  });
+
+  /**
+   * Check if RAG is available
+   * GET /api/ollama/rag-availability
+   */
+  router.get('/rag-availability', requireAuth, async (req, res) => {
+    try {
+      // Import the RAG service
+      const ragService = require('../services/ragService');
+
+      // Check if RAG is available
+      const available = await ragService.isRagAvailable();
+
+      res.json({
+        available,
+        message: available
+          ? 'RAG is available'
+          : 'RAG is not available. No documents have been processed yet.'
+      });
+    } catch (error) {
+      logger.error(`Error checking RAG availability: ${error.message}`, error);
+      res.status(500).json({
+        available: false,
+        error: `Failed to check RAG availability: ${error.message}`
+      });
+    }
+  });
+
+  /**
    * Send a RAG-enhanced chat message to Ollama (Authenticated users)
    * POST /api/ollama/rag-chat
    *
@@ -343,11 +407,15 @@ module.exports = function(config) {
       // Check if RAG is available
       const ragAvailable = await ragService.isRagAvailable();
       if (!ragAvailable) {
+        logger.warn(`RAG chat requested but RAG is not available. Returning error.`);
         return res.status(400).json({
           error: 'RAG is not available. No documents have been processed yet.',
           ragAvailable: false
         });
       }
+
+      logger.info(`RAG is available, processing chat message: "${message.substring(0, 50)}..."`);
+
 
       // Process the message with RAG
       const result = await ragService.processRagChat(message, model, {
@@ -362,9 +430,20 @@ module.exports = function(config) {
         });
       }
 
+      // Extract the content from the response
+      let content = '';
+      if (result.response && result.response.choices && result.response.choices.length > 0) {
+        content = result.response.choices[0].message.content;
+      } else if (typeof result.response === 'string') {
+        content = result.response;
+      } else {
+        logger.warn(`Unexpected response format from RAG service:`, result.response);
+        content = 'I processed your request but encountered an issue with the response format.';
+      }
+
       // Return the response with sources
       res.json({
-        content: result.response,
+        content: content,
         sources: result.sources || [],
         ragAvailable: true
       });

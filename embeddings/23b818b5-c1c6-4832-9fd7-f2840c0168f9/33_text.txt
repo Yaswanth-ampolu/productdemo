@@ -1,0 +1,141 @@
+
+
+Documentation
+Installing Python 3.10 on RHEL  8
+Prerequisites
+Before you begin, make sure you have sudo privileges on your system.
+Steps
+1. Install Required Packages
+First, install the necessary packages for compiling Python from the source:
+sudo dnf install wget yum-utils make gcc openssl-devel bzip2-devel libffi-devel zlib-devel
+2. Download Python 3.10 Source Code
+Download the source code for Python 3.10 from the official Python website:
+wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz
+3. Extract the Archive
+Extract the downloaded archive:
+tar xzf Python-3.10.16.tgz
+4. Prepare the Source Code
+Navigate to the extracted directory and configure the source code:
+cd Python-3.10.16
+sudo ./configure --with-system-ffi --with-computed-gotos --enable-loadable-sqlite-extensions 
+./configure --enable-optimizations
+5. Compile and Install
+Compile and install Python 3.10:
+sudo make -j $(nproc)
+sudo make altinstall
+Required Installation for rhel Server:
+Python 3.10
+Nodejs  20
+postgres 17
+Grafana
+Vs-code
+
+6. Verify the Installation
+Check the installed Python version:
+python3.10 --version
+7. Update the Temporary PATH
+Add the installation directory to your PATH:
+export PATH=/usr/local/bin:$PATH
+Verify the Python 3.10 installation again:
+python3.10 --version
+8. Make PATH Update Permanent
+Update .bashrc:
+echo 'export PATH=/usr/local/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+Verify the Installation Again:
+python3.10 --version
+Troubleshooting "command not found" Error for Python 3.10
+Introduction
+After installing Python 3.10 on Red Hat Enterprise Linux 8.10, you might encounter a "command not found" error when 
+trying to verify the installation in the step no.6. This guide will help you troubleshoot and resolve this issue.
+1. Verify Installation Path
+Ensure that Python 3.10 is installed in the expected directory:
+sudo find / -name "python3.10"
+       Example output:
+/usr/local/lib/python3.10
+/usr/local/include/python3.10
+/usr/local/bin/python3.10
+2.Temporarily Update the PATH
+export PATH=/usr/local/bin:$PATH
+Verify the Python 3.10 Installation
+python3.10 --version
+3. Follow the steps from Step 8
+
+Installing Node.js20 on RHEL 8.10
+Prerequisites
+ Make sure you have sudo privileges on your system.
+Steps
+1. Enable the Node.js20 Module
+ First, enable the Node.js20 module:
+ sudo dnf module enable nodejs:20
+2. Install Node.js20
+ Install Node.js20 using dnf:
+ sudo dnf install nodejs
+3. Verify the Installation
+ Check the installed Node.jsversion:
+ node --version
+ example output:
+ v20.18.2
+Installing Postgres on RHEL 8
+Prerequisites
+ Make sure you have sudo privileges on your system.
+Steps
+1. Add the PostgreSQL Repository
+ First, add the PostgreSQL repository to your system:
+ sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-
+redhat-repo-latest.noarch.rpm
+2. Disable the Default PostgreSQL Module
+ Disable the default PostgreSQL module to avoid conflicts:
+ sudo dnf -qy module disable postgresql
+
+3. Install PostgreSQL 17
+ Install PostgreSQL 17 using dnf:
+ sudo dnf install -y postgresql17-server
+4. Initialize the Database
+ Initialize the PostgreSQL database:
+ sudo /usr/pgsql-17/bin/postgresql-17-setup initdb
+5. Enable and Start PostgreSQL Service
+ Enable and start the PostgreSQL service:
+ sudo systemctl enable postgresql-17
+ sudo systemctl start postgresql-17
+ 
+ Check the status of PostgreSQL service:
+ sudo systemctl status postgresql-17
+6. Verify the Installation
+ Check the installed PostgreSQL version:
+ /usr/pgsql-17/bin/psql --version
+Installing Grafana on RHEL 8
+Prerequisites
+ Make sure you have sudo privileges on your system.
+Steps
+1. Add the Grafana Repository
+ First, add the Grafana repository to your system:
+ sudo dnf install -y https://rpm.grafana.com/grafana-rpm-release-1.0.0-1.noarch.rpm
+2. Install Grafana
+ Install Node.js20 using dnf:
+ sudo dnf install grafana
+3. Start and Enable Grafana Service
+ Start the Grafana service and enable it to start on boot:
+ sudo systemctl start grafana-server
+ sudo systemctl enable grafana-server
+4. Verify the Installation
+ Check the status of the Grafana service:
+ sudo systemctl status grafana-server
+
+Installing vs-code on RHEL 8
+Prerequisites
+Make sure you have sudo privileges on your system.
+Steps
+1. Add the Microsoft Repository
+First, you need to add the Microsoft repository for VSCode.
+sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+Next, create the repository file:
+sudo sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://
+packages.microsoft.com/yumrepos/vscode\nenabled=1\ntype=rpm-md\ngpgcheck=1
+\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/
+vscode.repo'
+2. Install VSCode
+Install Visual Studio Code using dnf:
+sudo dnf install code
+3.Launch VSCode (Optional):
+code

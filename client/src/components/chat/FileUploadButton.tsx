@@ -32,13 +32,13 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({
     if (files && files.length > 0) {
       // Always notify about the selection
       onFileSelect(files[0]);
-      
+
       // If auto-upload is enabled and handler is provided, call it
       if (autoUpload && onAutoUpload) {
         onAutoUpload(files[0]);
       }
     }
-    
+
     // Reset the input value so the same file can be selected again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -62,11 +62,19 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{
-          ...chatInputStyles.iconButton,
+          ...chatInputStyles.ragToggleButton,
           opacity: isLoading || disabled ? 0.5 : isHovered ? 0.9 : 0.7,
           cursor: isLoading || disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.2s ease',
+          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          color: 'var(--color-text-muted)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          width: '2.5rem',
+          height: '2.5rem',
+          padding: '0.5rem',
+          minWidth: 'auto',
         }}
+        className="hover:bg-opacity-90 transition-all"
         aria-label="Upload document"
         title="Upload document (PDF, DOCX, TXT)"
       >

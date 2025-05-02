@@ -52,19 +52,44 @@ export const ragChatService = {
    */
   isRagAvailable: async (): Promise<boolean> => {
     try {
-      // We'll use a simple test message to check if RAG is available
-      const response = await api.post('/ollama/rag-chat', {
-        model: 'llama3',
-        message: 'test'
-      });
-      return response.data.ragAvailable === true;
+      // Use a dedicated endpoint to check RAG availability
+      const response = await api.get('/ollama/rag-availability');
+      console.log('RAG availability checked:', response.data);
+
+      // Add a timestamp to the console log to track when checks happen
+      console.log('RAG check timestamp:', new Date().toISOString());
+
+      // Make sure we have a valid response with the available property
+      if (response.data && typeof response.data.available === 'boolean') {
+        return response.data.available === true;
+      } else {
+        console.warn('Invalid RAG availability response format:', response.data);
+        return false;
+      }
     } catch (error: any) {
-      // If we get a 400 error with ragAvailable: false, RAG is not available
-      if (error.response?.data?.ragAvailable === false) {
+      // If we get a specific response indicating RAG is not available
+      if (error.response?.data?.available === false) {
+        console.log('RAG availability checked: Not Available');
         return false;
       }
       // For other errors, log and return false
       console.error('Error checking RAG availability:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Clear RAG data for a session
+   * @param sessionId The session ID to clear RAG data for
+   * @returns Whether the operation was successful
+   */
+  clearRagData: async (sessionId: string): Promise<boolean> => {
+    try {
+      const response = await api.delete(`/ollama/rag-data/${sessionId}`);
+      console.log('RAG data cleared for session:', sessionId);
+      return response.data.success === true;
+    } catch (error: any) {
+      console.error('Error clearing RAG data:', error);
       return false;
     }
   }

@@ -4,13 +4,38 @@
  */
 
 const vectorStoreService = require('./vectorStoreService');
-const ollamaService = require('./ollamaService');
+const OllamaService = require('./ollamaService');
+const { formatRagResponse } = require('./ragResponseFormatter');
+const { logger } = require('../utils/logger');
 
 class RAGService {
   constructor() {
     this.vectorStoreService = vectorStoreService;
-    this.ollamaService = ollamaService;
+    // Create a new instance of OllamaService
+    this.ollamaService = new OllamaService();
+
+    // Initialize immediately
+    this.initialized = false;
+    this.initializeServices();
+
     this.embeddingModel = 'nomic-embed-text';
+  }
+
+  /**
+   * Initialize services
+   */
+  async initializeServices() {
+    try {
+      // Initialize OllamaService
+      await this.ollamaService.initialize();
+      logger.info('RAG: OllamaService initialized successfully');
+      console.log('RAG: OllamaService initialized successfully');
+      this.initialized = true;
+    } catch (err) {
+      logger.error(`RAG: Failed to initialize OllamaService: ${err.message}`);
+      console.error(`RAG: Failed to initialize OllamaService: ${err.message}`);
+      this.initialized = false;
+    }
   }
 
   /**
@@ -22,12 +47,24 @@ class RAGService {
   async retrieveContext(query, options = {}) {
     const {
       topK = 5,
-      model = this.embeddingModel,
-      userId = null,
-      sessionId = null
+      model = this.embeddingModel
     } = options;
 
     try {
+      // Make sure OllamaService is initialized
+      if (!this.initialized) {
+        console.log('RAG: OllamaService not initialized, initializing now...');
+        await this.initializeServices();
+
+        if (!this.initialized) {
+          console.error('RAG: Failed to initialize OllamaService');
+          return {
+            success: false,
+            error: 'Failed to initialize OllamaService'
+          };
+        }
+      }
+
       console.log(`RAG: Generating embedding for query: "${query.substring(0, 50)}..."`);
 
       // Generate embedding for the query - using the existing generateEmbedding method
@@ -101,39 +138,72 @@ class RAGService {
    * @param {Object} options - Additional options
    * @returns {Promise<Object>} - Chat response with sources
    */
-  async processRagChat(message, model, options = {}) {
+  async processRagChat(message, modelId, options = {}) {
     try {
-      console.log(`RAG: Processing chat message with RAG: "${message.substring(0, 50)}..."`);
+      console.log(`RAG: Processing chat message with RAG: "${message.substring(0, 50)}..." using model ${modelId}`);
+
+      // Make sure OllamaService is initialized
+      if (!this.initialized) {
+        console.log('RAG: OllamaService not initialized, initializing now...');
+        await this.initializeServices();
+
+        if (!this.initialized) {
+          console.error('RAG: Failed to initialize OllamaService');
+          return {
+            success: false,
+            error: 'Failed to initialize OllamaService'
+          };
+        }
+      }
 
       // Get context for the query
-      const ragResult = await this.retrieveContext(message, options);
+      const ragResult = await this.retrieveContext(message, {
+        ...options,
+        model: this.embeddingModel // Always use embedding model for retrieval
+      });
 
       // If retrieval failed, use regular chat
       if (!ragResult.success) {
         console.log(`RAG: Retrieval failed, falling back to regular chat`);
-        return await this.ollamaService.chat(model, [
-          {
-            role: 'user',
-            content: message
+        // Use a fallback response instead of chat
+        return {
+          success: true,
+          response: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: `I don't have enough context to answer your question about "${message}". Please try a different question or provide more details.`
+              }
+            }]
           }
-        ], 'You are a helpful assistant.');
+        };
       }
 
       // If no context found, use regular chat
       if (!ragResult.context) {
         console.log(`RAG: No relevant context found, using regular chat`);
-        return await this.ollamaService.chat(model, [
-          {
-            role: 'user',
-            content: message
+        // Use a fallback response instead of chat
+        return {
+          success: true,
+          response: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: `I couldn't find relevant information about "${message}" in the available documents. Please try a different question or provide more details.`
+              }
+            }]
           }
-        ], 'You are a helpful assistant.');
+        };
       }
 
       console.log(`RAG: Using context from ${ragResult.sources.length} sources`);
 
       // Create the prompt with context
-      const messages = [
+      const ragMessages = [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that answers questions based on the provided context. If the information is not in the context, acknowledge that and provide your best response based on your general knowledge, but make it clear which parts are from the documents and which are not.'
+        },
         {
           role: 'user',
           content: `Use the following context from relevant documents to answer the question:
@@ -145,17 +215,47 @@ Question: ${message}`
         }
       ];
 
-      // Use the RAG-enhanced messages for chat with system prompt
-      const systemPrompt = 'You are a helpful assistant that answers questions based on the provided context. If the information is not in the context, acknowledge that and provide your best response based on your general knowledge, but make it clear which parts are from the documents and which are not.';
+      // Use the ollamaService.chat method to generate a response based on the context
+      try {
+        console.log(`RAG: Calling ollamaService.chat with model: ${modelId}`);
+        const chatResult = await this.ollamaService.chat(modelId, ragMessages);
 
-      // Use the RAG-enhanced messages for chat
-      const chatResponse = await this.ollamaService.chat(model, messages, systemPrompt);
-
-      // Add source information to the response
-      if (chatResponse.success) {
-        chatResponse.sources = ragResult.sources;
-        chatResponse.context = ragResult.context;
+        if (chatResult.success) {
+          console.log(`RAG: Successfully generated response using ollamaService.chat`);
+          // Add sources to the response
+          return {
+            success: true,
+            response: chatResult.response,
+            sources: ragResult.sources,
+            context: ragResult.context
+          };
+        } else {
+          console.warn(`RAG: Failed to generate chat response: ${chatResult.error}`);
+          // Fall back to the formatter
+        }
+      } catch (chatError) {
+        console.error(`RAG: Error calling ollamaService.chat: ${chatError.message}`);
+        // Fall back to the formatter
       }
+
+      // Fallback: Use the formatter to create a response if chat fails
+      console.log(`RAG: Using formatter fallback for response`);
+      const formattedResponse = formatRagResponse(message, ragResult.sources);
+
+      // Create the response object with the formatted answer
+      const chatResponse = {
+        success: true,
+        response: {
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: formattedResponse
+            }
+          }]
+        },
+        sources: ragResult.sources,
+        context: ragResult.context
+      };
 
       return chatResponse;
     } catch (error) {
@@ -173,8 +273,48 @@ Question: ${message}`
    */
   async isRagAvailable() {
     try {
+      // First check if the vector store is initialized
+      if (!this.vectorStoreService) {
+        console.log('RAG: Vector store service not available');
+        return false;
+      }
+
+      // Then check if there are any documents in the vector store
       const stats = await this.vectorStoreService.getStats();
-      return stats.success && stats.count > 0;
+      const hasDocuments = stats.success && stats.count > 0;
+
+      console.log(`RAG: Availability check - Vector store has ${stats.count} chunks in ${stats.documents || 'unknown'} documents`);
+
+      if (!hasDocuments) {
+        console.log('RAG: No documents found in vector store');
+        return false;
+      }
+
+      // Also check if OllamaService is initialized
+      if (!this.initialized) {
+        console.log('RAG: OllamaService not initialized, initializing now...');
+        await this.initializeServices();
+
+        if (!this.initialized) {
+          console.error('RAG: Failed to initialize OllamaService');
+          return false;
+        }
+      }
+
+      // Verify we can generate embeddings
+      try {
+        const testEmbed = await this.ollamaService.generateEmbedding("test", this.embeddingModel);
+        if (!testEmbed.success) {
+          console.error('RAG: Embedding generation test failed');
+          return false;
+        }
+      } catch (embedError) {
+        console.error('RAG: Error testing embedding generation:', embedError);
+        return false;
+      }
+
+      console.log('RAG: All checks passed, RAG is available');
+      return true;
     } catch (error) {
       console.error(`RAG: Error checking RAG availability:`, error);
       return false;

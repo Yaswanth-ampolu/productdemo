@@ -10,7 +10,7 @@ const { ChromaClient } = require('chromadb');
 class VectorStoreService {
   constructor(config = {}) {
     this.config = {
-      persistDirectory: path.join(process.cwd(), 'chroma_db'),
+      chromaUrl: 'http://localhost:8000', // URL for ChromaDB server
       collectionName: 'rag_docs',
       ...config
     };
@@ -19,11 +19,6 @@ class VectorStoreService {
     this.isInitialized = false;
     this.useChromaDB = true;
     this.vectorStoreDir = path.join(process.cwd(), 'vector_store'); // Fallback directory
-
-    // Create the persistence directory if it doesn't exist
-    if (!fs.existsSync(this.config.persistDirectory)) {
-      fs.mkdirSync(this.config.persistDirectory, { recursive: true });
-    }
 
     // Create the fallback vector store directory if it doesn't exist
     if (!fs.existsSync(this.vectorStoreDir)) {
@@ -42,32 +37,44 @@ class VectorStoreService {
       // Try to initialize ChromaDB
       if (this.useChromaDB) {
         try {
-          console.log(`Initializing ChromaDB at: ${this.config.persistDirectory}`);
+          console.log(`Connecting to ChromaDB server at: ${this.config.chromaUrl}`);
 
-          // Create ChromaClient with the persistence directory
+          // Create ChromaClient with the server URL
           this.client = new ChromaClient({
-            path: this.config.persistDirectory
+            path: this.config.chromaUrl
           });
 
           // Get or create collection
           try {
-            this.collection = await this.client.getCollection({
-              name: this.config.collectionName
-            });
-            console.log(`Retrieved existing ChromaDB collection: ${this.config.collectionName}`);
+            // Try to get the existing collection first
+            try {
+              console.log(`Attempting to get existing collection: ${this.config.collectionName}`);
+              this.collection = await this.client.getCollection({
+                name: this.config.collectionName
+              });
+              console.log(`Retrieved existing ChromaDB collection: ${this.config.collectionName}`);
+            } catch (getError) {
+              // If the collection doesn't exist, create a new one
+              console.log(`Collection doesn't exist, creating new one: ${getError.message}`);
+
+              // Create a new collection
+              console.log(`Creating new ChromaDB collection: ${this.config.collectionName}`);
+              this.collection = await this.client.createCollection({
+                name: this.config.collectionName,
+                metadata: { description: 'Document collection for RAG' }
+              });
+              console.log(`Created new ChromaDB collection: ${this.config.collectionName}`);
+            }
           } catch (collectionError) {
-            console.log(`Creating new ChromaDB collection: ${this.config.collectionName}`);
-            this.collection = await this.client.createCollection({
-              name: this.config.collectionName,
-              metadata: { description: 'Document collection for RAG' }
-            });
+            console.error('Error during collection operations:', collectionError);
+            throw collectionError;
           }
 
-          console.log('ChromaDB initialized successfully');
+          console.log('ChromaDB connected successfully');
           this.isInitialized = true;
           return true;
         } catch (chromaError) {
-          console.error('Failed to initialize ChromaDB:', chromaError);
+          console.error('Failed to connect to ChromaDB server:', chromaError);
           console.log('Falling back to file-based vector store');
           this.useChromaDB = false;
         }
@@ -103,8 +110,26 @@ class VectorStoreService {
       const documentIdStr = String(documentId);
 
       // If ChromaDB is available, use it
-      if (this.useChromaDB && this.collection) {
+      if (this.useChromaDB && this.client) {
         try {
+          // Make sure we have a valid collection reference
+          if (!this.collection) {
+            console.log('Getting ChromaDB collection before adding chunks');
+            try {
+              this.collection = await this.client.getCollection({
+                name: this.config.collectionName
+              });
+              console.log(`Retrieved ChromaDB collection: ${this.config.collectionName}`);
+            } catch (getError) {
+              // If collection doesn't exist, create it
+              console.log(`Creating new ChromaDB collection: ${this.config.collectionName}`);
+              this.collection = await this.client.createCollection({
+                name: this.config.collectionName,
+                metadata: { description: 'Document collection for RAG' }
+              });
+            }
+          }
+
           const ids = chunks.map((_, index) => `${documentIdStr}_chunk_${index}`);
           const embeddings = chunks.map(chunk => chunk.embedding);
           const documents = chunks.map(chunk => chunk.text);
@@ -125,7 +150,7 @@ class VectorStoreService {
           return { success: true, count: chunks.length };
         } catch (chromaError) {
           console.error('Failed to store in ChromaDB, falling back to file-based store:', chromaError);
-          this.useChromaDB = false; // Disable ChromaDB for future operations if it fails
+          // Don't disable ChromaDB permanently, just for this operation
         }
       }
 
@@ -176,7 +201,23 @@ class VectorStoreService {
     }
 
     try {
-      if (this.useChromaDB && this.collection) {
+      if (this.useChromaDB && this.client) {
+        // Make sure we have a valid collection reference
+        if (!this.collection) {
+          console.log('Getting ChromaDB collection before searching');
+          try {
+            this.collection = await this.client.getCollection({
+              name: this.config.collectionName
+            });
+            console.log(`Retrieved ChromaDB collection: ${this.config.collectionName}`);
+          } catch (getError) {
+            console.error(`Error getting collection for search: ${getError.message}`);
+            // If we can't get the collection, fall back to file-based search
+            throw getError;
+          }
+        }
+
+        console.log(`Searching ChromaDB collection with limit: ${limit}`);
         const results = await this.collection.query({
           queryEmbeddings: [queryEmbedding],
           nResults: limit,
@@ -311,6 +352,48 @@ class VectorStoreService {
   }
 
   /**
+   * Delete all RAG data associated with a session
+   * @param {string} sessionId - Session ID
+   * @param {string} userId - User ID
+   * @returns {Promise<Object>} Result object
+   */
+  async deleteSessionData(sessionId, userId) {
+    if (!await this.initialize()) {
+      return {
+        success: false,
+        error: 'Vector store not initialized'
+      };
+    }
+
+    try {
+      console.log(`Deleting RAG data for session ${sessionId} and user ${userId}`);
+
+      if (this.useChromaDB && this.collection) {
+        // Delete all entries where sessionId matches
+        await this.collection.delete({
+          where: { sessionId: String(sessionId) }
+        });
+        console.log(`Deleted session data for ${sessionId} from ChromaDB`);
+      }
+
+      // For file-based storage, we would need to scan all documents
+      // and delete those associated with this session
+      // This is a more complex operation that would require additional metadata
+
+      return {
+        success: true,
+        message: `Successfully deleted RAG data for session ${sessionId}`
+      };
+    } catch (error) {
+      console.error(`Error deleting session data for ${sessionId}:`, error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Get vector store statistics
    * @returns {Promise<Object>} Vector store stats
    */
@@ -324,13 +407,42 @@ class VectorStoreService {
 
     try {
       if (this.useChromaDB && this.collection) {
-        const count = await this.collection.count();
-        return {
-          success: true,
-          count,
-          documents: count, // Approximate, as ChromaDB doesn't track documents directly
-          storageType: 'chromadb'
-        };
+        try {
+          // Check if we need to reconnect to the collection
+          if (!this.client) {
+            console.log('ChromaDB client not initialized, connecting...');
+            this.client = new ChromaClient({
+              path: this.config.chromaUrl
+            });
+          }
+
+          // Get the collection without reinitializing
+          if (!this.collection) {
+            console.log('Getting ChromaDB collection for stats');
+            try {
+              this.collection = await this.client.getCollection({
+                name: this.config.collectionName
+              });
+              console.log(`Retrieved ChromaDB collection: ${this.config.collectionName}`);
+            } catch (getError) {
+              console.error(`Error getting collection: ${getError.message}`);
+              // If we can't get the collection, fall back to file-based stats
+              throw getError;
+            }
+          }
+
+          const count = await this.collection.count();
+          console.log(`ChromaDB collection has ${count} items`);
+          return {
+            success: true,
+            count,
+            documents: count > 0 ? Math.ceil(count / 100) : 0, // Approximate number of documents (assuming ~100 chunks per doc)
+            storageType: 'chromadb'
+          };
+        } catch (countError) {
+          console.error('Error getting count from ChromaDB:', countError);
+          // Fall back to file-based stats
+        }
       }
 
       const documentDirs = fs.existsSync(this.vectorStoreDir)

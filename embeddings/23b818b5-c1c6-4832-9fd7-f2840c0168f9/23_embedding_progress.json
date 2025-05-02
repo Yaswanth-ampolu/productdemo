@@ -1,0 +1,10 @@
+{
+  "documentId": 23,
+  "total": 212,
+  "completed": 212,
+  "progress": 100,
+  "inProgress": false,
+  "completed_at": "2025-05-02T09:29:42.408Z",
+  "vector_storage": "completed",
+  "vector_storage_error": null
+}

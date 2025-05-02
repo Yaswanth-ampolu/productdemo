@@ -17,6 +17,7 @@ const ollamaRoutes = require('./routes/ollama');
 
 // Try to require the documents routes, but don't fail if they're not available
 let documentsRoutes;
+let documentsStatusRoutes;
 try {
   documentsRoutes = require('./routes/documents');
 } catch (error) {
@@ -26,6 +27,20 @@ try {
   documentsRoutes.all('*', (req, res) => {
     res.status(503).json({
       error: 'Document service unavailable. Please install required dependencies: npm install multer uuid'
+    });
+  });
+}
+
+// Try to require the documents-status routes
+try {
+  documentsStatusRoutes = require('./routes/documents-status');
+} catch (error) {
+  console.error('Documents status routes not available:', error.message);
+  // Create a dummy router that returns 503 for all routes
+  documentsStatusRoutes = express.Router();
+  documentsStatusRoutes.all('*', (req, res) => {
+    res.status(503).json({
+      error: 'Document status service unavailable.'
     });
   });
 }
@@ -96,6 +111,7 @@ async function startServer() {
     apiRouter.use('/dashboard', dashboardRoutes);
     apiRouter.use('/ollama', ollamaRoutes(config));
     apiRouter.use('/documents', documentsRoutes);
+    apiRouter.use('/documents-status', documentsStatusRoutes);
     apiRouter.use('/', configRoutes(config)); // Add config routes at the API root
 
     // Mount all API routes under /api

@@ -1,8 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PaperAirplaneIcon, MicrophoneIcon, StopIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+import {
+  PaperAirplaneIcon,
+  MicrophoneIcon,
+  StopIcon,
+  ArrowUpTrayIcon,
+  DocumentTextIcon,
+  MagnifyingGlassIcon,
+  LightBulbIcon,
+  ArrowPathIcon
+} from '@heroicons/react/24/outline';
 import { chatInputStyles } from './chatStyles';
 import FileUploadButton from './FileUploadButton';
 import FilePreview from './FilePreview';
+import './ChatInput.css';
 
 interface ChatInputProps {
   onSendMessage: (message: string, file?: File) => void;
@@ -12,6 +22,9 @@ interface ChatInputProps {
   isUploading?: boolean;
   uploadProgress?: number;
   onStopGeneration?: () => void;
+  isRagAvailable?: boolean;
+  isRagEnabled?: boolean;
+  onToggleRag?: () => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -21,7 +34,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   isStreaming = false,
   isUploading = false,
   uploadProgress = 0,
-  onStopGeneration
+  onStopGeneration,
+  isRagAvailable = false,
+  isRagEnabled = true,
+  onToggleRag
 }) => {
   const [input, setInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -99,7 +115,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             onRemove={handleRemoveFile}
             uploadProgress={isUploading ? uploadProgress : undefined}
           />
-          
+
           {showManualUploadButton && (
             <button
               type="button"
@@ -125,50 +141,39 @@ const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', width: '100%', alignItems: 'center' }}>
-        <div style={chatInputStyles.inputRow}>
-          {/* File upload button */}
-          <FileUploadButton
-            onFileSelect={handleFileSelect}
-            onAutoUpload={handleAutoUpload}
-            autoUpload={true}
-            isLoading={isLoading || isUploading}
-            acceptedFileTypes=".pdf,.docx,.txt"
-            disabled={isStreaming}
-          />
-
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+        {/* Main input row with textarea and send button */}
+        <div style={{
+          ...chatInputStyles.inputRow,
+          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          borderRadius: '1.5rem',
+          padding: '0.25rem',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}>
           <textarea
             ref={inputRef}
-            placeholder={isEmpty ? "What can I help with?" : "Ask anything..."}
+            placeholder={isEmpty ? "Ask anything" : "Ask anything..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
             style={{
               ...chatInputStyles.input,
-              padding: isEmpty ? '0.875rem 1rem' : '0.75rem 1rem',
+              padding: isEmpty ? '0.75rem 1rem' : '0.75rem 1rem',
               height: 'auto',
               minHeight: '44px',
               maxHeight: '150px',
               resize: 'none',
-              overflow: 'auto'
+              overflow: 'auto',
+              borderRadius: '1.5rem',
+              border: 'none',
+              backgroundColor: 'transparent',
             }}
             disabled={isLoading || isUploading}
           />
 
-          <div style={chatInputStyles.buttonsContainer}>
-            {/* Optional voice input button - can be enabled later */}
-            {/* <button
-              type="button"
-              className="p-2 rounded-full transition-colors"
-              style={{
-                backgroundColor: 'var(--color-surface-dark)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              <MicrophoneIcon className="h-5 w-5" />
-            </button> */}
-
+          {/* Send/Stop button */}
+          <div style={{ marginLeft: '0.5rem' }}>
             {isStreaming ? (
               <button
                 type="button"
@@ -199,6 +204,50 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Buttons row below the input */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginTop: '0.75rem',
+            paddingLeft: '0.25rem',
+            overflowX: 'auto',
+            flexWrap: 'nowrap',
+            justifyContent: 'flex-start',
+          }}
+          className="hide-scrollbar"
+        >
+          {/* File upload button */}
+          <FileUploadButton
+            onFileSelect={handleFileSelect}
+            onAutoUpload={handleAutoUpload}
+            autoUpload={true}
+            isLoading={isLoading || isUploading}
+            acceptedFileTypes=".pdf,.docx,.txt"
+            disabled={isStreaming}
+          />
+
+          {/* RAG toggle button - always show but disable if not available */}
+          <button
+            type="button"
+            onClick={onToggleRag}
+            disabled={!isRagAvailable || isLoading || isUploading || isStreaming}
+            style={{
+              ...chatInputStyles.ragToggleButton,
+              ...(isRagEnabled && isRagAvailable ? chatInputStyles.ragToggleEnabled : chatInputStyles.ragToggleDisabled),
+              opacity: (!isRagAvailable || isLoading || isUploading || isStreaming) ? 0.5 : 1,
+              cursor: (!isRagAvailable || isLoading || isUploading || isStreaming) ? 'not-allowed' : 'pointer',
+            }}
+            className="hover:bg-opacity-90 transition-all"
+            aria-label={isRagEnabled ? "Disable document-based answers" : "Enable document-based answers"}
+            title={!isRagAvailable ? "Upload documents to enable RAG" : (isRagEnabled ? "Disable document-based answers" : "Enable document-based answers")}
+          >
+            <DocumentTextIcon className="h-4 w-4 mr-1" />
+            RAG
+          </button>
         </div>
       </form>
     </div>
