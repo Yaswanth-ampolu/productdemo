@@ -329,11 +329,20 @@ module.exports = function(config) {
         });
       }
 
+      logger.info(`Deleting RAG data for session ${sessionId} requested by user ${userId}`);
+
       // Import the vector store service
       const vectorStoreService = require('../services/vectorStoreService');
 
       // Delete the collection for this session
       const result = await vectorStoreService.deleteSessionData(sessionId, userId);
+
+      logger.info(`RAG data deletion result for session ${sessionId}: ${result.success ? 'Success' : 'Failed'}`);
+      if (result.success) {
+        logger.info(`Successfully deleted RAG data for session ${sessionId}`);
+      } else {
+        logger.warn(`Failed to delete RAG data: ${result.error}`);
+      }
 
       res.json({
         success: result.success,
@@ -415,12 +424,16 @@ module.exports = function(config) {
       }
 
       logger.info(`RAG is available, processing chat message: "${message.substring(0, 50)}..."`);
-
+      if (sessionId) {
+        logger.info(`Using session context: ${sessionId}`);
+      } else {
+        logger.info(`No session ID provided, using global context`);
+      }
 
       // Process the message with RAG
       const result = await ragService.processRagChat(message, model, {
         userId,
-        sessionId
+        sessionId // Pass sessionId to ensure context filtering
       });
 
       if (!result.success) {
@@ -451,8 +464,8 @@ module.exports = function(config) {
       logger.error(`Error in RAG chat: ${error.message}`, error);
       res.status(500).json({
         error: `RAG chat request failed: ${error.message}`,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-        details: error.response?.data || error.cause || 'No additional details available'
+        ragAvailable: true,
+        details: error.stack
       });
     }
   });

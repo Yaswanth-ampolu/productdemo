@@ -422,15 +422,27 @@ router.post('/message-with-file', isAuthenticated, upload.single('file'), async 
     }
 
     // Save document using the document service and trigger processing
-    const document = await documentService.saveDocument({
+    const document = await documentService.createDocument({
+      user_id: userId,
+      original_name: file.originalname,
+      file_path: file.path,
+      file_type: path.extname(file.originalname).substring(1), // Get extension without the dot
+      file_size: file.size,
+      mime_type: file.mimetype,
+      collection_id: null,
+      status: 'pending',
+      session_id: activeSessionId,
+      filename: file.filename || file.originalname // Add filename field
+    });
+
+    // Start document processing in the background
+    documentService.processDocument(document.id, {
       userId,
-      filename: file.filename,
-      originalName: file.originalname,
-      filePath: file.path,
-      fileType: file.mimetype,
-      fileSize: file.size,
-      collectionId: null
-    }, true); // true = process document
+      sessionId: activeSessionId
+    }).catch(error => {
+      console.error(`Background document processing failed for ${document.id}: ${error.message}`);
+      // The error is handled inside processDocument, so we just log it here
+    });
 
     // Store message and response in database with file reference
     const result = await pool.query(

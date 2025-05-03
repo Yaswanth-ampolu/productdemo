@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../database');
+// Don't require documentProcessor here to avoid circular dependency
+// We'll require it only when needed in specific methods
 
 class DocumentService {
   constructor() {
@@ -74,9 +76,23 @@ class DocumentService {
    */
   async triggerDocumentProcessing(documentId) {
     try {
-      // We'll use dynamic import to avoid circular dependencies
+      // Get the document from the database
+      const document = await this.getDocument(documentId);
+
+      if (!document) {
+        throw new Error(`Document not found: ${documentId}`);
+      }
+
+      // Update status to processing
+      await this.updateDocumentStatus(documentId, 'processing');
+
+      // Process the document using the document processor
+      // Require documentProcessor only when needed to avoid circular dependency
       const documentProcessor = require('./documentProcessor');
-      await documentProcessor.processDocument(documentId);
+      await documentProcessor.processDocument(document, {
+        userId: document.user_id,
+        sessionId: document.session_id || null
+      });
     } catch (error) {
       console.error(`Error processing document ${documentId}:`, error);
       // Update document status to ERROR
@@ -220,6 +236,122 @@ class DocumentService {
     } catch (error) {
       console.error('Error deleting document:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Process document for vector storage and RAG
+   * @param {string} documentId - Document ID
+   * @param {Object} options - Processing options
+   * @returns {Promise<Object>} - Processing result
+   */
+  async processDocument(documentId, options = {}) {
+    try {
+      const { userId, sessionId } = options;
+
+      // Get document from database
+      const document = await this.getDocument(documentId);
+      if (!document) {
+        throw new Error(`Document not found: ${documentId}`);
+      }
+
+      // Update status to processing
+      await this.updateDocumentStatus(documentId, 'processing');
+
+      console.log(`Processing document ${documentId} with options:`, {
+        userId: userId || document.user_id,
+        sessionId: sessionId || document.session_id || null
+      });
+
+      // Require documentProcessor only when needed to avoid circular dependency
+      const documentProcessor = require('./documentProcessor');
+      // Process using document processor
+      const result = await documentProcessor.processDocument(document, {
+        userId: userId || document.user_id,
+        sessionId: sessionId || document.session_id || null
+      });
+
+      // Update status based on result
+      if (result.success) {
+        await this.updateDocumentStatus(documentId, 'processed');
+      } else {
+        await this.updateDocumentStatus(documentId, 'error', result.error);
+      }
+
+      return result;
+    } catch (error) {
+      console.error(`Error processing document ${documentId}:`, error);
+      // Update document status to error
+      await this.updateDocumentStatus(documentId, 'error', error.message);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Create a new document in the database
+   * @param {Object} documentData - Document data
+   * @returns {Promise<Object>} - The created document
+   */
+  async createDocument(documentData) {
+    const {
+      user_id,
+      original_name,
+      file_path,
+      file_type,
+      file_size,
+      mime_type,
+      collection_id = null,
+      status = 'pending',
+      session_id = null,
+      filename = null
+    } = documentData;
+
+    console.log(`Creating document record: ${original_name} for user ${user_id}${session_id ? `, session ${session_id}` : ''}`);
+
+    // Validate required fields
+    if (!user_id || !original_name || !file_path) {
+      throw new Error('Missing required document data: user_id, original_name, and file_path are required');
+    }
+
+    // Generate a filename if not provided
+    const generatedFilename = filename || path.basename(file_path) || original_name;
+
+    try {
+      const query = `
+        INSERT INTO documents
+        (user_id, original_name, file_path, file_type, file_size, mime_type, collection_id, status, session_id, filename)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING *
+      `;
+
+      const params = [
+        user_id,
+        original_name,
+        file_path,
+        file_type,
+        file_size,
+        mime_type,
+        collection_id,
+        status,
+        session_id,
+        generatedFilename
+      ];
+
+      const result = await pool.query(query, params);
+
+      if (result.rows.length === 0) {
+        throw new Error('Failed to create document record');
+      }
+
+      console.log(`Document created successfully with ID: ${result.rows[0].id}`);
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating document in database:', error);
+      throw new Error(`Failed to create document: ${error.message}`);
     }
   }
 }

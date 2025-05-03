@@ -134,21 +134,22 @@ The project uses PostgreSQL as its database system. The schema is designed to su
 ### documents
 - Manages document storage and metadata
 - Fields:
-  - `id` (UUID, PK): Document identifier
+  - `id` (SERIAL, PK): Document identifier
   - `user_id` (UUID, FK): Document owner
-  - `collection_id` (UUID, FK): Parent collection
-  - `title` (varchar): Document title
-  - `file_path` (text): Storage path
-  - `file_name` (varchar): Original filename
-  - `file_type` (varchar): Document type (e.g., "pdf", "docx")
-  - `content_text` (text): Extracted text content
-  - `content_hash` (varchar): Content checksum for deduplication
-  - `vector_id` (varchar): Vector store reference
-  - `processing_status` (varchar): Status of processing pipeline (e.g., "pending", "processing", "indexed", "error")
-  - `is_indexed` (boolean): Whether document is indexed in vector store
-  - `chunk_count` (integer): Number of chunks created from document
-  - `uploaded_at`/`processed_at`/`indexed_at`/`last_accessed_at` (timestamp): Tracking dates
-  - `metadata` (jsonb): Additional document metadata
+  - `filename` (varchar, NOT NULL): Filename for storage
+  - `original_name` (varchar, NOT NULL): Original filename
+  - `file_path` (text, NOT NULL): Storage path
+  - `file_type` (varchar, NOT NULL): Document type (e.g., "pdf", "docx")
+  - `file_size` (bigint, NOT NULL): Size of the file in bytes
+  - `mime_type` (varchar): MIME type of the document
+  - `status` (varchar): Processing status (default: 'UPLOADED')
+  - `processing_error` (text): Error message if processing failed
+  - `collection_id` (UUID): Parent collection (optional)
+  - `session_id` (UUID): Associated chat session (optional)
+  - `created_at` (timestamp): Creation time
+  - `updated_at` (timestamp): Last update time
+  - Foreign key relationships:
+    - `user_id` references `users(id)` ON DELETE CASCADE
 
 ### document_chunks
 - Stores document segments for retrieval
@@ -218,7 +219,8 @@ The project uses PostgreSQL as its database system. The schema is designed to su
 
 4. A document:
    - Belongs to one user (N:1)
-   - Belongs to one collection (N:1)
+   - Can belong to one collection (N:1, optional)
+   - Can be associated with one chat session (N:1, optional)
    - Has multiple document chunks (1:N)
 
 ## Functions & Triggers
@@ -247,9 +249,9 @@ Triggers are set up to:
 - `idx_document_collections_vector_store_id`: Accelerates finding collections for a vector store
 - `idx_documents_user_id`: Speeds up finding a user's documents
 - `idx_documents_collection_id`: Accelerates finding documents in a collection
-- `idx_documents_content_hash`: Fast lookup for document deduplication
-- `idx_documents_processing_status`: Filters documents by processing status
-- `idx_documents_is_indexed`: Filters indexed documents
+- `idx_documents_session_id`: Accelerates finding documents associated with a chat session
+- `idx_documents_status`: Filters documents by processing status
+- `idx_documents_created_at`: Optimizes sorting documents by creation date
 - `idx_document_chunks_document_id`: Accelerates retrieving chunks for a document
 - `idx_document_chunks_vector_id`: Fast lookup of chunks by vector ID
 
@@ -295,7 +297,7 @@ All schema migrations follow this process:
 4. Add entry to `schema_migrations` table with version and description
 5. Update `copilotdbcreationscript.sql` for fresh installations
 6. Update `DatabaseStructure.md` to reflect changes
-7. Apply through the `runMigration` function in database.js 
+7. Apply through the `runMigration` function in database.js
 
 #### RAG Integration Schema Implementation (2024-07-01)
 - Successfully implemented the complete RAG database schema
@@ -307,3 +309,15 @@ All schema migrations follow this process:
 - Used IF EXISTS/IF NOT EXISTS clauses for safe execution in any environment
 - This implementation enables Retrieval-Augmented Generation (RAG) capabilities using the existing Ollama integration
 - **Note**: The new documents and document_chunks tables replace the previously used pdfs and message_files tables, which have been removed from the database
+
+#### Documents Table Schema Enhancement (2024-05-02)
+- Added `mime_type` column to the `documents` table to properly store document MIME types
+- Added `session_id` column to the `documents` table to associate documents with chat sessions
+- Updated the `filename` column to have a default value to prevent NOT NULL constraint violations
+- Created migration scripts:
+  - `add_mime_type_to_documents.sql`: Adds the mime_type column
+  - `add_session_id_to_documents.sql`: Adds the session_id column with proper foreign key constraints
+  - `update_documents_filename_default.sql`: Sets a default value for the filename column
+- These changes enable proper document handling in the RAG system and fix document upload issues
+- Improved error handling in document processing code to handle these new fields
+- Fixed circular dependencies between document service modules to ensure proper document processing

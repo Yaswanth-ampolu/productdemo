@@ -1,10 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const documentService = require('./documentService');
+// Don't require documentService here to avoid circular dependency
+// We'll use a function to get it when needed
 const { promisify } = require('util');
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
+
+// Helper function to get documentService only when needed
+function getDocumentService() {
+  return require('./documentService');
+}
 
 // Get the OllamaService
 let OllamaService;
@@ -76,6 +82,7 @@ class DocumentProcessor {
     // Set up services
     this.ollamaService = null;
     this.vectorStoreService = null;
+    // Don't store documentService directly to avoid circular dependency
     this.config = {
       embedding: {
         model: 'nomic-embed-text',
@@ -139,215 +146,179 @@ class DocumentProcessor {
   }
 
   /**
-   * Process a document after upload
-   * @param {number} documentId - Document ID
+   * Process a document from file to embeddings
+   * @param {Object} document - Document object with file path
+   * @param {Object} options - Processing options
    * @returns {Promise<Object>} - Processing result
    */
-  async processDocument(documentId) {
+  async processDocument(document, options = {}) {
     try {
-      // Get document info
-      const document = await documentService.getDocument(documentId);
+      const {
+        userId = document.user_id,
+        sessionId = null
+      } = options;
 
-      // Update status to PROCESSING
-      await documentService.updateDocumentStatus(documentId, 'PROCESSING');
+      console.log(`Processing document ${document.id}: ${document.original_name}${sessionId ? ` for session ${sessionId}` : ''}`);
 
-      // Log the processing start
-      console.log(`Processing document ${documentId}: ${document.original_name}`);
+      // Update progress to indicate start
+      await this.updateDocumentProgress(document.id, {
+        status: 'processing',
+        progress: 10,
+        message: 'Started document processing'
+      });
 
       // Extract text from the document
-      const extractedText = await this.extractText(document);
-
-      // Create user's embeddings directory if it doesn't exist
-      const userEmbeddingsDir = path.join(this.embeddingsDir, document.user_id);
-      if (!fs.existsSync(userEmbeddingsDir)) {
-        await mkdir(userEmbeddingsDir, { recursive: true });
+      const textResult = await this.extractText(document);
+      if (!textResult.success) {
+        console.error(`Failed to extract text: ${textResult.error}`);
+        return textResult;
       }
 
-      // Save the extracted text
-      const textFilePath = path.join(userEmbeddingsDir, `${document.id}_text.txt`);
-      await writeFile(textFilePath, extractedText, 'utf8');
+      // Update progress after text extraction
+      await this.updateDocumentProgress(document.id, {
+        progress: 30,
+        message: 'Text extracted, chunking document'
+      });
 
-      // Chunk the text using LangChain or fallback method
-      console.log(`Chunking text for document ${documentId} (${extractedText.length} characters)`);
-      const chunks = await this.chunkText(extractedText);
-      console.log(`Created ${chunks.length} chunks for document ${documentId}`);
+      // Split text into chunks
+      const chunks = await this.chunkText(textResult.text, document.file_type);
+      console.log(`Document ${document.id} chunked into ${chunks.length} segments`);
 
-      // Save the chunks
-      const chunksFilePath = path.join(userEmbeddingsDir, `${document.id}_chunks.json`);
-      await writeFile(chunksFilePath, JSON.stringify(chunks, null, 2), 'utf8');
+      // Update progress after chunking
+      await this.updateDocumentProgress(document.id, {
+        progress: 50,
+        message: 'Document chunked, generating embeddings'
+      });
 
-      // Update status to EMBEDDING
-      await documentService.updateDocumentStatus(documentId, 'EMBEDDING', null, true); // Added flag to indicate long-running process
-
-      try {
-        // Generate embeddings - this is a long-running process
-        const embeddingsResult = await this.generateEmbeddings(chunks, document.id, userEmbeddingsDir);
-
-        // Check if embedding generation was successful
-        if (!embeddingsResult.success) {
-          console.warn(`Embedding generation failed: ${embeddingsResult.error}`);
-          // Continue with processing but log the error
-        }
-
-        // Update status to PROCESSED
-        await documentService.updateDocumentStatus(documentId, 'PROCESSED');
-
-        return {
-          success: true,
-          documentId,
-          status: 'PROCESSED',
-          textLength: extractedText.length,
-          chunkCount: chunks.length,
-          embeddingsGenerated: embeddingsResult.success
-        };
-      } catch (error) {
-        console.error(`Error in embedding generation:`, error);
-        throw error;
+      // Generate embeddings for the chunks
+      const embeddingsResult = await this.generateEmbeddings(chunks, document.id, userId, sessionId);
+      if (!embeddingsResult.success) {
+        console.error(`Failed to generate embeddings: ${embeddingsResult.error}`);
+        return embeddingsResult;
       }
+
+      // Update progress after embedding generation
+      await this.updateDocumentProgress(document.id, {
+        status: 'completed',
+        progress: 100,
+        message: 'Document processing completed'
+      });
+
+      console.log(`Document ${document.id} processing completed: ${chunks.length} chunks processed`);
+      return {
+        success: true,
+        chunks: chunks.length,
+        message: `Document processed successfully: ${chunks.length} chunks created`
+      };
     } catch (error) {
-      console.error(`Error processing document ${documentId}:`, error);
-
-      // Update status to ERROR
-      try {
-        await documentService.updateDocumentStatus(
-          documentId,
-          'ERROR',
-          error.message || 'Unknown error during processing'
-        );
-      } catch (updateError) {
-        console.error(`Error updating document status:`, updateError);
-      }
-
+      console.error(`Error processing document ${document.id}:`, error);
+      await this.updateDocumentProgress(document.id, {
+        status: 'error',
+        message: `Processing error: ${error.message}`
+      });
       return {
         success: false,
-        documentId,
-        error: error.message || 'Unknown error during processing',
-        status: 'ERROR'
+        error: error.message
       };
     }
   }
 
   /**
    * Generate embeddings for document chunks
-   * @param {Array} chunks - Text chunks to embed
+   * @param {Array} chunks - Document text chunks
    * @param {string} documentId - Document ID
-   * @param {string} userEmbeddingsDir - Directory to store embeddings
-   * @returns {Promise<Object>} - Embedding generation result
+   * @param {string} userId - User ID
+   * @param {string} sessionId - Optional session ID
+   * @returns {Promise<Object>} - Result with embeddings
    */
-  async generateEmbeddings(chunks, documentId, userEmbeddingsDir) {
+  async generateEmbeddings(chunks, documentId, userId, sessionId = null) {
     try {
-      // Create progress tracking file
-      const progressFilePath = path.join(userEmbeddingsDir, `${documentId}_embedding_progress.json`);
-      await writeFile(
-        progressFilePath,
-        JSON.stringify({ documentId, total: chunks.length, completed: 0, inProgress: true }, null, 2),
-        'utf8'
-      );
+      console.log(`Generating embeddings for document ${documentId}, ${chunks.length} chunks${sessionId ? `, session ${sessionId}` : ''}`);
 
-      // Check if OllamaService is available
+      // Initialize embedding generator if needed
       if (!this.ollamaService) {
         await this.initOllamaService();
       }
 
-      // If we still don't have OllamaService, use placeholder
+      // If we still don't have OllamaService, use placeholder embeddings
       if (!this.ollamaService) {
-        return this.generatePlaceholderEmbeddings(chunks, documentId, userEmbeddingsDir);
-      }
+        console.warn(`OllamaService not available, using placeholder embeddings for document ${documentId}`);
 
-      // Extract just the text content from chunks
-      const chunkTexts = chunks.map(chunk => chunk.text);
+        // Generate placeholder embeddings (random vectors)
+        const placeholderEmbeddings = chunks.map(() => {
+          // Create a random 768-dimensional vector (typical embedding size)
+          const dimensions = 768;
+          const embedding = Array(dimensions).fill(0).map(() => (Math.random() * 2) - 1);
 
-      // Track progress
-      let completed = 0;
-      const updateProgress = async (progress, completedCount) => {
-        completed = completedCount;
-        await writeFile(
-          progressFilePath,
-          JSON.stringify({
-            documentId,
-            total: chunks.length,
-            completed,
-            progress,
-            inProgress: true
-          }, null, 2),
-          'utf8'
-        );
+          // Normalize the vector to unit length
+          const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+          return embedding.map(val => val / magnitude);
+        });
 
-        // Also update document status in the database every 10% progress
-        // This helps keep the session alive by creating database activity
-        if (progress % 10 === 0) {
+        console.log(`Generated ${placeholderEmbeddings.length} placeholder embeddings for document ${documentId}`);
+
+        // Continue with vector storage using placeholder embeddings
+        if (this.vectorStoreService) {
           try {
-            await documentService.updateDocumentStatus(
+            console.log(`Storing ${chunks.length} placeholder embeddings in vector store for document ${documentId}`);
+
+            // Get document service using helper function to avoid circular dependency
+            const documentService = getDocumentService();
+            // Get document metadata
+            const document = await documentService.getDocument(documentId);
+
+            // Prepare chunks with embeddings for vector store
+            const chunksWithEmbeddings = chunks.map((chunk, index) => ({
+              text: chunk.text,
+              embedding: placeholderEmbeddings[index]
+            }));
+
+            // Add chunks to vector store with session ID in metadata
+            const vectorStoreResult = await this.vectorStoreService.addDocumentChunks(
+              chunksWithEmbeddings,
               documentId,
-              'EMBEDDING',
-              `Embedding generation ${progress}% complete (${completed}/${chunks.length} chunks)`,
-              true // Mark as long-running to keep session active
+              {
+                fileName: document.original_name,
+                userId: document.user_id || userId,
+                fileType: document.file_type,
+                sessionId: sessionId || document.session_id || null
+              }
             );
-          } catch (error) {
-            console.warn(`Failed to update document status during embedding progress: ${error.message}`);
+
+            if (!vectorStoreResult.success) {
+              console.error(`Error storing placeholder embeddings in vector store:`, vectorStoreResult.error);
+            } else {
+              console.log(`Successfully stored ${vectorStoreResult.count} placeholder vectors for document ${documentId}`);
+            }
+          } catch (storeError) {
+            console.error(`Error storing placeholder embeddings in vector store:`, storeError);
           }
         }
-      };
 
-      // Generate embeddings using OllamaService in smaller batches to avoid timeouts
-      console.log(`Generating embeddings for ${chunks.length} chunks using Ollama`);
-      const result = await this.ollamaService.generateEmbeddingsBatch(
-        chunkTexts,
-        null, // use default model
-        this.config.embedding.batchSize,
-        updateProgress
-      );
-
-      if (!result.success) {
-        throw new Error(`Failed to generate embeddings: ${result.error}`);
+        return {
+          success: true,
+          embeddings: placeholderEmbeddings,
+          message: `Generated ${placeholderEmbeddings.length} placeholder embeddings for document ${documentId} (Ollama unavailable)`
+        };
       }
 
-      // Prepare embeddings data structure
-      const embeddingsData = {
-        documentId,
-        model: result.model,
-        dimensions: result.embeddings[0]?.length || this.config.embedding.dimensions,
-        count: result.count,
-        timestamp: new Date().toISOString(),
-        chunks: chunks.map((chunk, index) => ({
-          ...chunk,
-          embeddingIndex: index
-        }))
-      };
+      // Prepare texts for embedding
+      const texts = chunks.map(chunk => chunk.text);
 
-      // Save embeddings in JSON format
-      const embeddingsFilePath = path.join(userEmbeddingsDir, `${documentId}_embeddings.json`);
-      await writeFile(
-        embeddingsFilePath,
-        JSON.stringify(embeddingsData, null, 2),
-        'utf8'
-      );
-
-      // Save raw embeddings in binary format for efficiency
-      const embeddingsBinaryPath = path.join(userEmbeddingsDir, `${documentId}_embeddings.bin`);
-      const embeddingsBuffer = this.convertEmbeddingsToBuffer(result.embeddings);
-      await writeFile(embeddingsBinaryPath, embeddingsBuffer);
+      // Generate embeddings using Ollama
+      const result = await this.ollamaService.generateEmbeddingsBatch(texts);
+      if (!result.success) {
+        console.error(`Error generating embeddings:`, result.error);
+        return result;
+      }
 
       // Store embeddings in vector database if available
-      let vectorStoreResult = { success: false, error: 'Vector store not initialized' };
       if (this.vectorStoreService) {
         try {
-          // Update progress to indicate vector storage
-          await writeFile(
-            progressFilePath,
-            JSON.stringify({
-              documentId,
-              total: chunks.length,
-              completed: chunks.length,
-              progress: 95, // Not quite done yet
-              inProgress: true,
-              status: 'Storing in vector database'
-            }, null, 2),
-            'utf8'
-          );
+          console.log(`Storing ${chunks.length} embeddings in vector store for document ${documentId}`);
 
-          console.log(`Storing ${chunks.length} embeddings in ChromaDB for document ${documentId}`);
-
+          // Get document service using helper function to avoid circular dependency
+          const documentService = getDocumentService();
           // Get document metadata for storage
           const document = await documentService.getDocument(documentId);
 
@@ -357,147 +328,107 @@ class DocumentProcessor {
             embedding: result.embeddings[index]
           }));
 
-          // Add chunks to vector store
-          vectorStoreResult = await this.vectorStoreService.addDocumentChunks(
+          // Add chunks to vector store with session ID in metadata if available
+          const vectorStoreResult = await this.vectorStoreService.addDocumentChunks(
             chunksWithEmbeddings,
             documentId,
             {
-              fileName: document.original_name || path.basename(document.file_path),
-              userId: document.user_id,
-              fileType: document.file_type
+              fileName: document.original_name || document.file_path.split('/').pop(),
+              userId: document.user_id || userId,
+              fileType: document.file_type,
+              sessionId: sessionId || document.session_id || null  // Include session ID in metadata
             }
           );
 
-          if (vectorStoreResult.success) {
-            console.log(`Successfully stored ${vectorStoreResult.count} chunks in ChromaDB for document ${documentId}`);
+          if (!vectorStoreResult.success) {
+            console.error(`Error storing embeddings in vector store:`, vectorStoreResult.error);
           } else {
-            console.warn(`Failed to store embeddings in ChromaDB: ${vectorStoreResult.error}`);
+            console.log(`Successfully stored ${vectorStoreResult.count} vectors in store for document ${documentId}`);
           }
-        } catch (vectorError) {
-          console.error(`Error storing embeddings in ChromaDB:`, vectorError);
-          console.error(vectorError.stack);
-          vectorStoreResult = { success: false, error: vectorError.message };
-          // Continue with file-based storage as fallback
+        } catch (storeError) {
+          console.error(`Error storing embeddings in vector store:`, storeError);
+          // Continue even if vector store fails
         }
-      } else {
-        console.warn('VectorStoreService not available, skipping ChromaDB storage');
       }
-
-      // Update progress file to mark completion
-      await writeFile(
-        progressFilePath,
-        JSON.stringify({
-          documentId,
-          total: chunks.length,
-          completed: chunks.length,
-          progress: 100,
-          inProgress: false,
-          completed_at: new Date().toISOString(),
-          vector_storage: vectorStoreResult.success ? 'completed' : 'skipped',
-          vector_storage_error: vectorStoreResult.success ? null : vectorStoreResult.error
-        }, null, 2),
-        'utf8'
-      );
 
       return {
         success: true,
-        model: result.model,
-        count: result.count,
-        documentId,
-        vectorStorage: vectorStoreResult.success
+        embeddings: result.embeddings,
+        message: `Generated ${result.embeddings.length} embeddings for document ${documentId}`
       };
     } catch (error) {
       console.error(`Error generating embeddings:`, error);
-
-      // Fall back to placeholder if real embedding generation fails
-      return this.generatePlaceholderEmbeddings(chunks, documentId, userEmbeddingsDir);
+      return {
+        success: false,
+        error: error.message
+      };
     }
-  }
-
-  /**
-   * Generate placeholder embeddings when Ollama is not available
-   * @param {Array} chunks - Text chunks
-   * @param {string} documentId - Document ID
-   * @param {string} userEmbeddingsDir - Directory to store embeddings
-   * @returns {Promise<Object>} - Placeholder result
-   */
-  async generatePlaceholderEmbeddings(chunks, documentId, userEmbeddingsDir) {
-    console.log(`Using placeholder embeddings for document ${documentId}`);
-
-    // For now, we'll mock a delay to simulate processing
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Create a placeholder embeddings file
-    const embeddingsPlaceholderFilePath = path.join(userEmbeddingsDir, `${documentId}_embeddings_placeholder.json`);
-    await writeFile(
-      embeddingsPlaceholderFilePath,
-      JSON.stringify({
-        documentId,
-        status: "placeholder",
-        note: "Using placeholder embeddings. Real embeddings couldn't be generated.",
-        timestamp: new Date().toISOString(),
-        chunkCount: chunks.length
-      }, null, 2),
-      'utf8'
-    );
-
-    return {
-      success: true,
-      isPlaceholder: true,
-      documentId,
-      chunkCount: chunks.length
-    };
-  }
-
-  /**
-   * Convert embeddings array to binary buffer for storage
-   * @param {Array} embeddings - Array of embedding vectors
-   * @returns {Buffer} - Binary buffer containing embeddings
-   */
-  convertEmbeddingsToBuffer(embeddings) {
-    if (!embeddings || embeddings.length === 0 || !embeddings[0]) {
-      return Buffer.alloc(0);
-    }
-
-    const dimensions = embeddings[0].length;
-    const buffer = Buffer.alloc(embeddings.length * dimensions * 4); // 4 bytes per float32
-
-    embeddings.forEach((embedding, embIndex) => {
-      if (embedding) {
-        embedding.forEach((value, valueIndex) => {
-          buffer.writeFloatLE(value, (embIndex * dimensions + valueIndex) * 4);
-        });
-      }
-    });
-
-    return buffer;
   }
 
   /**
    * Extract text from a document based on its file type
    * @param {Object} document - Document object
-   * @returns {Promise<string>} - Extracted text
+   * @returns {Promise<Object>} - Object with extracted text or error
    */
   async extractText(document) {
+    if (!document || !document.file_path) {
+      return {
+        success: false,
+        error: 'Invalid document or missing file path'
+      };
+    }
+
     const { file_path, file_type } = document;
+    console.log(`Extracting text from ${file_path} (${file_type})`);
 
     try {
-      switch (file_type) {
+      let text = '';
+
+      // Extract based on file type
+      switch (file_type.toLowerCase()) {
         case 'application/pdf':
-          return await this.extractPdfText(file_path);
+        case 'pdf':
+          text = await this.extractPdfText(file_path);
+          break;
 
         case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-          return await this.extractDocxText(file_path);
+        case 'docx':
+          text = await this.extractDocxText(file_path);
+          break;
 
         case 'text/plain':
-          return await readFile(file_path, 'utf8');
+        case 'txt':
+          text = await readFile(file_path, 'utf8');
+          break;
 
         default:
-          throw new Error(`Unsupported file type: ${file_type}`);
+          return {
+            success: false,
+            error: `Unsupported file type: ${file_type}`
+          };
       }
+
+      // Check if we got any text back
+      if (!text || text.length === 0) {
+        return {
+          success: false,
+          error: 'No text could be extracted from the document'
+        };
+      }
+
+      console.log(`Successfully extracted ${text.length} characters from ${file_path}`);
+
+      return {
+        success: true,
+        text,
+        length: text.length
+      };
     } catch (error) {
       console.error(`Error extracting text from ${file_path}:`, error);
-      throw new Error(`Failed to extract text: ${error.message}`);
+      return {
+        success: false,
+        error: `Failed to extract text: ${error.message}`
+      };
     }
   }
 
@@ -585,21 +516,74 @@ class DocumentProcessor {
   }
 
   /**
-   * Chunk text into smaller pieces for processing
-   * @param {string} text - Text to chunk
-   * @param {number} chunkSize - Maximum chunk size in characters
-   * @param {number} chunkOverlap - Number of characters to overlap between chunks
-   * @returns {Promise<Array<Object>>} - Promise resolving to array of text chunks with metadata
+   * Update document processing progress
+   * @param {string} documentId - Document ID
+   * @param {Object} progress - Progress info
+   * @returns {Promise<void>}
    */
-  async chunkText(text, chunkSize = 1000, chunkOverlap = 200) {
+  async updateDocumentProgress(documentId, progress) {
+    if (!documentId) {
+      console.warn('Cannot update progress: Document ID is undefined');
+      return;
+    }
+
+    try {
+      const { status, progress: progressValue, message } = progress;
+
+      // Default status to 'processing' if not provided
+      const docStatus = status || 'processing';
+
+      console.log(`Updating document ${documentId} progress: ${progressValue || 0}% - ${message || 'Processing'} (status: ${docStatus})`);
+
+      // Get document service using helper function to avoid circular dependency
+      const documentService = getDocumentService();
+
+      // Try to get the document first to verify it exists
+      try {
+        const document = await documentService.getDocument(documentId);
+        if (!document) {
+          console.warn(`Cannot update progress: Document ${documentId} not found in database`);
+          return;
+        }
+      } catch (docError) {
+        console.warn(`Cannot update progress: Error retrieving document ${documentId}: ${docError.message}`);
+        return;
+      }
+
+      // Update document status through document service
+      await documentService.updateDocumentStatus(
+        documentId,
+        docStatus,
+        message,
+        true // Mark as long-running to prevent session timeout
+      );
+
+      console.log(`Document ${documentId} progress updated: ${progressValue || 0}% - ${message || 'Processing'}`);
+    } catch (error) {
+      console.error(`Error updating document progress for ${documentId}: ${error.message}`);
+      // Don't throw - we don't want to interrupt processing due to progress update failure
+    }
+  }
+
+  /**
+   * Split text into chunks for processing
+   * @param {string} text - Text to split into chunks
+   * @param {string} fileType - File type for optimizing chunking strategy
+   * @param {number} chunkSize - Target chunk size in characters
+   * @param {number} chunkOverlap - Overlap between chunks in characters
+   * @returns {Array<Object>} - Array of text chunks with metadata
+   */
+  async chunkText(text, fileType, chunkSize = 1000, chunkOverlap = 200) {
     if (!text || text.length === 0) {
       return [];
     }
 
+    console.log(`Chunking text (${text.length} chars) with size=${chunkSize}, overlap=${chunkOverlap}`);
+
     // Try using LangChain's RecursiveCharacterTextSplitter if available
     if (RecursiveCharacterTextSplitter) {
       try {
-        console.log(`Using LangChain RecursiveCharacterTextSplitter with size=${chunkSize}, overlap=${chunkOverlap}`);
+        console.log(`Using LangChain RecursiveCharacterTextSplitter`);
 
         const splitter = new RecursiveCharacterTextSplitter({
           chunkSize: chunkSize,
@@ -612,27 +596,11 @@ class DocumentProcessor {
         const langchainChunks = await splitter.createDocuments([text]);
 
         // Convert LangChain documents to our chunk format
-        let currentIndex = 0;
-        const chunks = langchainChunks.map(doc => {
-          const chunkText = doc.pageContent;
-          const startIndex = text.indexOf(chunkText, currentIndex);
-
-          // If we couldn't find the exact chunk (due to transformations), use an approximation
-          const actualStartIndex = startIndex >= 0 ? startIndex : currentIndex;
-          const endIndex = actualStartIndex + chunkText.length;
-
-          // Update currentIndex for next search
-          if (startIndex >= 0) {
-            currentIndex = startIndex + chunkText.length - chunkOverlap;
-          } else {
-            currentIndex += chunkText.length - chunkOverlap;
-          }
-
+        const chunks = langchainChunks.map((doc, index) => {
           return {
-            text: chunkText,
-            startIndex: actualStartIndex,
-            endIndex: endIndex,
-            length: chunkText.length
+            text: doc.pageContent,
+            index: index,
+            length: doc.pageContent.length
           };
         });
 
@@ -644,58 +612,54 @@ class DocumentProcessor {
       }
     }
 
-    // Fallback to custom implementation if LangChain is not available or fails
-    console.log(`Using custom text chunking with size=${chunkSize}, overlap=${chunkOverlap}`);
+    // Fallback to custom chunking implementation
+    console.log(`Using custom text chunking method`);
     const chunks = [];
     let startIndex = 0;
 
     while (startIndex < text.length) {
       // Calculate end index for this chunk
-      let endIndex = startIndex + chunkSize;
+      let endIndex = Math.min(startIndex + chunkSize, text.length);
 
       // If we're not at the end of the text, try to find a good breaking point
       if (endIndex < text.length) {
-        // Look for a period, question mark, or exclamation point followed by a space or newline
-        const breakMatch = text.substring(endIndex - 100, endIndex + 100).match(/[.!?]\s+/);
-
-        if (breakMatch) {
-          // Adjust endIndex to end at this sentence boundary
-          const matchIndex = breakMatch.index;
-          endIndex = endIndex - 100 + matchIndex + 2; // +2 to include the punctuation and space
+        // Look for paragraph breaks first
+        const paragraphBreak = text.lastIndexOf('\n\n', endIndex);
+        if (paragraphBreak > startIndex && paragraphBreak > endIndex - 200) {
+          endIndex = paragraphBreak + 2; // +2 to include the newlines
         } else {
-          // If no sentence boundary, look for a space
-          const lastSpace = text.lastIndexOf(' ', endIndex);
-          if (lastSpace > startIndex) {
-            endIndex = lastSpace + 1;
+          // Look for sentence endings (.!?)
+          const sentenceMatch = text.substring(endIndex - 100, endIndex + 100).match(/[.!?]\s/);
+          if (sentenceMatch) {
+            const matchIndex = sentenceMatch.index;
+            endIndex = endIndex - 100 + matchIndex + 2; // +2 to include punctuation and space
+          } else {
+            // Look for a space as last resort
+            const lastSpace = text.lastIndexOf(' ', endIndex);
+            if (lastSpace > startIndex) {
+              endIndex = lastSpace + 1;
+            }
           }
         }
-      } else {
-        // If we're at the end of the text, just use the end
-        endIndex = text.length;
       }
 
       // Extract the chunk
       const chunk = text.substring(startIndex, endIndex).trim();
 
-      // Add to chunks array with metadata
-      if (chunk) {
+      // Add to chunks array if not empty
+      if (chunk.length > 0) {
         chunks.push({
           text: chunk,
-          startIndex,
-          endIndex,
+          index: chunks.length,
           length: chunk.length
         });
       }
 
       // Move to next chunk, accounting for overlap
-      startIndex = endIndex - chunkOverlap;
-
-      // Make sure we're making progress
-      if (startIndex <= chunks[chunks.length - 1]?.startIndex) {
-        startIndex = chunks[chunks.length - 1].startIndex + 1;
-      }
+      startIndex = Math.max(startIndex + 1, endIndex - chunkOverlap);
     }
 
+    console.log(`Custom text chunking created ${chunks.length} chunks`);
     return chunks;
   }
 }

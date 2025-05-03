@@ -25,6 +25,8 @@ try {
 
 const { pool } = require('../database');
 const documentService = require('../services/documentService');
+const vectorStoreService = require('../services/vectorStoreService');
+const logger = require('../utils/logger');
 
 // Middleware to check if user is authenticated (similar to chatbot.js)
 const authenticateToken = (req, res, next) => {
@@ -102,38 +104,80 @@ if (multer) {
   };
 }
 
-// Route to upload a document
+/**
+ * Handle document upload and processing
+ * POST /api/documents/upload
+ */
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const userId = req.session.userId;
+    const { sessionId } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
     }
 
-    const { originalname, mimetype, size, filename, path: filePath } = req.file;
-    const userId = req.session.userId;
+    logger.info(`Document upload initiated for file: ${file.originalname} by user ${userId}`);
+
+    // If a sessionId is provided, we need to clear any existing documents for this session
+    // to prevent cross-contamination of RAG sources
+    if (sessionId) {
+      logger.info(`Clearing previous document data for session ${sessionId}`);
+
+      try {
+        // Delete any previous documents associated with this session
+        const clearResult = await vectorStoreService.clearSessionDocuments(sessionId);
+
+        if (clearResult.success) {
+          logger.info(`Successfully cleared previous documents for session ${sessionId}: ${clearResult.deletedCount} chunks removed`);
+        } else {
+          logger.warn(`Failed to clear previous documents for session ${sessionId}: ${clearResult.error}`);
+        }
+      } catch (clearError) {
+        logger.error(`Error clearing previous session documents: ${clearError.message}`);
+        // Continue with upload even if clearing fails
+      }
+    }
+
+    const { originalname, mimetype, size, filename, path: filePath } = file;
     const collectionId = req.body.collectionId || null;
 
-    // Save document using the document service and trigger processing
-    const document = await documentService.saveDocument({
-      userId,
-      filename,
-      originalName: originalname,
-      filePath,
-      fileType: mimetype,
-      fileSize: size,
-      collectionId
-    }, true); // true = process document
+    // Process the document (rest of the document upload code)
+    // Create database entry
+    const document = await documentService.createDocument({
+      user_id: userId,
+      original_name: file.originalname,
+      file_path: file.path,
+      file_type: path.extname(file.originalname).substring(1), // Get extension without dot
+      file_size: file.size,
+      mime_type: file.mimetype,
+      collection_id: collectionId,
+      status: 'pending',
+      session_id: sessionId || null, // Associate document with a session if provided
+      filename: file.filename || file.originalname // Add filename field
+    });
 
-    // Return document info
+    // Return success response immediately
     res.status(201).json({
-      id: document.id,
-      filename,
-      originalName: originalname,
-      type: mimetype,
-      size,
-      status: document.status,
-      createdAt: document.createdAt,
-      collectionId
+      success: true,
+      document: {
+        id: document.id,
+        name: document.original_name,
+        type: document.file_type,
+        size: document.file_size,
+        status: document.status
+      },
+      message: 'Document uploaded successfully. Processing has started.'
+    });
+
+    // Start document processing in the background
+    documentService.processDocument(document.id, {
+      userId,
+      sessionId: sessionId || null
+    }).catch(error => {
+      logger.error(`Background document processing failed for ${document.id}: ${error.message}`);
+      // The error is handled inside processDocument, so we just log it here
     });
   } catch (error) {
     console.error('Error uploading document:', error);

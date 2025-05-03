@@ -47,7 +47,9 @@ class RAGService {
   async retrieveContext(query, options = {}) {
     const {
       topK = 5,
-      model = this.embeddingModel
+      model = this.embeddingModel,
+      sessionId = null,
+      userId = null
     } = options;
 
     try {
@@ -66,6 +68,9 @@ class RAGService {
       }
 
       console.log(`RAG: Generating embedding for query: "${query.substring(0, 50)}..."`);
+      if (sessionId) {
+        console.log(`RAG: Using session context: ${sessionId}`);
+      }
 
       // Generate embedding for the query - using the existing generateEmbedding method
       const embedResult = await this.ollamaService.generateEmbedding(query, model);
@@ -79,10 +84,11 @@ class RAGService {
 
       console.log(`RAG: Successfully generated query embedding, searching for relevant chunks...`);
 
-      // Search for relevant documents
+      // Search for relevant documents - pass sessionId as an option
       const searchResult = await this.vectorStoreService.search(
         embedResult.embedding,
-        topK
+        topK,
+        { sessionId }  // Pass sessionId in search options
       );
 
       if (!searchResult.success) {
@@ -140,7 +146,12 @@ class RAGService {
    */
   async processRagChat(message, modelId, options = {}) {
     try {
+      const { sessionId, userId } = options;
+      
       console.log(`RAG: Processing chat message with RAG: "${message.substring(0, 50)}..." using model ${modelId}`);
+      if (sessionId) {
+        console.log(`RAG: Using session ID for context filtering: ${sessionId}`);
+      }
 
       // Make sure OllamaService is initialized
       if (!this.initialized) {
@@ -159,7 +170,8 @@ class RAGService {
       // Get context for the query
       const ragResult = await this.retrieveContext(message, {
         ...options,
-        model: this.embeddingModel // Always use embedding model for retrieval
+        model: this.embeddingModel, // Always use embedding model for retrieval
+        sessionId  // Explicitly pass sessionId for context filtering
       });
 
       // If retrieval failed, use regular chat
