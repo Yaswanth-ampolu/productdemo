@@ -35,6 +35,7 @@ function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/chatbot" element={<Chatbot />} />
                   <Route path="/runs" element={<RunStatus />} />
+                  <Route path="/runs-original" element={<RunStatus />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route
                     path="/users"

@@ -1,16 +1,18 @@
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../database');
+const { loadPathsFromConfig, ensureDirectoriesExist } = require('../utils/pathConfig');
 // Don't require documentProcessor here to avoid circular dependency
 // We'll require it only when needed in specific methods
 
 class DocumentService {
   constructor() {
-    // Create documents directory if it doesn't exist
-    this.documentsDir = path.join(__dirname, '../../documents');
-    if (!fs.existsSync(this.documentsDir)) {
-      fs.mkdirSync(this.documentsDir, { recursive: true });
-    }
+    // Load paths from config and ensure directories exist
+    const paths = loadPathsFromConfig();
+    ensureDirectoriesExist(paths);
+
+    // Set document directory from config
+    this.documentsDir = paths.documentsDir;
   }
 
   /**

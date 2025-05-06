@@ -84,7 +84,7 @@ const MessageList: React.FC<MessageListProps> = ({
 
   if (isEmpty) {
     return (
-      <div style={messageListStyles.emptyState}>
+      <div style={messageListStyles.emptyState} className="chat-empty-state">
         <div style={messageListStyles.emptyIcon}>
           <ChatBubbleLeftRightIcon className="w-8 h-8" style={{ color: 'var(--color-primary)' }} />
         </div>
@@ -92,10 +92,6 @@ const MessageList: React.FC<MessageListProps> = ({
         <p className="mb-8 text-center max-w-md" style={{ color: 'var(--color-text-muted)' }}>
           I'm here to help with your tasks. You can ask me questions, request assistance, or get information about the platform.
         </p>
-        <div className="text-sm text-center" style={{ color: 'var(--color-text-muted)', maxWidth: '400px', marginTop: '1rem' }}>
-          <p>💡 <strong>Tip:</strong> Try asking specific questions for better responses.</p>
-          <p>🔍 <strong>Example:</strong> "What features does this platform have?"</p>
-        </div>
       </div>
     );
   }
@@ -108,7 +104,7 @@ const MessageList: React.FC<MessageListProps> = ({
         scrollbarWidth: 'thin',
         scrollbarColor: 'var(--color-primary) var(--color-surface-dark)',
       }}
-      className="scrollbar-thin scrollbar-thumb-primary scrollbar-track-surface-dark"
+      className="scrollbar-thin scrollbar-thumb-primary scrollbar-track-surface-dark message-list-container"
     >
       {/* Load more messages indicator */}
       {hasMoreMessages && (
@@ -177,7 +173,7 @@ const MessageList: React.FC<MessageListProps> = ({
         )}
 
         {/* Extra space at the bottom to ensure messages aren't hidden behind input */}
-        <div style={{ height: '10rem' }}></div>
+        <div style={{ height: '150px' }}></div>
         <div ref={messagesEndRef} />
       </div>
 

@@ -7,7 +7,7 @@
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM information_schema.tables 
+        SELECT 1 FROM information_schema.tables
         WHERE table_name = 'schema_migrations'
     ) THEN
         CREATE TABLE public.schema_migrations (
@@ -31,7 +31,7 @@ DECLARE
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '2.0.0' AND description = 'RAG Complete Setup') THEN
         RAISE NOTICE 'Starting RAG complete setup...';
-        
+
         -- Create vector_stores table
         CREATE TABLE IF NOT EXISTS public.vector_stores (
             id UUID DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
@@ -46,13 +46,13 @@ BEGIN
 
         CREATE INDEX IF NOT EXISTS idx_vector_stores_is_active ON public.vector_stores(is_active);
         CREATE INDEX IF NOT EXISTS idx_vector_stores_name ON public.vector_stores(name);
-        
+
         -- Create default vector store
         INSERT INTO public.vector_stores (name, store_type, connection_string, config)
-        VALUES ('Default ChromaDB', 'chroma', 'http://localhost:8000', 
-                '{"persist_directory": "./chromadb", "client_settings": {"anonymized_telemetry": false}}')
+        VALUES ('Default ChromaDB', 'chroma', 'http://localhost:8000',
+                '{"persist_directory": "./DATA/chroma_data", "client_settings": {"anonymized_telemetry": false}}')
         ON CONFLICT DO NOTHING;
-        
+
         RAISE NOTICE 'Created vector_stores table and default store';
 
         -- Create document_collections table
@@ -71,7 +71,7 @@ BEGIN
 
         CREATE INDEX IF NOT EXISTS idx_document_collections_user_id ON public.document_collections(user_id);
         CREATE INDEX IF NOT EXISTS idx_document_collections_is_active ON public.document_collections(is_active);
-        
+
         RAISE NOTICE 'Created document_collections table';
 
         -- Create documents table
@@ -101,7 +101,7 @@ BEGIN
         CREATE INDEX IF NOT EXISTS idx_documents_collection_id ON public.documents(collection_id);
         CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON public.documents(content_hash);
         CREATE INDEX IF NOT EXISTS idx_documents_processing_status ON public.documents(processing_status);
-        
+
         RAISE NOTICE 'Created documents table';
 
         -- Check if the vector extension is available
@@ -114,7 +114,7 @@ BEGIN
         IF vector_ext_available THEN
             CREATE EXTENSION IF NOT EXISTS vector;
             RAISE NOTICE 'Vector extension enabled successfully';
-            
+
             -- Create document_chunks table with vector type
             CREATE TABLE IF NOT EXISTS public.document_chunks (
                 id UUID DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
@@ -127,12 +127,12 @@ BEGIN
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 metadata JSONB
             );
-            
+
             RAISE NOTICE 'Created document_chunks table with vector type';
         ELSE
             -- Create document_chunks table with BYTEA type as fallback
             RAISE NOTICE 'Vector extension not available, using BYTEA fallback';
-            
+
             CREATE TABLE IF NOT EXISTS public.document_chunks (
                 id UUID DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
                 document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
@@ -144,7 +144,7 @@ BEGIN
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 metadata JSONB
             );
-            
+
             RAISE NOTICE 'Created document_chunks table with BYTEA type as fallback';
         END IF;
 
@@ -163,25 +163,25 @@ BEGIN
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             config JSONB
         );
-        
+
         -- Insert default settings
         INSERT INTO public.rag_settings (
             embedding_model, chunk_size, chunk_overlap, similarity_top_k, search_type, config
         ) VALUES (
-            'ollama/nomic-embed-text', 1000, 200, 4, 'similarity', 
+            'ollama/nomic-embed-text', 1000, 200, 4, 'similarity',
             '{"use_hybrid_search": false, "rerank_results": false, "max_token_limit": 4000}'
         )
         ON CONFLICT DO NOTHING;
-        
+
         RAISE NOTICE 'Created rag_settings table and default settings';
 
         -- Add retrieved_chunks column to messages table if it doesn't exist
         ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS retrieved_chunks JSONB;
-        
+
         -- Add RAG-related columns to chat_sessions table if they don't exist
         ALTER TABLE public.chat_sessions ADD COLUMN IF NOT EXISTS use_rag BOOLEAN DEFAULT TRUE;
         ALTER TABLE public.chat_sessions ADD COLUMN IF NOT EXISTS rag_collections JSONB;
-        
+
         RAISE NOTICE 'Updated existing tables with RAG columns';
 
         -- Create a trigger function to update the updated_at timestamp
@@ -211,7 +211,7 @@ BEGIN
         BEFORE UPDATE ON public.rag_settings
         FOR EACH ROW
         EXECUTE FUNCTION update_timestamp_column();
-        
+
         RAISE NOTICE 'Created timestamp update triggers';
 
         -- Create directories function to make sure directories exist
@@ -221,15 +221,15 @@ BEGIN
             doc_dir TEXT;
         BEGIN
             -- Generate directory path strings
-            doc_dir := 'Documents/' || NEW.user_id::text || '/' || NEW.id::text;
-            
+            doc_dir := 'DATA/documents/' || NEW.user_id::text || '/' || NEW.id::text;
+
             -- Create directories via plpgsql - requires admin privileges
-            EXECUTE format('SELECT pg_catalog.pg_file_write(%L, %L, false)', 
+            EXECUTE format('SELECT pg_catalog.pg_file_write(%L, %L, false)',
                            doc_dir || '/.placeholder', '', false);
-            
+
             RAISE NOTICE 'Created document directory: %', doc_dir;
             RETURN NEW;
-        EXCEPTION 
+        EXCEPTION
             WHEN OTHERS THEN
                 RAISE NOTICE 'Could not create document directories: %. This is normal in some environments.', SQLERRM;
                 RETURN NEW;
@@ -243,13 +243,13 @@ BEGIN
         AFTER INSERT ON public.documents
         FOR EACH ROW
         EXECUTE FUNCTION ensure_document_directories();
-        
+
         RAISE NOTICE 'Created directory management trigger (may not work in all environments)';
 
         -- Record migration in schema_migrations table
         INSERT INTO schema_migrations (version, applied_at, description)
         VALUES ('2.0.0', CURRENT_TIMESTAMP, 'RAG Complete Setup');
-        
+
         RAISE NOTICE 'RAG setup complete and migration recorded';
     ELSE
         RAISE NOTICE 'RAG setup already applied - skipping';
@@ -288,15 +288,15 @@ BEGIN
         '', -- File path will be updated after document ID is known
         'pending'
     ) RETURNING id INTO doc_id;
-    
+
     -- Set file path now that we have the doc_id
-    doc_path := 'Documents/' || p_user_id || '/' || doc_id || '/' || p_file_name;
-    
+    doc_path := 'DATA/documents/' || p_user_id || '/' || doc_id || '/' || p_file_name;
+
     -- Update the document with the file path
-    UPDATE public.documents 
+    UPDATE public.documents
     SET file_path = doc_path
     WHERE id = doc_id;
-    
+
     RETURN doc_id;
 END;
 $$ LANGUAGE plpgsql;
@@ -312,14 +312,14 @@ CREATE OR REPLACE FUNCTION update_document_status(
 RETURNS BOOLEAN AS $$
 BEGIN
     UPDATE public.documents
-    SET 
+    SET
         processing_status = p_status,
         processing_error = p_error,
         content_text = COALESCE(p_content_text, content_text),
         chunk_count = COALESCE(p_chunk_count, chunk_count),
         processed_at = CASE WHEN p_status IN ('processed', 'failed') THEN CURRENT_TIMESTAMP ELSE processed_at END
     WHERE id = p_document_id;
-    
+
     RETURN FOUND;
 END;
 $$ LANGUAGE plpgsql;
@@ -352,7 +352,7 @@ BEGIN
         p_token_count,
         p_metadata
     ) RETURNING id INTO chunk_id;
-    
+
     RETURN chunk_id;
 END;
 $$ LANGUAGE plpgsql;
@@ -376,7 +376,7 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         d.id,
         d.title,
         d.file_name,
@@ -386,13 +386,13 @@ BEGIN
         d.collection_id,
         c.name as collection_name,
         d.chunk_count
-    FROM 
+    FROM
         public.documents d
     LEFT JOIN
         public.document_collections c ON d.collection_id = c.id
-    WHERE 
+    WHERE
         d.user_id = p_user_id
-    ORDER BY 
+    ORDER BY
         d.uploaded_at DESC
     LIMIT p_limit
     OFFSET p_offset;
@@ -411,16 +411,16 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         dc.id,
         dc.document_id,
         dc.chunk_index,
         dc.content
-    FROM 
+    FROM
         public.document_chunks dc
-    WHERE 
+    WHERE
         dc.embedding IS NULL
-    ORDER BY 
+    ORDER BY
         dc.created_at ASC
     LIMIT p_limit;
 END;
@@ -435,11 +435,11 @@ CREATE OR REPLACE FUNCTION update_chunk_embedding(
 RETURNS BOOLEAN AS $$
 BEGIN
     UPDATE public.document_chunks
-    SET 
+    SET
         embedding = p_embedding,
         vector_id = COALESCE(p_vector_id, vector_id)
     WHERE id = p_chunk_id;
-    
+
     RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql; 
+$$ LANGUAGE plpgsql;

@@ -6,6 +6,7 @@ const { promisify } = require('util');
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
+const { loadPathsFromConfig, ensureDirectoriesExist } = require('../utils/pathConfig');
 
 // Helper function to get documentService only when needed
 function getDocumentService() {
@@ -70,14 +71,13 @@ try {
  */
 class DocumentProcessor {
   constructor() {
-    // Initialize dependencies
-    this.documentsDir = path.join(__dirname, '../../documents');
-    this.embeddingsDir = path.join(__dirname, '../../embeddings');
+    // Load paths from config and ensure directories exist
+    const paths = loadPathsFromConfig();
+    ensureDirectoriesExist(paths);
 
-    // Create embeddings directory if it doesn't exist
-    if (!fs.existsSync(this.embeddingsDir)) {
-      fs.mkdirSync(this.embeddingsDir, { recursive: true });
-    }
+    // Set directory paths from config
+    this.documentsDir = paths.documentsDir;
+    this.embeddingsDir = paths.embeddingsDir;
 
     // Set up services
     this.ollamaService = null;
@@ -90,7 +90,7 @@ class DocumentProcessor {
         dimensions: 768
       },
       vectorStore: {
-        persistDirectory: path.join(process.cwd(), 'chroma_db'),
+        persistDirectory: paths.chromaDataDir,
         collectionName: 'rag_docs'
       }
     };
@@ -378,7 +378,14 @@ class DocumentProcessor {
       };
     }
 
-    const { file_path, file_type } = document;
+    // Get the file path and ensure it uses the DATA directory
+    let { file_path, file_type } = document;
+
+    // Check if the file path needs to be updated to use the DATA directory
+    if (file_path.includes('/documents/') && !file_path.includes('/DATA/documents/')) {
+      file_path = file_path.replace('/documents/', '/DATA/documents/');
+    }
+
     console.log(`Extracting text from ${file_path} (${file_type})`);
 
     try {

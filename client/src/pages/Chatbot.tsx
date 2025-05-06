@@ -1400,11 +1400,14 @@ const Chatbot: React.FC = () => {
           />
 
           <div
-            className={`${isEmpty ? "absolute left-1/2 bottom-[25%] transform -translate-x-1/2" : "absolute bottom-0 left-0 right-0"}
+            className={`${isEmpty ? "absolute left-1/2 bottom-[10%] transform -translate-x-1/2" : "absolute bottom-0 left-0 right-0"}
             ${!isEmpty && ""} py-4 px-4 md:px-8 lg:px-16 xl:px-24 input-area-blur`}
             style={{
               maxWidth: '100%',
-              margin: '0 auto'
+              margin: '0 auto',
+              zIndex: 10,
+              boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)',
+              backgroundColor: isEmpty ? 'transparent' : 'var(--color-bg-translucent)'
             }}
           >
             <ChatInput
@@ -1421,14 +1424,15 @@ const Chatbot: React.FC = () => {
             />
 
             {isEmpty && (
-              <div className="flex justify-center mt-8">
+              <div className="flex justify-center mt-12">
                 <div className="flex flex-wrap justify-center gap-2">
                   <button
                     onClick={createNewSession}
                     className="px-4 py-2 rounded-md text-sm flex items-center hover:bg-opacity-10 hover:bg-gray-500"
                     style={{
                       backgroundColor: 'var(--color-surface-dark)',
-                      color: 'var(--color-text)'
+                      color: 'var(--color-text)',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
                     }}
                   >
                     <PlusIcon className="h-4 w-4 mr-1.5" />

@@ -18,7 +18,7 @@ class VectorStoreService {
     this.collection = null;
     this.isInitialized = false;
     this.useChromaDB = true;
-    this.vectorStoreDir = path.join(process.cwd(), 'vector_store'); // Fallback directory
+    this.vectorStoreDir = path.join(process.cwd(), 'DATA/vector_store'); // Fallback directory
 
     // Create the fallback vector store directory if it doesn't exist
     if (!fs.existsSync(this.vectorStoreDir)) {

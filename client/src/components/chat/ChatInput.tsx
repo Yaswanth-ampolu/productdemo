@@ -103,8 +103,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
         ...chatInputStyles.container,
         maxWidth: isEmpty ? '650px' : '900px',
         width: isEmpty ? '90vw' : '100%',
-        transform: isEmpty ? 'none' : 'translateY(-22px)',
+        transform: 'none',
         transition: 'all 0.3s ease',
+        zIndex: 10, // Ensure it's above other elements
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+        border: '1px solid var(--color-border)',
+        marginTop: isEmpty ? '20px' : '0'
       }}
     >
       {/* File preview area */}

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const { loadPathsFromConfig, ensureDirectoriesExist } = require('../utils/pathConfig');
 let multer;
 let uuidv4;
 
@@ -37,17 +38,12 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Create documents directory if it doesn't exist
-const documentsDir = path.join(__dirname, '../../documents');
-if (!fs.existsSync(documentsDir)) {
-  fs.mkdirSync(documentsDir, { recursive: true });
-}
+// Load paths from config and ensure directories exist
+const paths = loadPathsFromConfig();
+ensureDirectoriesExist(paths);
 
-// Create embeddings directory if it doesn't exist
-const embeddingsDir = path.join(__dirname, '../../embeddings');
-if (!fs.existsSync(embeddingsDir)) {
-  fs.mkdirSync(embeddingsDir, { recursive: true });
-}
+// Get directory paths
+const { documentsDir, embeddingsDir } = paths;
 
 // Configure multer for file uploads if available
 let upload = null;
@@ -148,7 +144,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     const document = await documentService.createDocument({
       user_id: userId,
       original_name: file.originalname,
-      file_path: file.path,
+      file_path: file.path, // Use the actual file path
       file_type: path.extname(file.originalname).substring(1), // Get extension without dot
       file_size: file.size,
       mime_type: file.mimetype,

@@ -308,25 +308,30 @@ The document processing pipeline will handle various document types and prepare 
 
 ```
 productdemo/
-├── Documents/           # Storage for uploaded document files
-│   ├── user_id_1/       # Organized by user ID
-│   │   ├── doc_id_1/    # Each document gets its own folder
-│   │   │   └── original.pdf
-│   │   └── doc_id_2/
-│   │       └── original.docx
-│   └── user_id_2/
-│       └── ...
-│
-├── Embeddings/          # Storage for document embeddings
-    ├── user_id_1/       # Organized by user ID
-    │   ├── doc_id_1/    # Each document gets its own folder
-    │   │   ├── metadata.json    # Document metadata including hash
-    │   │   ├── chunks.json      # Text chunks
-    │   │   └── embeddings.bin   # Binary embedding vectors
-    │   └── doc_id_2/
-    │       └── ...
-    └── user_id_2/
-        └── ...
+├── DATA/                # Main data directory
+│   ├── documents/       # Storage for uploaded document files
+│   │   ├── user_id_1/   # Organized by user ID
+│   │   │   ├── doc_id_1/# Each document gets its own folder
+│   │   │   │   └── original.pdf
+│   │   │   └── doc_id_2/
+│   │   │       └── original.docx
+│   │   └── user_id_2/
+│   │       └── ...
+│   │
+│   ├── embeddings/      # Storage for document embeddings
+│   │   ├── user_id_1/   # Organized by user ID
+│   │   │   ├── doc_id_1/# Each document gets its own folder
+│   │   │   │   ├── metadata.json    # Document metadata including hash
+│   │   │   │   ├── chunks.json      # Text chunks
+│   │   │   │   └── embeddings.bin   # Binary embedding vectors
+│   │   │   └── doc_id_2/
+│   │   │       └── ...
+│   │   └── user_id_2/
+│   │       └── ...
+│   │
+│   ├── chroma_data/     # ChromaDB vector database files
+│   │
+│   └── vector_store/    # Fallback vector storage when ChromaDB is not available
 ```
 
 ### Processing Flow
@@ -334,7 +339,7 @@ productdemo/
 1. **Upload Phase**
    - File validation and sanitization
    - Document metadata extraction
-   - Storage in file system (`Documents/user_id/doc_id/original.[ext]`)
+   - Storage in file system (`DATA/documents/user_id/doc_id/original.[ext]`)
    - Entry created in database with status "pending"
 
 2. **Processing Phase**
@@ -343,7 +348,7 @@ productdemo/
    - Embedding generation using Ollama models
    - Vector storage in ChromaDB
    - Status updates in database
-   - Storage of embeddings in `Embeddings/user_id/doc_id/` directory
+   - Storage of embeddings in `DATA/embeddings/user_id/doc_id/` directory
 
 3. **Indexing Phase**
    - Metadata indexing
@@ -837,7 +842,7 @@ class EmbeddingService {
 
   async storeEmbeddings(documentId, userId, chunks, embeddings) {
     // Create directory structure
-    const userDir = path.join('Embeddings', userId);
+    const userDir = path.join('DATA/embeddings', userId);
     const docDir = path.join(userDir, documentId);
 
     if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });

@@ -4,6 +4,7 @@ const { db, pool } = require('../database');
 const path = require('path');
 const fs = require('fs');
 const documentService = require('../services/documentService');
+const { loadPathsFromConfig, ensureDirectoriesExist } = require('../utils/pathConfig');
 let multer;
 let uuidv4;
 
@@ -25,11 +26,12 @@ try {
   uuidv4 = () => `fallback-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 }
 
-// Create documents directory if it doesn't exist
-const documentsDir = path.join(__dirname, '../../documents');
-if (!fs.existsSync(documentsDir)) {
-  fs.mkdirSync(documentsDir, { recursive: true });
-}
+// Load paths from config and ensure directories exist
+const paths = loadPathsFromConfig();
+ensureDirectoriesExist(paths);
+
+// Get directory paths
+const { documentsDir } = paths;
 
 // Configure multer for file uploads if available
 let upload = null;

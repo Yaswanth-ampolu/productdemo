@@ -1,8 +1,9 @@
 {
   "ignore": [
-    "documents/*",
-    "embeddings/*",
-    "chroma_db/*"
+    "DATA/documents/*",
+    "DATA/embeddings/*",
+    "DATA/chroma_data/*",
+    "DATA/vector_store/*"
   ],
   "watch": [
     "src/",

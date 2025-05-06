@@ -55,4 +55,4 @@ If you encounter issues with ChromaDB:
 
 ## Data Persistence
 
-The ChromaDB data is stored in the `./chroma_data` directory in the project root. This ensures that your vector data persists even if the container is stopped or removed.
+The ChromaDB data is stored in the `./DATA/chroma_data` directory. This ensures that your vector data persists even if the container is stopped or removed.
