@@ -1,78 +1,79 @@
 /**
- * Simple logger module for application logging
+ * Logger Utility
+ * Provides logging capabilities
  */
 
-// Define logging levels
-const LogLevel = {
-  ERROR: 0,
-  WARN: 1,
-  INFO: 2,
-  DEBUG: 3
+const winston = require('winston');
+const path = require('path');
+const fs = require('fs');
+
+// Create logs directory if it doesn't exist
+const logsDir = path.resolve('./logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+// Define log levels
+const levels = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 3,
+  debug: 4,
 };
 
-// Current log level (can be configured from environment variable)
-const currentLevel = process.env.LOG_LEVEL ? 
-  LogLevel[process.env.LOG_LEVEL.toUpperCase()] || LogLevel.INFO : 
-  LogLevel.INFO;
-
-/**
- * Logger class with basic logging functionality
- */
-const logger = {
-  /**
-   * Log error messages
-   * @param {string} message - Error message
-   * @param {Error|any} [error] - Optional error object
-   */
-  error: (message, error) => {
-    if (currentLevel >= LogLevel.ERROR) {
-      console.error(`[ERROR] ${message}`);
-      if (error) {
-        if (error instanceof Error) {
-          console.error(`        ${error.message}`);
-          if (error.stack) {
-            console.error(`        ${error.stack}`);
-          }
-        } else {
-          console.error('        ', error);
-        }
-      }
-    }
-  },
-
-  /**
-   * Log warning messages
-   * @param {string} message - Warning message
-   */
-  warn: (message) => {
-    if (currentLevel >= LogLevel.WARN) {
-      console.warn(`[WARN] ${message}`);
-    }
-  },
-
-  /**
-   * Log informational messages
-   * @param {string} message - Info message
-   */
-  info: (message) => {
-    if (currentLevel >= LogLevel.INFO) {
-      console.info(`[INFO] ${message}`);
-    }
-  },
-
-  /**
-   * Log debug messages
-   * @param {string} message - Debug message
-   * @param {any} [data] - Optional data to log
-   */
-  debug: (message, data) => {
-    if (currentLevel >= LogLevel.DEBUG) {
-      console.debug(`[DEBUG] ${message}`);
-      if (data) {
-        console.debug(data);
-      }
-    }
-  }
+// Define log colors
+const colors = {
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  http: 'magenta',
+  debug: 'blue',
 };
 
-module.exports = { logger, LogLevel }; 
+// Add colors to Winston
+winston.addColors(colors);
+
+// Define the format for console logs
+const consoleFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.colorize({ all: true }),
+  winston.format.printf(
+    (info) => `${info.timestamp} ${info.level}: ${info.message}`
+  )
+);
+
+// Define the format for file logs
+const fileFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.printf(
+    (info) => `${info.timestamp} ${info.level}: ${info.message}`
+  )
+);
+
+// Create Winston logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  levels,
+  transports: [
+    // Console transport
+    new winston.transports.Console({
+      format: consoleFormat,
+    }),
+    // File transport - error.log
+    new winston.transports.File({
+      filename: path.join(logsDir, 'error.log'),
+      level: 'error',
+      format: fileFormat,
+    }),
+    // File transport - combined.log
+    new winston.transports.File({
+      filename: path.join(logsDir, 'combined.log'),
+      format: fileFormat,
+    }),
+  ],
+});
+
+module.exports = {
+  logger,
+}; 

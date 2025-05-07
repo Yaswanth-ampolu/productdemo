@@ -6,8 +6,10 @@ import {
   UserIcon,
   PaintBrushIcon,
   ServerIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 import OllamaSettings from '../components/settings/OllamaSettings';
+import MCPSettings from '../components/settings/MCPSettings';
 
 // Import ThemeType from the ThemeContext
 type ThemeType = 'dark' | 'light' | 'midnight';
@@ -123,6 +125,7 @@ export default function Settings() {
     { id: 'profile', name: 'Profile', icon: UserIcon },
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
     { id: 'ollama', name: 'Ollama AI', icon: ServerIcon },
+    { id: 'mcp', name: 'MCP Integration', icon: CpuChipIcon },
   ];
 
   return (
@@ -325,6 +328,15 @@ export default function Settings() {
             <div>
               <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Ollama AI Settings</h2>
               <OllamaSettings isAdmin={user?.role === 'admin'} />
+            </div>
+          )}
+          
+          {activeTab === 'mcp' && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
+                MCP Integration Settings
+              </h2>
+              <MCPSettings isAdmin={user?.role === 'admin'} />
             </div>
           )}
         </div>

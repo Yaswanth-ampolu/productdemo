@@ -1,0 +1,221 @@
+2025-05-06 20:35:25 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:35:25 info: Loaded Ollama settings from database
+2025-05-06 20:35:25 info: OllamaService initialized
+2025-05-06 20:35:57 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:35:57 info: Loaded Ollama settings from database
+2025-05-06 20:35:57 info: OllamaService initialized
+2025-05-06 20:36:12 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:36:12 info: Loaded Ollama settings from database
+2025-05-06 20:36:12 info: OllamaService initialized
+2025-05-06 20:36:57 info: Loaded Ollama settings from database
+2025-05-06 20:36:57 info: OllamaService initialized
+2025-05-06 20:36:57 info: RAG: OllamaService initialized successfully
+2025-05-06 20:36:58 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:36:58 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 20:37:08 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:37:08 info: Loaded Ollama settings from database
+2025-05-06 20:37:08 info: OllamaService initialized
+2025-05-06 20:37:19 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:37:19 info: Loaded Ollama settings from database
+2025-05-06 20:37:19 info: OllamaService initialized
+2025-05-06 20:37:35 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:37:35 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 20:42:14 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:42:14 info: Loaded Ollama settings from database
+2025-05-06 20:42:14 info: OllamaService initialized
+2025-05-06 20:42:43 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:42:43 info: Loaded Ollama settings from database
+2025-05-06 20:42:43 info: OllamaService initialized
+2025-05-06 20:43:19 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:43:19 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 20:55:06 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:55:07 info: Loaded Ollama settings from database
+2025-05-06 20:55:07 info: OllamaService initialized
+2025-05-06 20:55:36 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:55:37 info: Loaded Ollama settings from database
+2025-05-06 20:55:37 info: OllamaService initialized
+2025-05-06 20:55:49 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:55:49 info: Loaded Ollama settings from database
+2025-05-06 20:55:49 info: OllamaService initialized
+2025-05-06 20:56:29 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:56:30 info: Loaded Ollama settings from database
+2025-05-06 20:56:30 info: OllamaService initialized
+2025-05-06 20:56:39 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:56:40 info: Loaded Ollama settings from database
+2025-05-06 20:56:40 info: OllamaService initialized
+2025-05-06 20:56:43 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 20:56:43 info: Loaded Ollama settings from database
+2025-05-06 20:56:43 info: OllamaService initialized
+2025-05-06 20:57:36 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:57:36 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 20:58:17 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:58:17 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 20:58:31 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 20:58:31 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 21:01:39 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:01:39 info: Loaded Ollama settings from database
+2025-05-06 21:01:39 info: OllamaService initialized
+2025-05-06 21:01:49 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 21:01:49 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-06 21:15:32 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:15:33 info: Loaded Ollama settings from database
+2025-05-06 21:15:33 info: OllamaService initialized
+2025-05-06 21:15:50 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:15:50 info: Loaded Ollama settings from database
+2025-05-06 21:15:50 info: OllamaService initialized
+2025-05-06 21:15:53 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:15:53 info: Loaded Ollama settings from database
+2025-05-06 21:15:53 info: OllamaService initialized
+2025-05-06 21:16:02 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:16:02 info: Loaded Ollama settings from database
+2025-05-06 21:16:02 info: OllamaService initialized
+2025-05-06 21:16:12 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-06 21:16:12 info: Loaded Ollama settings from database
+2025-05-06 21:16:12 info: OllamaService initialized
+2025-05-06 21:16:58 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-06 21:16:58 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 10:26:16 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 10:26:16 info: Loaded Ollama settings from database
+2025-05-07 10:26:16 info: OllamaService initialized
+2025-05-07 10:27:55 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 10:27:55 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 10:29:42 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 10:29:42 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 10:50:52 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 10:50:52 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 10:51:47 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 10:51:47 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 12:14:39 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 12:14:39 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 12:19:46 error: Failed to get SSH configurations for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: column "ssh_key_path" does not exist
+2025-05-07 12:19:46 error: Error fetching SSH configs: column "ssh_key_path" does not exist
+2025-05-07 12:29:23 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:29:24 info: Loaded Ollama settings from database
+2025-05-07 12:29:24 info: OllamaService initialized
+2025-05-07 12:29:41 info: Loaded Ollama settings from database
+2025-05-07 12:29:41 info: OllamaService initialized
+2025-05-07 12:29:41 info: RAG: OllamaService initialized successfully
+2025-05-07 12:52:02 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:52:03 info: Loaded Ollama settings from database
+2025-05-07 12:52:03 info: OllamaService initialized
+2025-05-07 12:52:56 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:52:56 info: Loaded Ollama settings from database
+2025-05-07 12:52:56 info: OllamaService initialized
+2025-05-07 12:52:57 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:52:58 info: Loaded Ollama settings from database
+2025-05-07 12:52:58 info: OllamaService initialized
+2025-05-07 12:53:13 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:13 info: Loaded Ollama settings from database
+2025-05-07 12:53:13 info: OllamaService initialized
+2025-05-07 12:53:17 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:17 info: Loaded Ollama settings from database
+2025-05-07 12:53:17 info: OllamaService initialized
+2025-05-07 12:53:24 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:24 info: Loaded Ollama settings from database
+2025-05-07 12:53:24 info: OllamaService initialized
+2025-05-07 12:53:26 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:27 info: Loaded Ollama settings from database
+2025-05-07 12:53:27 info: OllamaService initialized
+2025-05-07 12:53:51 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:51 info: Loaded Ollama settings from database
+2025-05-07 12:53:51 info: OllamaService initialized
+2025-05-07 12:53:56 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:53:56 info: Loaded Ollama settings from database
+2025-05-07 12:53:56 info: OllamaService initialized
+2025-05-07 12:54:17 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:54:18 info: Loaded Ollama settings from database
+2025-05-07 12:54:18 info: OllamaService initialized
+2025-05-07 12:54:26 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:54:26 info: Loaded Ollama settings from database
+2025-05-07 12:54:26 info: OllamaService initialized
+2025-05-07 12:54:38 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:54:38 info: Loaded Ollama settings from database
+2025-05-07 12:54:38 info: OllamaService initialized
+2025-05-07 12:55:36 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:55:36 info: Loaded Ollama settings from database
+2025-05-07 12:55:36 info: OllamaService initialized
+2025-05-07 12:56:35 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 12:56:35 info: Loaded Ollama settings from database
+2025-05-07 12:56:35 info: OllamaService initialized
+2025-05-07 13:06:58 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:06:58 info: Loaded Ollama settings from database
+2025-05-07 13:06:58 info: OllamaService initialized
+2025-05-07 13:07:23 info: Loaded Ollama settings from database
+2025-05-07 13:07:23 info: OllamaService initialized
+2025-05-07 13:07:23 info: RAG: OllamaService initialized successfully
+2025-05-07 13:08:29 info: Creating SSH configuration for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: {"machine_nickname":"test-server","ssh_host":"172.16.16.26","ssh_port":22,"ssh_user":"yaswanth","ssh_auth_method":"password","has_key_path":false,"has_password":true}
+2025-05-07 13:08:29 info: SSH configuration created successfully with ID: 39c97c66-b136-420c-9177-dd707f07ab50
+2025-05-07 13:09:59 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:10:13 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:11:40 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:11:40 info: Loaded Ollama settings from database
+2025-05-07 13:11:40 info: OllamaService initialized
+2025-05-07 13:12:47 error: SSH connection test failed: config.username must be a valid string
+2025-05-07 13:13:03 error: SSH connection test failed: config.username must be a valid string
+2025-05-07 13:13:08 info: Creating SSH configuration for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: {"machine_nickname":"rhel server","ssh_host":"172.16.16.54","ssh_port":52,"ssh_user":"yaswanth","ssh_auth_method":"password","has_key_path":false,"has_password":true}
+2025-05-07 13:13:08 info: SSH configuration created successfully with ID: 496656cc-6e95-4253-804c-eb59a705f839
+2025-05-07 13:13:34 error: SSH connection test failed: config.username must be a valid string
+2025-05-07 13:18:53 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:18:53 info: Loaded Ollama settings from database
+2025-05-07 13:18:53 info: OllamaService initialized
+2025-05-07 13:19:27 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:19:27 info: Loaded Ollama settings from database
+2025-05-07 13:19:27 info: OllamaService initialized
+2025-05-07 13:19:50 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:19:51 info: Loaded Ollama settings from database
+2025-05-07 13:19:51 info: OllamaService initialized
+2025-05-07 13:20:15 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:20:15 info: Loaded Ollama settings from database
+2025-05-07 13:20:15 info: OllamaService initialized
+2025-05-07 13:20:28 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:20:28 info: Loaded Ollama settings from database
+2025-05-07 13:20:28 info: OllamaService initialized
+2025-05-07 13:20:40 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:20:40 info: Loaded Ollama settings from database
+2025-05-07 13:20:40 info: OllamaService initialized
+2025-05-07 13:21:03 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:03 info: Loaded Ollama settings from database
+2025-05-07 13:21:03 info: OllamaService initialized
+2025-05-07 13:21:16 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:19 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:19 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:19 info: Loaded Ollama settings from database
+2025-05-07 13:21:19 info: OllamaService initialized
+2025-05-07 13:21:33 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:33 info: Loaded Ollama settings from database
+2025-05-07 13:21:33 info: OllamaService initialized
+2025-05-07 13:21:45 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:45 info: Loaded Ollama settings from database
+2025-05-07 13:21:45 info: OllamaService initialized
+2025-05-07 13:21:51 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:21:51 info: Loaded Ollama settings from database
+2025-05-07 13:21:51 info: OllamaService initialized
+2025-05-07 13:22:08 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:22:08 info: Loaded Ollama settings from database
+2025-05-07 13:22:08 info: OllamaService initialized
+2025-05-07 13:23:51 info: Loaded Ollama settings from database
+2025-05-07 13:23:51 info: OllamaService initialized
+2025-05-07 13:23:51 info: RAG: OllamaService initialized successfully
+2025-05-07 13:24:17 info: Attempting SSH connection to 172.16.16.54:22 as yaswanth
+2025-05-07 13:24:17 info: SSH connection test successful to 172.16.16.54
+2025-05-07 13:24:21 info: Creating SSH configuration for user 23b818b5-c1c6-4832-9fd7-f2840c0168f9: {"machine_nickname":"rhel server","ssh_host":"172.16.16.54","ssh_port":22,"ssh_user":"yaswanth","ssh_auth_method":"password","has_key_path":false,"has_password":true}
+2025-05-07 13:24:21 info: SSH configuration created successfully with ID: 32397d42-9f6b-4627-b0b1-b93ffda0fe1d
+2025-05-07 13:32:23 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:32:23 info: Loaded Ollama settings from database
+2025-05-07 13:32:23 info: OllamaService initialized
+2025-05-07 13:32:41 info: Loaded Ollama settings from database
+2025-05-07 13:32:41 info: OllamaService initialized
+2025-05-07 13:32:41 info: RAG: OllamaService initialized successfully
+2025-05-07 13:33:20 info: Attempting SSH connection to 172.16.16.54:22 as yaswanth
+2025-05-07 13:33:20 info: SSH connection test successful to 172.16.16.54
+2025-05-07 13:48:24 info: Loading configuration from: /home/yaswanth/Desktop/productdemo/conf/config.ini
+2025-05-07 13:48:24 info: Loaded Ollama settings from database
+2025-05-07 13:48:24 info: OllamaService initialized
+2025-05-07 13:48:51 info: Attempting SSH connection to 172.16.16.54:22 as yaswanth
+2025-05-07 13:48:51 info: SSH connection test successful to 172.16.16.54
+2025-05-07 13:49:21 info: Using default MCP installation tool from config
+2025-05-07 13:49:21 info: Attempting SSH connection to 172.16.16.54:22 as yaswanth
+2025-05-07 13:49:22 info: SSH connection test successful to 172.16.16.54
+2025-05-07 13:49:22 info: Installing MCP on 172.16.16.54 via SSH...
+2025-05-07 13:49:27 error: Failed to create MCP server configuration: column "server_name" of relation "user_mcp_server_configurations" does not exist
+2025-05-07 13:49:27 error: Error installing MCP via SSH: column "server_name" of relation "user_mcp_server_configurations" does not exist

@@ -14,6 +14,8 @@ const settingsRoutes = require('./routes/settings');
 const dashboardRoutes = require('./routes/dashboard');
 const configRoutes = require('./routes/config');
 const ollamaRoutes = require('./routes/ollama');
+const mcpRoutes = require('./routes/mcp');
+const mcpPagesRoutes = require('./routes/mcp-pages');
 
 // Try to require the documents routes, but don't fail if they're not available
 let documentsRoutes;
@@ -110,12 +112,16 @@ async function startServer() {
     apiRouter.use('/settings', settingsRoutes);
     apiRouter.use('/dashboard', dashboardRoutes);
     apiRouter.use('/ollama', ollamaRoutes(config));
+    apiRouter.use('/mcp', mcpRoutes);
     apiRouter.use('/documents', documentsRoutes);
     apiRouter.use('/documents-status', documentsStatusRoutes);
     apiRouter.use('/', configRoutes(config)); // Add config routes at the API root
 
     // Mount all API routes under /api
     app.use('/api', apiRouter);
+
+    // MCP pages routes
+    app.use('/settings/mcp', mcpPagesRoutes);
 
     // Serve static files from client/build
     const staticPath = config.server.static_root_path || path.join(__dirname, '../client/build');

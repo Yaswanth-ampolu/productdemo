@@ -13,6 +13,9 @@ import UserManagement from './pages/UserManagement';
 import Chatbot from './pages/Chatbot';
 import RunStatus from './pages/RunStatus';
 import Settings from './pages/Settings';
+import MCPSSHSetup from './pages/MCPSSHSetup';
+import MCPManualInstall from './pages/MCPManualInstall';
+import MCPInstall from './pages/MCPInstall';
 import LoadingScreen from './components/LoadingScreen';
 import chakraTheme from './theme/chakraTheme';
 
@@ -37,6 +40,9 @@ function App() {
                   <Route path="/runs" element={<RunStatus />} />
                   <Route path="/runs-original" element={<RunStatus />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/mcp/ssh-setup" element={<MCPSSHSetup />} />
+                  <Route path="/settings/mcp/manual-install" element={<MCPManualInstall />} />
+                  <Route path="/settings/mcp/install-mcp" element={<MCPInstall />} />
                   <Route
                     path="/users"
                     element={
