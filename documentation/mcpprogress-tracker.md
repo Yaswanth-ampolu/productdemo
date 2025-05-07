@@ -303,7 +303,7 @@ const tabs = [
     // Add this to the existing routes section
     app.use('/settings/mcp', mcpPagesRoutes);
     ```
-  
+
   - [ ] Create new React component `client/src/pages/MCPSSHSetup.tsx`:
     ```typescript
     import React, { useState, useEffect } from 'react';
@@ -414,4 +414,182 @@ const tabs = [
 ### Error Handling Strategy
 - Clear error messages for connection issues
 - Detailed logging for troubleshooting
-- Graceful fallbacks when MCP is unavailable 
+- Graceful fallbacks when MCP is unavailable
+
+## Interactive MCP Installation Implementation Plan
+
+### Overview
+This section outlines the implementation plan for an interactive MCP installation process that allows users to navigate the remote filesystem and select an installation directory before executing the MCP installation command.
+
+### Phase 1: Remote Filesystem Explorer Component
+
+#### 1. Create Remote Filesystem Explorer Component
+- [ ] Create `client/src/components/ssh/RemoteFilesystemExplorer.tsx` with the following features:
+  - Directory navigation (double-click to enter directories)
+  - Directory selection (single-click to select)
+  - Breadcrumb navigation for current path
+  - "Go up" button to navigate to parent directory
+  - Loading indicators for directory contents
+  - Error handling for permission issues or connection problems
+  - Responsive design for different screen sizes
+
+```typescript
+interface FileItem {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  permissions?: string;
+  owner?: string;
+  group?: string;
+  lastModified?: string;
+}
+
+interface RemoteFilesystemExplorerProps {
+  sshConfigId: string;
+  initialPath?: string;
+  onPathSelect: (path: string) => void;
+  onCancel: () => void;
+}
+```
+
+#### 2. Create Backend API for Remote Filesystem Operations
+- [ ] Add new endpoints to `src/routes/mcp.js`:
+  - `GET /api/mcp/ssh/fs/list` - List directory contents
+  - `GET /api/mcp/ssh/fs/info` - Get information about a file or directory
+  - `POST /api/mcp/ssh/fs/mkdir` - Create a new directory (optional)
+
+#### 3. Implement SSH Filesystem Service
+- [ ] Add new functions to `src/services/sshService.js`:
+  - `listDirectory(sshConfig, path)` - List contents of a directory
+  - `getFileInfo(sshConfig, path)` - Get information about a file
+  - `createDirectory(sshConfig, path)` - Create a new directory (optional)
+  - Implement proper error handling for filesystem operations
+  - Add security checks to prevent unauthorized access
+
+### Phase 2: Interactive MCP Installation Flow
+
+#### 1. Enhance MCPInstall Component
+- [ ] Update `client/src/pages/MCPInstall.tsx` to include:
+  - Multi-step installation wizard UI
+  - Step 1: Select SSH configuration and MCP tool (existing)
+  - Step 2: Navigate and select installation directory
+  - Step 3: Confirm installation details
+  - Step 4: Installation progress and results
+  - Back/Next/Cancel buttons for navigation between steps
+  - Proper state management for the installation process
+
+#### 2. Create Installation Directory Selection Step
+- [ ] Implement directory selection UI:
+  - Integrate RemoteFilesystemExplorer component
+  - Add current path display
+  - Add directory creation option (optional)
+  - Validate selected directory for write permissions
+  - Show available disk space (optional)
+
+#### 3. Enhance Backend Installation Process
+- [ ] Update `src/services/sshService.js` to support:
+  - Installation in a specific directory
+  - Real-time output streaming
+  - Proper error handling for installation failures
+  - Verification of successful installation
+  - Cleanup on installation failure
+
+```javascript
+/**
+ * Install MCP via SSH in a specific directory
+ *
+ * @param {Object} sshConfig - SSH connection configuration
+ * @param {string} installDir - Directory to install MCP in
+ * @param {string} installCommand - Command to execute for installation
+ * @param {function} outputCallback - Callback for real-time output
+ * @returns {Promise<Object>} - Installation result
+ */
+async function installMCPViaSSH(sshConfig, installDir, installCommand, outputCallback) {
+  // Implementation details
+}
+```
+
+#### 4. Implement Real-time Installation Output
+- [ ] Create WebSocket or Server-Sent Events endpoint for real-time output:
+  - `POST /api/mcp/ssh/install/stream` - Stream installation output
+  - Implement proper authentication for the streaming endpoint
+  - Handle connection errors and reconnection
+  - Format output for display in the UI
+
+#### 5. Add Installation Status Tracking
+- [ ] Create installation status tracking:
+  - Track installation progress in the database
+  - Store installation logs for troubleshooting
+  - Allow resuming failed installations (optional)
+  - Provide installation history (optional)
+
+### Phase 3: User Experience Enhancements
+
+#### 1. Add Installation Confirmation Dialog
+- [ ] Create confirmation dialog with:
+  - Summary of installation details (SSH config, directory, command)
+  - Warning about potential risks
+  - Option to modify installation command
+  - Clear confirmation button
+
+#### 2. Implement Error Recovery
+- [ ] Add error recovery mechanisms:
+  - Detect common installation failures
+  - Provide troubleshooting guidance
+  - Option to retry failed steps
+  - Detailed error logs for support
+
+#### 3. Add Post-Installation Verification
+- [ ] Implement verification steps:
+  - Verify MCP server is running after installation
+  - Test basic MCP functionality
+  - Add automatic MCP server configuration
+  - Show connection details for the installed server
+
+### Phase 4: Security Considerations
+
+#### 1. Secure Filesystem Access
+- [ ] Implement security measures:
+  - Restrict filesystem access to authenticated users
+  - Validate all paths to prevent directory traversal attacks
+  - Limit access to sensitive system directories
+  - Log all filesystem operations for audit purposes
+
+#### 2. Secure Command Execution
+- [ ] Enhance command execution security:
+  - Validate and sanitize all user inputs
+  - Restrict command execution to authorized users
+  - Prevent command injection attacks
+  - Set appropriate timeouts for long-running commands
+
+#### 3. Error Handling and Logging
+- [ ] Improve error handling:
+  - Implement detailed error logging
+  - Sanitize error messages to prevent information disclosure
+  - Provide user-friendly error messages
+  - Add support contact information for unresolvable errors
+
+### Phase 5: Testing and Documentation
+
+#### 1. Comprehensive Testing
+- [ ] Implement testing strategy:
+  - Unit tests for filesystem operations
+  - Integration tests for installation flow
+  - Security testing for filesystem access
+  - Performance testing for large directories
+  - Error handling tests for various failure scenarios
+
+#### 2. User Documentation
+- [ ] Create user documentation:
+  - Step-by-step installation guide
+  - Troubleshooting guide for common issues
+  - Security best practices
+  - FAQ for installation process
+
+#### 3. Developer Documentation
+- [ ] Create developer documentation:
+  - API documentation for filesystem operations
+  - Component documentation for RemoteFilesystemExplorer
+  - Security considerations for future development
+  - Performance optimization guidelines
