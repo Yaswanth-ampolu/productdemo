@@ -36,3 +36,10 @@
 2025-05-08 20:07:54 error: MCP connection test failed for 172.16.16.54:8080: connect ECONNREFUSED 172.16.16.54:8080
 2025-05-08 20:12:02 error: Failed to get SSH configuration with password 32397d42-9f6b-4627-b0b1-b93ffda0fe1d: Unsupported state or unable to authenticate data
 2025-05-08 20:12:02 error: Error installing MCP via SSH: Unsupported state or unable to authenticate data
+2025-05-09 16:14:10 error: Failed to get SSH configuration with password 32397d42-9f6b-4627-b0b1-b93ffda0fe1d: Unsupported state or unable to authenticate data
+2025-05-09 16:14:10 error: Error installing MCP via SSH: Unsupported state or unable to authenticate data
+2025-05-09 17:12:14 error: Failed to create MCP server configuration: column "server_name" of relation "user_mcp_server_configurations" does not exist
+2025-05-09 17:12:14 error: Error installing MCP in directory: column "server_name" of relation "user_mcp_server_configurations" does not exist
+2025-05-09 17:28:15 error: Failed to create MCP server configuration: duplicate key value violates unique constraint "user_mcp_server_configurations_user_id_mcp_nickname_key"
+2025-05-09 17:28:15 error: Error installing MCP in directory: duplicate key value violates unique constraint "user_mcp_server_configurations_user_id_mcp_nickname_key"
+2025-05-09 17:42:23 error: Failed to start MCP server: 

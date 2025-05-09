@@ -321,6 +321,34 @@ router.put('/server/config/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Update MCP server connection status
+router.post('/server/config/:id/status', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, errorMessage } = req.body;
+
+    // Validate required fields
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    // Get server configuration to verify ownership
+    const serverConfig = await mcpDBService.getMCPServerConfiguration(id, req.session.userId);
+
+    if (!serverConfig) {
+      return res.status(404).json({ error: 'MCP server configuration not found' });
+    }
+
+    // Update connection status
+    const updated = await mcpDBService.updateMCPConnectionStatus(id, status, errorMessage);
+
+    res.json({ success: true, updated });
+  } catch (err) {
+    logger.error(`Error updating MCP server status ${req.params.id}: ${err.message}`);
+    res.status(500).json({ error: 'Failed to update MCP server status' });
+  }
+});
+
 // Delete an MCP server configuration
 router.delete('/server/config/:id', requireAuth, async (req, res) => {
   try {
@@ -522,6 +550,211 @@ router.get('/default-server', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error(`Error getting default MCP server: ${err.message}`);
     res.status(500).json({ error: 'Failed to get default MCP server' });
+  }
+});
+
+// SSH Filesystem Operations
+
+// Authenticate SSH connection
+router.post('/ssh/authenticate', requireAuth, async (req, res) => {
+  try {
+    const { sshConfigId, password } = req.body;
+
+    if (!sshConfigId || !password) {
+      return res.status(400).json({ error: 'SSH configuration ID and password are required' });
+    }
+
+    // Get SSH configuration
+    const sshConfig = await mcpDBService.getSSHConfiguration(sshConfigId, req.session.userId);
+
+    if (!sshConfig) {
+      return res.status(404).json({ error: 'SSH configuration not found' });
+    }
+
+    // Authenticate SSH connection
+    const result = await sshService.authenticateSSH(sshConfig, password);
+
+    res.json(result);
+  } catch (err) {
+    logger.error(`Error authenticating SSH connection: ${err.message}`);
+    res.status(500).json({ error: 'Failed to authenticate SSH connection' });
+  }
+});
+
+// List directory contents
+router.get('/ssh/fs/list', requireAuth, async (req, res) => {
+  try {
+    const { sshConfigId, path } = req.query;
+    const password = req.headers['x-ssh-password']; // Get password from header
+
+    if (!sshConfigId || !path || !password) {
+      return res.status(400).json({ error: 'SSH configuration ID, path, and password are required' });
+    }
+
+    // Get SSH configuration
+    const sshConfig = await mcpDBService.getSSHConfiguration(sshConfigId, req.session.userId);
+
+    if (!sshConfig) {
+      return res.status(404).json({ error: 'SSH configuration not found' });
+    }
+
+    // List directory contents
+    const result = await sshService.listDirectory(sshConfig, path, password);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({ items: result.items });
+  } catch (err) {
+    logger.error(`Error listing directory: ${err.message}`);
+    res.status(500).json({ error: 'Failed to list directory' });
+  }
+});
+
+// Get file/directory information
+router.get('/ssh/fs/info', requireAuth, async (req, res) => {
+  try {
+    const { sshConfigId, path } = req.query;
+    const password = req.headers['x-ssh-password']; // Get password from header
+
+    if (!sshConfigId || !path || !password) {
+      return res.status(400).json({ error: 'SSH configuration ID, path, and password are required' });
+    }
+
+    // Get SSH configuration
+    const sshConfig = await mcpDBService.getSSHConfiguration(sshConfigId, req.session.userId);
+
+    if (!sshConfig) {
+      return res.status(404).json({ error: 'SSH configuration not found' });
+    }
+
+    // Get file/directory information
+    const result = await sshService.getFileInfo(sshConfig, path, password);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({ info: result.info });
+  } catch (err) {
+    logger.error(`Error getting file info: ${err.message}`);
+    res.status(500).json({ error: 'Failed to get file info' });
+  }
+});
+
+// Create directory
+router.post('/ssh/fs/mkdir', requireAuth, async (req, res) => {
+  try {
+    const { sshConfigId, path } = req.body;
+    const password = req.headers['x-ssh-password']; // Get password from header
+
+    if (!sshConfigId || !path || !password) {
+      return res.status(400).json({ error: 'SSH configuration ID, path, and password are required' });
+    }
+
+    // Get SSH configuration
+    const sshConfig = await mcpDBService.getSSHConfiguration(sshConfigId, req.session.userId);
+
+    if (!sshConfig) {
+      return res.status(404).json({ error: 'SSH configuration not found' });
+    }
+
+    // Create directory
+    const result = await sshService.createDirectory(sshConfig, path, password);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({ success: true, message: result.message });
+  } catch (err) {
+    logger.error(`Error creating directory: ${err.message}`);
+    res.status(500).json({ error: 'Failed to create directory' });
+  }
+});
+
+// Install MCP in specific directory
+router.post('/ssh/install-in-directory', requireAuth, async (req, res) => {
+  try {
+    const { sshConfigId, installDir, mcpToolId, password } = req.body;
+
+    if (!sshConfigId || !installDir || !password) {
+      return res.status(400).json({ error: 'SSH configuration ID, installation directory, and password are required' });
+    }
+
+    // Get SSH configuration
+    const sshConfig = await mcpDBService.getSSHConfiguration(sshConfigId, req.session.userId);
+
+    if (!sshConfig) {
+      return res.status(404).json({ error: 'SSH configuration not found' });
+    }
+
+    // Get MCP installation command from config if mcpToolId is 'default'
+    let installCommand = '';
+    if (mcpToolId === 'default') {
+      // Use the curl command from the config.ini file
+      installCommand = config.get('mcp-server.mcp_terminal_command_1');
+      if (!installCommand) {
+        return res.status(400).json({ error: 'MCP installation command not found in configuration' });
+      }
+      logger.info(`Using default MCP installation tool from config: ${installCommand}`);
+    } else {
+      // In the future, we could support custom MCP tools from the database
+      installCommand = config.get('mcp-server.mcp_terminal_command_1');
+      if (!installCommand) {
+        return res.status(400).json({ error: 'MCP installation command not found in configuration' });
+      }
+      logger.info(`Using MCP tool ID: ${mcpToolId} with command: ${installCommand}`);
+    }
+
+    // Log the available commands from config
+    const startCmd = config.get('mcp-server.mcp_terminal_command_1_install_cmd');
+    const stopCmd = config.get('mcp-server.mcp_terminal_command_1_stop_cmd');
+    const restartCmd = config.get('mcp-server.mcp_terminal_command_1_restart_cmd');
+    const statusCmd = config.get('mcp-server.mcp_terminal_command_1_status_cmd');
+
+    logger.info(`Available MCP commands from config:
+      - Start: ${startCmd}
+      - Stop: ${stopCmd}
+      - Restart: ${restartCmd}
+      - Status: ${statusCmd}`);
+
+
+    // Install MCP in the specified directory
+    const result = await sshService.installMCPInDirectory(sshConfig, installDir, installCommand, password);
+
+    // Update SSH connection status
+    await mcpDBService.updateSSHConnectionStatus(
+      sshConfigId,
+      result.success ? 'successful' : 'failed',
+      result.error || null
+    );
+
+    // If successful, create an MCP server configuration
+    if (result.success) {
+      try {
+        const serverConfig = {
+          server_name: `MCP on ${sshConfig.machine_nickname} (${installDir})`,
+          mcp_host: result.host,
+          mcp_port: result.port,
+          is_default: true
+        };
+
+        await mcpDBService.createMCPServerConfiguration(serverConfig, req.session.userId);
+      } catch (dbErr) {
+        // If database operation fails, log the error but don't fail the installation
+        logger.error(`Failed to create MCP server configuration in database: ${dbErr.message}`);
+
+        // Add a warning to the result
+        result.warning = `MCP server was installed successfully, but there was an error saving the configuration to the database: ${dbErr.message}`;
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    logger.error(`Error installing MCP in directory: ${err.message}`);
+    res.status(500).json({ error: 'Failed to install MCP' });
   }
 });
 
