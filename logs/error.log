@@ -31,3 +31,8 @@
 2025-05-07 13:13:34 error: SSH connection test failed: config.username must be a valid string
 2025-05-07 13:49:27 error: Failed to create MCP server configuration: column "server_name" of relation "user_mcp_server_configurations" does not exist
 2025-05-07 13:49:27 error: Error installing MCP via SSH: column "server_name" of relation "user_mcp_server_configurations" does not exist
+2025-05-07 16:47:48 error: Failed to get SSH configuration with password 32397d42-9f6b-4627-b0b1-b93ffda0fe1d: Unsupported state or unable to authenticate data
+2025-05-07 16:47:48 error: Error installing MCP via SSH: Unsupported state or unable to authenticate data
+2025-05-08 20:07:54 error: MCP connection test failed for 172.16.16.54:8080: connect ECONNREFUSED 172.16.16.54:8080
+2025-05-08 20:12:02 error: Failed to get SSH configuration with password 32397d42-9f6b-4627-b0b1-b93ffda0fe1d: Unsupported state or unable to authenticate data
+2025-05-08 20:12:02 error: Error installing MCP via SSH: Unsupported state or unable to authenticate data

@@ -9,6 +9,7 @@ import {
   PlayIcon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
+  BugAntIcon
 } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
@@ -46,7 +47,7 @@ const NavLink: React.FC<NavLinkProps> = ({ to, icon: Icon, children, onClick, co
       <Icon className={`${collapsed ? 'w-7 h-7 transition-transform group-hover:scale-110' : 'w-6 h-6 mr-3'}`} />
       {!collapsed && <span>{children}</span>}
       {collapsed && (
-        <div 
+        <div
           className="absolute left-full ml-2 px-3 py-1.5 text-sm rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transform -translate-x-2 group-hover:translate-x-0 transition-all duration-200 z-50 shadow-lg"
           style={{
             backgroundColor: 'var(--color-surface-dark)',
@@ -76,7 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
 
       {/* Sidebar */}
       <div
-        className={`fixed lg:static inset-y-0 left-0 transform transition-all duration-300 ease-in-out z-30 
+        className={`fixed lg:static inset-y-0 left-0 transform transition-all duration-300 ease-in-out z-30
           ${isOpen ? 'w-64' : 'w-0 lg:w-16'} overflow-hidden`}
         style={{
           backgroundColor: 'var(--color-surface)',
@@ -84,12 +85,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
         }}
       >
         {/* Header */}
-        <div 
+        <div
           className="h-16 flex items-center justify-between px-4"
           style={{ borderBottom: '1px solid var(--color-border)' }}
         >
           <div className={`flex items-center space-x-3 ${!isOpen && 'lg:hidden'}`}>
-            <div 
+            <div
               className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{
                 background: 'linear-gradient(to bottom right, var(--color-primary), var(--color-secondary))'
@@ -97,7 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
             >
               <span className="text-white font-bold text-xl">P</span>
             </div>
-            <h1 
+            <h1
               className="text-xl font-bold whitespace-nowrap"
               style={{ color: 'var(--color-text)' }}
             >
@@ -139,7 +140,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
               Users
             </NavLink>
           )}
-          <div 
+          <div
             className="pt-4 mt-4"
             style={{ borderTop: '1px solid var(--color-border)' }}
           >
@@ -151,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
 
         {/* Version */}
         {isOpen && (
-          <div 
+          <div
             className="absolute bottom-0 left-0 right-0 p-4 text-xs text-center"
             style={{ color: 'var(--color-text-muted)' }}
           >
@@ -163,4 +164,4 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onToggle, user, isAd
   );
 };
 
-export default Sidebar; 
+export default Sidebar;

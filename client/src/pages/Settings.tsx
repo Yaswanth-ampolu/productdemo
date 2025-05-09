@@ -6,10 +6,12 @@ import {
   UserIcon,
   PaintBrushIcon,
   ServerIcon,
-  CpuChipIcon
+  CpuChipIcon,
+  BugAntIcon
 } from '@heroicons/react/24/outline';
 import OllamaSettings from '../components/settings/OllamaSettings';
 import MCPSettings from '../components/settings/MCPSettings';
+import DebuggingSettings from '../components/settings/DebuggingSettings';
 
 // Import ThemeType from the ThemeContext
 type ThemeType = 'dark' | 'light' | 'midnight';
@@ -126,6 +128,7 @@ export default function Settings() {
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
     { id: 'ollama', name: 'Ollama AI', icon: ServerIcon },
     { id: 'mcp', name: 'MCP Integration', icon: CpuChipIcon },
+    { id: 'debugging', name: 'Debugging', icon: BugAntIcon },
   ];
 
   return (
@@ -330,13 +333,25 @@ export default function Settings() {
               <OllamaSettings isAdmin={user?.role === 'admin'} />
             </div>
           )}
-          
+
           {activeTab === 'mcp' && (
             <div>
               <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
                 MCP Integration Settings
               </h2>
               <MCPSettings isAdmin={user?.role === 'admin'} />
+            </div>
+          )}
+
+          {activeTab === 'debugging' && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
+                Debugging Tools
+              </h2>
+              <p className="mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                These tools are for debugging purposes only. Enable them only when needed as they may affect performance.
+              </p>
+              <DebuggingSettings />
             </div>
           )}
         </div>

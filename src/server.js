@@ -5,6 +5,8 @@ const ini = require('ini');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const http = require('http');
+const { setupWebSocketServer } = require('./websocket/server');
 const { initializeDatabase, runModelIdMigration } = require('./database');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -16,6 +18,8 @@ const configRoutes = require('./routes/config');
 const ollamaRoutes = require('./routes/ollama');
 const mcpRoutes = require('./routes/mcp');
 const mcpPagesRoutes = require('./routes/mcp-pages');
+const websocketRoutes = require('./routes/websocket');
+const { setSessionStore } = require('./services/sessionService');
 
 // Try to require the documents routes, but don't fail if they're not available
 let documentsRoutes;
@@ -68,6 +72,9 @@ const config = ini.parse(fs.readFileSync(configPath, 'utf-8'));
 // Initialize Express app
 const app = express();
 
+// Make app globally available for services to access
+global.app = app;
+
 // Initialize the database and start the server when ready
 async function startServer() {
   try {
@@ -90,7 +97,7 @@ async function startServer() {
     app.use(express.json());
 
     // Session configuration
-    app.use(session({
+    const sessionOptions = {
       secret: config.security.secret_key,
       resave: false,
       saveUninitialized: false,
@@ -101,7 +108,22 @@ async function startServer() {
         maxAge: parseInt(config.security.cookie_max_age)
       },
       rolling: true // Resets the cookie expiration on every response
-    }));
+    };
+
+    // Create the session middleware with a specific store
+    // Use MemoryStore for simplicity, but in production you'd use a more robust store
+    const MemoryStore = session.MemoryStore;
+    const sessionStore = new MemoryStore();
+    sessionOptions.store = sessionStore;
+
+    const sessionMiddleware = session(sessionOptions);
+
+    // Store a reference to the session store for WebSocket authentication
+    console.log('Setting session store reference for WebSocket authentication');
+    setSessionStore(sessionStore);
+
+    // Use the session middleware
+    app.use(sessionMiddleware);
 
     // API Routes - Now all prefixed with /api
     const apiRouter = express.Router();
@@ -115,6 +137,7 @@ async function startServer() {
     apiRouter.use('/mcp', mcpRoutes);
     apiRouter.use('/documents', documentsRoutes);
     apiRouter.use('/documents-status', documentsStatusRoutes);
+    apiRouter.use('/websocket', websocketRoutes);
     apiRouter.use('/', configRoutes(config)); // Add config routes at the API root
 
     // Mount all API routes under /api
@@ -148,11 +171,23 @@ async function startServer() {
       res.status(500).json({ error: 'Internal Server Error' });
     });
 
-    // Start server
+    // Create HTTP server from Express app
     const port = config.server.port || 5634;
     const host = config.server.domain || 'localhost';
-    const server = app.listen(port, host, () => {
+
+    // Create HTTP server
+    const server = http.createServer(app);
+
+    // Setup WebSocket server
+    const wsServer = setupWebSocketServer(server);
+
+    // Make WebSocket server available to routes and services
+    app.set('wsServer', wsServer);
+
+    // Start HTTP server
+    server.listen(port, host, () => {
       console.log(`Server running on ${config.server.protocol}://${host}:${port}`);
+      console.log(`WebSocket server running on ${config.server.protocol === 'https' ? 'wss' : 'ws'}://${host}:${port}/ws`);
     }).on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         console.error(`Port ${port} is already in use. Please use a different port.`);

@@ -17,7 +17,7 @@ export default function Layout() {
   const { currentTheme, setTheme } = useTheme();
   const { isExpanded: isSidebarOpen, toggleSidebar: toggleSidebarContext } = useSidebar();
   const navigate = useNavigate();
-  
+
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'Welcome to the Pinnacleflow Ai!', read: false },
     { id: 2, text: 'New features available', read: false },
@@ -46,12 +46,12 @@ export default function Layout() {
 
   const toggleTheme = () => {
     // Cycle between themes: dark -> light -> midnight -> dark
-    const nextTheme = currentTheme === 'dark' 
-      ? 'light' 
-      : currentTheme === 'light' 
-        ? 'midnight' 
+    const nextTheme = currentTheme === 'dark'
+      ? 'light'
+      : currentTheme === 'light'
+        ? 'midnight'
         : 'dark';
-    
+
     setTheme(nextTheme);
   };
 
@@ -60,8 +60,8 @@ export default function Layout() {
   };
 
   // Get appropriate theme icon
-  const ThemeIcon = currentTheme === 'dark' || currentTheme === 'midnight' 
-    ? SunIcon 
+  const ThemeIcon = currentTheme === 'dark' || currentTheme === 'midnight'
+    ? SunIcon
     : MoonIcon;
 
   return (
@@ -76,7 +76,7 @@ export default function Layout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 border-b" style={{ 
+        <header className="h-16 border-b" style={{
           backgroundColor: 'var(--color-surface)',
           borderColor: 'var(--color-border)'
         }}>
@@ -98,11 +98,11 @@ export default function Layout() {
                 Welcome, <span style={{ color: 'var(--color-primary)' }}>{user?.username || 'User'}</span>
               </span>
             </div>
-            
+
             <div className="flex items-center space-x-3">
               {/* Notifications */}
               <div className="relative">
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowNotifications(!showNotifications)}
                   className="p-2 rounded-full transition-colors"
@@ -116,7 +116,7 @@ export default function Layout() {
                     <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }}></span>
                   )}
                 </button>
-                
+
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-80 rounded-lg shadow-lg z-50"
                     style={{
@@ -125,11 +125,11 @@ export default function Layout() {
                       border: '1px solid var(--color-border)'
                     }}
                   >
-                    <div className="p-3 flex justify-between items-center" style={{ 
+                    <div className="p-3 flex justify-between items-center" style={{
                       borderBottom: '1px solid var(--color-border)'
                     }}>
                       <h3 className="font-medium" style={{ color: 'var(--color-text)' }}>Notifications</h3>
-                      <button 
+                      <button
                         type="button"
                         onClick={markAllAsRead}
                         className="text-xs"
@@ -141,10 +141,10 @@ export default function Layout() {
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length > 0 ? (
                         notifications.map(notification => (
-                          <div 
-                            key={notification.id} 
+                          <div
+                            key={notification.id}
                             className={`p-3 transition-colors ${notification.read ? 'opacity-60' : ''}`}
-                            style={{ 
+                            style={{
                               borderBottom: '1px solid var(--color-border)'
                             }}
                           >
@@ -161,12 +161,12 @@ export default function Layout() {
                   </div>
                 )}
               </div>
-              
+
               <button
                 type="button"
                 onClick={handleLogout}
                 className="flex items-center px-4 py-2 rounded-lg transition-all duration-200"
-                style={{ 
+                style={{
                   color: 'var(--color-text)',
                   backgroundColor: 'transparent'
                 }}
@@ -179,7 +179,7 @@ export default function Layout() {
         </header>
         <main className="flex-1 overflow-auto p-6" style={{ backgroundColor: 'var(--color-bg)' }}>
           <div className="max-w-6xl mx-auto px-4">
-            <div className="rounded-lg" style={{ 
+            <div className="rounded-lg" style={{
               backgroundColor: 'var(--color-surface)',
               border: '1px solid var(--color-border)'
             }}>
@@ -190,4 +190,4 @@ export default function Layout() {
       </div>
     </div>
   );
-} 
+}

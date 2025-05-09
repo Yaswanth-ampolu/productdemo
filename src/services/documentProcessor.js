@@ -546,8 +546,9 @@ class DocumentProcessor {
       const documentService = getDocumentService();
 
       // Try to get the document first to verify it exists
+      let document;
       try {
-        const document = await documentService.getDocument(documentId);
+        document = await documentService.getDocument(documentId);
         if (!document) {
           console.warn(`Cannot update progress: Document ${documentId} not found in database`);
           return;
@@ -564,6 +565,68 @@ class DocumentProcessor {
         message,
         true // Mark as long-running to prevent session timeout
       );
+
+      // Send WebSocket update if the app server is available
+      try {
+        // Get the WebSocket server from the global app object
+        const app = global.app;
+        if (app && app.get('wsServer')) {
+          const wsServer = app.get('wsServer');
+
+          // Create WebSocket payload
+          const wsPayload = {
+            type: 'document_status_update',
+            payload: {
+              documentId: documentId,
+              status: docStatus,
+              progress: progressValue || 0,
+              message: message || 'Processing',
+              timestamp: new Date().toISOString()
+            }
+          };
+
+          // If we have a user ID, send to that specific user
+          if (document.user_id) {
+            console.log(`Broadcasting document status update to user ${document.user_id}`);
+
+            // Try to broadcast up to 3 times with increasing delays if needed
+            let attempt = 0;
+            const maxAttempts = 3;
+            let success = false;
+
+            while (attempt < maxAttempts && !success) {
+              try {
+                if (attempt > 0) {
+                  console.log(`Retry attempt ${attempt} for broadcasting to user ${document.user_id}`);
+                  // Add increasing delay between retries
+                  await new Promise(resolve => setTimeout(resolve, attempt * 500));
+                }
+
+                success = wsServer.broadcastToUser(document.user_id, wsPayload);
+
+                if (!success && attempt < maxAttempts - 1) {
+                  console.log(`Broadcast attempt ${attempt + 1} failed, will retry`);
+                }
+              } catch (retryError) {
+                console.error(`Error in broadcast attempt ${attempt + 1}:`, retryError);
+              }
+
+              attempt++;
+            }
+
+            if (!success) {
+              console.log(`All ${maxAttempts} broadcast attempts failed for user ${document.user_id}, message will be queued if supported`);
+            }
+          } else {
+            // Fallback to broadcasting to all users if no user ID is available
+            console.log('Broadcasting document status update to all users (no user ID available)');
+            wsServer.broadcastToAll(wsPayload);
+          }
+        }
+      } catch (wsError) {
+        // Don't let WebSocket errors interrupt the process
+        console.error(`Error sending WebSocket update for document ${documentId}:`, wsError);
+      }
 
       console.log(`Document ${documentId} progress updated: ${progressValue || 0}% - ${message || 'Processing'}`);
     } catch (error) {

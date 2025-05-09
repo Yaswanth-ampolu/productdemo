@@ -303,8 +303,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
             fontSize: '0.95rem',
             lineHeight: '1.6',
           }}>
-            {message.isStreaming && message.content === '' ? (
-              // Show an animated loading indicator when streaming just started
+            {(message.isStreaming || (message as any).isProcessingOnly) && (message.content === '' || (message as any).isLoadingOnly) ? (
+              // Show an animated loading indicator when streaming just started, processing documents, or for loading-only messages
               <div style={{ color: 'var(--color-text-muted)' }}>
                 <div className="typing-animation">
                   <span className="dot"></span>

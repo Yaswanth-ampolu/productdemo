@@ -321,3 +321,50 @@ All schema migrations follow this process:
 - These changes enable proper document handling in the RAG system and fix document upload issues
 - Improved error handling in document processing code to handle these new fields
 - Fixed circular dependencies between document service modules to ensure proper document processing
+
+
+
+### fir user ssh config we creaetd
+-- Enable the uuid-ossp extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- user_ssh_configurations table
+CREATE TABLE IF NOT EXISTS user_ssh_configurations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  machine_nickname VARCHAR(255) NOT NULL,
+  ssh_host VARCHAR(255) NOT NULL,
+  ssh_port INTEGER NOT NULL DEFAULT 22,
+  ssh_user VARCHAR(255) NOT NULL,
+  ssh_auth_method VARCHAR(50) NOT NULL,
+  ssh_password_encrypted TEXT,
+  ssh_key_path TEXT,
+  last_ssh_connection_status VARCHAR(50) DEFAULT 'unknown',
+  last_ssh_error_message TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, machine_nickname)
+);
+
+CREATE INDEX idx_user_ssh_configurations_user_id ON user_ssh_configurations(user_id);
+
+-- user_mcp_server_configurations table
+CREATE TABLE IF NOT EXISTS user_mcp_server_configurations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ssh_configuration_id UUID REFERENCES user_ssh_configurations(id) ON DELETE SET NULL,
+  mcp_nickname VARCHAR(255) NOT NULL,
+  mcp_host VARCHAR(255) NOT NULL,
+  mcp_port INTEGER NOT NULL,
+  mcp_connection_status VARCHAR(50) DEFAULT 'unknown',
+  mcp_last_error_message TEXT,
+  mcp_discovered_tools_schema JSONB,
+  mcp_server_version VARCHAR(100),
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, mcp_nickname)
+);
+
+CREATE INDEX idx_user_mcp_server_configurations_user_id ON user_mcp_server_configurations(user_id);
+CREATE INDEX idx_user_mcp_server_configurations_ssh_config_id ON user_mcp_server_configurations(ssh_configuration_id);

@@ -25,6 +25,8 @@ interface MessageListProps {
       processingError?: string;
     };
     isProcessingFile?: boolean;
+    isProcessingOnly?: boolean; // Flag to indicate this is document processing, not message streaming
+    isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
     sources?: RagSource[]; // Add sources for RAG responses
     useRag?: boolean; // Flag to indicate if RAG was used
   }[];

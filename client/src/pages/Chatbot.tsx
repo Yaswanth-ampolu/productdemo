@@ -13,6 +13,8 @@ import { getActiveOllamaModels } from '../services/ollamaService';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatMessage, ChatSession } from '../types';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWebSocket } from '../contexts/WebSocketContext';
+import { useDocumentStatus } from '../hooks/useDocumentStatus';
 import ChatInput from '../components/chat/ChatInput';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
@@ -35,6 +37,8 @@ interface ExtendedChatMessageType {
     processingError?: string;
   };
   isProcessingFile?: boolean;
+  isProcessingOnly?: boolean; // Flag to indicate this is document processing, not message streaming
+  isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
   documentId?: string;
   documentStatus?: string;
   sources?: RagSource[]; // Add sources for RAG responses
@@ -117,14 +121,33 @@ const Chatbot: React.FC = () => {
               // Remove processing message
               setMessages(prev => prev.filter(m => m.id !== msg.id));
 
-              // Add success message
-              const successMessage: ExtendedChatMessageType = {
-                id: `system-success-${Date.now()}`,
-                role: 'assistant',
-                content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
-                timestamp: new Date()
+              // Use a more comprehensive check for success messages
+              const checkForSuccessMessages = (msgs: ExtendedChatMessageType[]) => {
+                return msgs.some(msg =>
+                  msg.role === 'assistant' &&
+                  (msg.content.includes("Your document has been fully processed") ||
+                   msg.content.includes("Your document has been processed"))
+                );
               };
-              setMessages(prev => [...prev, successMessage]);
+
+              // Check if we already have a success message before adding a new one
+              setMessages(prev => {
+                // Check if we already have a success message to avoid duplicates
+                if (checkForSuccessMessages(prev)) {
+                  console.log('Success message already exists, not adding another one');
+                  return prev;
+                }
+
+                // Add success message
+                const successMessage: ExtendedChatMessageType = {
+                  id: `system-success-${Date.now()}`,
+                  role: 'assistant',
+                  content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
+                  timestamp: new Date()
+                };
+
+                return [...prev, successMessage];
+              });
 
               // Mark notification as shown
               setRagNotificationShown(true);
@@ -213,32 +236,52 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  // Fetch sessions on component mount
+  // Get WebSocket context
+  const { connected: wsConnected, reconnect: wsReconnect } = useWebSocket();
+
+  // Fetch sessions on component mount and ensure WebSocket connection
   useEffect(() => {
     fetchSessions();
+
+    // Initial RAG availability check
     checkRagAvailability();
 
     // Force check document status on mount
     forceCheckDocumentStatus();
 
-    // Set up periodic RAG availability check (every 15 seconds)
-    const ragCheckInterval = setInterval(() => {
-      // Only check if we haven't already shown the notification
+    // Ensure WebSocket connection is established
+    if (!wsConnected) {
+      console.log('WebSocket not connected, attempting to reconnect...');
+      wsReconnect();
+    }
+
+    // Set up periodic checks with a reasonable interval (30 seconds)
+    const periodicCheckInterval = setInterval(() => {
+      // Only check RAG if we haven't already shown the notification
       // This prevents unnecessary checks once RAG is known to be available
       if (!ragNotificationShown) {
-        console.log('Performing periodic RAG availability check');
+        console.log('Performing periodic document status check');
+
+        // Check document status first
+        forceCheckDocumentStatus();
+
+        // Then check RAG availability (the debounce in checkRagAvailability will prevent excessive checks)
         checkRagAvailability();
       }
 
-      // Always force check document status
-      forceCheckDocumentStatus();
-    }, 15000); // Reduced to 15s to be more responsive
+      // Always check WebSocket connection
+      if (!wsConnected) {
+        console.log('WebSocket not connected during periodic check, attempting to reconnect...');
+        wsReconnect();
+      }
+    }, 30000); // Increased to 30s to reduce server load
 
     // Clean up interval on unmount
     return () => {
-      clearInterval(ragCheckInterval);
+      clearInterval(periodicCheckInterval);
     };
-  }, [ragNotificationShown, messages]); // Add dependencies to re-setup interval when state changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsConnected, wsReconnect]); // Intentionally omitting ragNotificationShown and other dependencies to prevent re-creating the interval
 
   // Fetch messages when active session changes
   useEffect(() => {
@@ -249,8 +292,21 @@ const Chatbot: React.FC = () => {
     }
   }, [activeSessionId]);
 
-  // Check if RAG is available
+  // Store the last time we checked RAG availability
+  const lastRagCheckRef = useRef<number>(0);
+
+  // Check if RAG is available with debounce to prevent excessive checks
   const checkRagAvailability = async () => {
+    // Implement debounce - only check if it's been at least 5 seconds since the last check
+    const now = Date.now();
+    if (now - lastRagCheckRef.current < 5000) {
+      console.log(`Skipping RAG availability check - last check was ${(now - lastRagCheckRef.current) / 1000}s ago`);
+      return isRagAvailable; // Return current state without checking
+    }
+
+    // Update the last check timestamp
+    lastRagCheckRef.current = now;
+
     try {
       const available = await ragChatService.isRagAvailable();
       console.log(`RAG availability checked: ${available ? 'Available' : 'Not available'} at ${new Date().toISOString()}`);
@@ -261,6 +317,17 @@ const Chatbot: React.FC = () => {
 
         // Find and remove any processing messages
         setMessages(prev => {
+          // Check if we already have a success message to avoid duplicates
+          const hasSuccessMessage = prev.some(msg =>
+            msg.role === 'assistant' &&
+            msg.content.includes("Your document has been processed")
+          );
+
+          if (hasSuccessMessage) {
+            console.log('Success message already exists, not adding another one');
+            return prev;
+          }
+
           const processingMessages = prev.filter(msg => msg.isProcessingFile);
           if (processingMessages.length > 0) {
             console.log('Removing processing messages:', processingMessages.length);
@@ -269,14 +336,42 @@ const Chatbot: React.FC = () => {
           return prev;
         });
 
-        // Add a system message to notify the user
-        const ragAvailableMessage: ExtendedChatMessageType = {
-          id: `system-rag-available-${Date.now()}`,
-          role: 'assistant',
-          content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
-          timestamp: new Date()
+        // Use a function to check for success messages to ensure we have the latest state
+        const checkForSuccessMessages = (msgs: ExtendedChatMessageType[]) => {
+          return msgs.some(msg =>
+            msg.role === 'assistant' &&
+            (msg.content.includes("Your document has been fully processed") ||
+             msg.content.includes("Your document has been processed"))
+          );
         };
-        setMessages(prev => [...prev, ragAvailableMessage]);
+
+        // Get the current messages directly from state to ensure we have the latest
+        setMessages(prev => {
+          // First, completely remove ALL error messages and loading indicators
+          const filteredMessages = prev.filter(msg =>
+            // Remove error messages
+            !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error")) &&
+            // Remove loading indicators
+            !msg.isProcessingFile
+          );
+
+          // Check if we already have a success message
+          if (checkForSuccessMessages(filteredMessages)) {
+            console.log('Success message already exists, not adding another one');
+            return filteredMessages;
+          }
+
+          // Add a system message to notify the user
+          const ragAvailableMessage: ExtendedChatMessageType = {
+            id: `system-rag-available-${Date.now()}`,
+            role: 'assistant',
+            content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
+            timestamp: new Date()
+          };
+
+          // Add the success message to the filtered messages
+          return [...filteredMessages, ragAvailableMessage];
+        });
 
         // Mark that we've shown the notification
         setRagNotificationShown(true);
@@ -460,6 +555,10 @@ const Chatbot: React.FC = () => {
       setIsUploading(true);
       setUploadProgress(0);
 
+      // Set flag in localStorage to indicate upload in progress
+      // This will be used by WebSocketContext to increase heartbeat frequency
+      localStorage.setItem('uploadInProgress', 'true');
+
       // Reset the RAG notification state for the new document
       setRagNotificationShown(false);
 
@@ -468,13 +567,22 @@ const Chatbot: React.FC = () => {
       setIsStreaming(false);
 
       try {
-        // Add an immediate system message about processing
+        // First, remove any existing processing or error messages
+        setMessages(prev => prev.filter(msg =>
+          !msg.isProcessingFile &&
+          !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error"))
+        ));
+
+        // Add a single loading animation with a friendly message
         const processingMessage: ExtendedChatMessageType = {
-          id: `system-${Date.now()}`,
+          id: `system-processing-${Date.now()}`,
           role: 'assistant',
-          content: 'I\'m processing your document. This may take a moment...',
+          content: 'Please wait while we do the processing for your document.', // User-friendly message
           timestamp: new Date(),
-          isProcessingFile: true // Add a flag to identify processing messages
+          isProcessingFile: true, // Add a flag to identify processing messages
+          isProcessingOnly: true, // Flag to indicate this is document processing, not message streaming
+          isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
+          isLoadingOnly: false // Not just a loading indicator, it has text
         };
 
         setMessages(prev => [...prev, processingMessage]);
@@ -505,37 +613,44 @@ const Chatbot: React.FC = () => {
           )
         );
 
-        // Remove the temporary processing message
-        setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
+        // Get the document ID from the response
+        const documentId = response.fileAttachment?.documentId;
 
-        setIsUploading(false);
-        setIsLoading(true);
+        // If we have a document ID, the document is being processed
+        if (documentId) {
+          // Find the processing message we just added
+          const processingMessageId = messages.find(msg => msg.isProcessingFile)?.id;
 
-        // Poll document status
-        if (response.fileAttachment?.documentId) {
-          const documentId = response.fileAttachment.documentId;
+          if (processingMessageId) {
+            // Update the processing message with document ID but keep it simple - just the loading animation
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === processingMessageId
+                  ? {
+                      ...msg,
+                      content: 'Please wait while we do the processing for your document.', // Keep the friendly message
+                      isProcessingOnly: true, // Flag to indicate this is document processing
+                      isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
+                      documentId: documentId,
+                      documentStatus: 'PROCESSING',
+                      isLoadingOnly: false // Not just a loading indicator, it has text
+                    }
+                  : msg
+              )
+            );
+          }
 
-          // Add a status polling message
-          const pollingMessage: ExtendedChatMessageType = {
-            id: `system-polling-${Date.now()}`,
-            role: 'assistant',
-            content: 'Processing document...',
-            timestamp: new Date(),
-            isProcessingFile: true,
-            isStreaming: true, // Add streaming indicator to show loading animation
-            documentId: documentId,
-            documentStatus: 'PROCESSING'
-          };
+          setIsUploading(false);
+          setIsLoading(true);
 
-          setMessages(prev => [...prev, pollingMessage]);
+          // Clear the upload in progress flag
+          localStorage.removeItem('uploadInProgress');
 
-          // Keep track of the polling message ID to update it later
-          const pollingMessageId = pollingMessage.id;
+          // Keep track of the processing message ID
+          const pollingMessageId = processingMessageId || `system-processing-${Date.now()}`;
 
           // Create a timeout for overall processing
           const processingTimeout = setTimeout(() => {
-            clearInterval(statusInterval);
-
             // Check if we're still loading
             if (isLoading) {
               // Add a fallback message
@@ -547,244 +662,159 @@ const Chatbot: React.FC = () => {
                 timestamp: new Date()
               };
 
-              setMessages(prev =>
-                prev.map(msg =>
-                  msg.id === pollingMessageId
-                    ? { ...msg, documentStatus: 'TIMEOUT' }
-                    : msg
-                )
-              );
+              // Remove the processing message
+              setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
 
+              // Add the timeout message
               setMessages(prev => [...prev, timeoutMessage]);
               setIsLoading(false);
             }
           }, 60000); // 1 minute timeout
 
-          // Start polling for document status
-          const statusInterval = setInterval(async () => {
-            try {
-              // Check if component is still mounted (use a ref to track this)
-              if (!document.body.contains(document.getElementById('chatbot-container'))) {
-                clearInterval(statusInterval);
-                clearTimeout(processingTimeout);
-                return;
+          // Use the document status hook instead of polling
+          const { status: documentStatus, usingWebSocket } = useDocumentStatus({
+            documentId,
+            initialStatus: {
+              status: 'PROCESSING',
+              progress: 0,
+              message: 'Processing document...'
+            },
+            pollingInterval: 2000, // Fallback to polling every 2 seconds if WebSocket is not available
+            enablePolling: true
+          });
+
+
+          // Watch for document status changes
+          useEffect(() => {
+            if (!documentStatus) return;
+
+            console.log(`Document ${documentId} status update (${usingWebSocket ? 'WebSocket' : 'Polling'}):`, documentStatus);
+
+            // Find the current processing message
+            const currentProcessingMessageId = messages.find(msg => msg.isProcessingFile)?.id || pollingMessageId;
+
+            // Update the processing message - keep it simple with just the loading animation
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === currentProcessingMessageId
+                  ? {
+                      ...msg,
+                      documentStatus: documentStatus.status,
+                      // Use processing flag instead of streaming
+                      isProcessingOnly: documentStatus.status !== 'PROCESSED' && documentStatus.status !== 'ERROR',
+                      // Don't mark as streaming to avoid affecting the chat icon
+                      isStreaming: false,
+                      // Keep the friendly message
+                      content: 'Please wait while we do the processing for your document.'
+                    }
+                  : msg
+              )
+            );
+
+            // Handle based on status
+            if (documentStatus.status === 'PROCESSED' || documentStatus.status === 'processed') {
+              // Clear the timeout since processing is complete
+              clearTimeout(processingTimeout);
+
+              // First, completely remove ALL error messages and loading indicators
+              setMessages(prev => {
+                // Filter out any error messages and loading indicators
+                const filteredMessages = prev.filter(msg =>
+                  // Remove error messages
+                  !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error")) &&
+                  // Remove loading indicators
+                  !msg.isProcessingFile
+                );
+
+                // Check if we already have a success message
+                const hasSuccessMessage = filteredMessages.some(msg =>
+                  msg.role === 'assistant' &&
+                  (msg.content.includes("Your document has been fully processed") ||
+                   msg.content.includes("Your document has been processed"))
+                );
+
+                if (!hasSuccessMessage) {
+                  // Add success message
+                  const successMessage: ExtendedChatMessageType = {
+                    id: `system-success-${Date.now()}`,
+                    role: 'assistant',
+                    content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
+                    timestamp: new Date()
+                  };
+
+                  // Return filtered messages plus success message
+                  return [...filteredMessages, successMessage];
+                }
+
+                // Just return filtered messages if we already have a success message
+                return filteredMessages;
+              });
+
+              // Mark that we've shown the notification to prevent duplicates
+              setRagNotificationShown(true);
+
+              // Check RAG availability immediately
+              console.log('Document processed, checking RAG availability immediately');
+              checkRagAvailability().then(immediateCheck => {
+                if (!immediateCheck) {
+                  console.log('First RAG check failed, scheduling a single follow-up check');
+                  // Schedule just one follow-up check after 5 seconds
+                  // This prevents excessive checks that can overload the system
+                  setTimeout(async () => {
+                    console.log('Performing follow-up RAG availability check');
+                    await checkRagAvailability();
+                  }, 5000);
+                }
+              });
+
+              // Enable RAG mode automatically when a document is processed
+              if (!isRagEnabled) {
+                setIsRagEnabled(true);
+                localStorage.setItem('ragEnabled', 'true');
               }
 
-              const statusResponse = await chatbotService.getDocumentStatus(documentId);
-              console.log(`Document ${documentId} status:`, statusResponse);
+              // Reset both loading and streaming states
+              setIsLoading(false);
+              setIsStreaming(false);
+            } else if (documentStatus.status === 'ERROR' || documentStatus.status === 'error') {
+              // Clear the timeout on error
+              clearTimeout(processingTimeout);
 
-              // Update the polling message
-              setMessages(prev =>
-                prev.map(msg =>
-                  msg.id === pollingMessageId
-                    ? {
-                        ...msg,
-                        documentStatus: statusResponse.status,
-                        // Keep streaming indicator on while processing
-                        isStreaming: statusResponse.status !== 'PROCESSED' && statusResponse.status !== 'ERROR'
-                      }
-                    : msg
-                )
+              // First check if we already have a success message
+              // (in case the document was processed in the background)
+              const hasSuccessMessage = messages.some(msg =>
+                msg.role === 'assistant' &&
+                msg.content.includes("Your document has been fully processed")
               );
 
-              // Handle based on status
-              if (statusResponse.status === 'PROCESSED') {
-                // Clear the interval since processing is complete
-                clearInterval(statusInterval);
-                clearTimeout(processingTimeout);
+              if (!hasSuccessMessage) {
+                // Remove all processing messages
+                setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
 
-                // Remove polling message
-                setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
-
-                // Add the final success message
-                const successMessage: ExtendedChatMessageType = {
-                  id: `system-success-${Date.now()}`,
-                  role: 'assistant',
-                  content: "Your document has been processed! You can now ask questions about it using the RAG feature.",
-                  timestamp: new Date()
-                };
-
-                // Mark that we've shown the notification to prevent duplicates
-                setRagNotificationShown(true);
-
-                // Check RAG availability multiple times with increasing delays
-                // Sometimes the vector store needs a moment to be fully available after processing
-                console.log('Document processed, checking RAG availability immediately');
-                const immediateCheck = await checkRagAvailability();
-
-                if (!immediateCheck) {
-                  console.log('First RAG check failed, scheduling additional checks');
-                  // Schedule additional checks with increasing delays and frequency
-                  const checkIntervals = [1000, 2000, 3000, 5000, 8000, 13000];
-
-                  for (const interval of checkIntervals) {
-                    setTimeout(async () => {
-                      console.log(`Checking RAG availability after ${interval}ms`);
-                      const available = await checkRagAvailability();
-                      if (available) {
-                        console.log(`RAG became available after ${interval}ms delay`);
-                      }
-                    }, interval);
-                  }
-                }
-
-                // Enable RAG mode automatically when a document is processed
-                if (!isRagEnabled) {
-                  setIsRagEnabled(true);
-                  localStorage.setItem('ragEnabled', 'true');
-                }
-
-                setMessages(prev => [...prev, successMessage]);
-                // Reset both loading and streaming states
-                setIsLoading(false);
-                setIsStreaming(false);
-              } else if (statusResponse.status === 'ERROR') {
-                // Clear the interval on error
-                clearInterval(statusInterval);
-                clearTimeout(processingTimeout);
-
-                // Show error message
+                // Add error message
                 const errorMessage: ExtendedChatMessageType = {
                   id: `system-error-${Date.now()}`,
                   role: 'assistant',
                   content: "I encountered an error processing your document. " +
-                           (statusResponse.error || "Please try uploading it again."),
+                          (documentStatus.error || "Please try uploading it again."),
                   timestamp: new Date()
                 };
 
-                setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
                 setMessages(prev => [...prev, errorMessage]);
-                setIsLoading(false);
-              } else if (statusResponse.status === 'EMBEDDING') {
-                // Update the polling message with embedding status
-                setMessages(prev =>
-                  prev.map(msg =>
-                    msg.id === pollingMessageId
-                    ? {
-                        ...msg,
-                        content: 'Generating embeddings for document... This may take a few minutes for large documents.',
-                        documentStatus: 'EMBEDDING',
-                        isStreaming: true // Ensure streaming indicator stays on during embedding
-                      }
-                    : msg
-                )
-              );
-
-                // Don't clear interval yet, keep polling
-              }
-            } catch (error) {
-              console.error('Error checking document status:', error);
-
-              try {
-                // Error could be due to auth issues, verify we're still logged in
-                // This should refresh the auth token if needed
-                await refreshUser();
-
-                // If we get here, user is still authenticated
-                console.log('Auth check successful during document processing');
-              } catch (authError) {
-                console.error('Authentication failure during document processing:', authError);
-
-                // Clear intervals and timeouts
-                clearInterval(statusInterval);
-                clearTimeout(processingTimeout);
-
-                // We won't redirect here, let the API interceptor handle it
-                setIsLoading(false);
-                return;
               }
 
-              // If the error wasn't auth-related, reduce polling frequency but continue
-              clearInterval(statusInterval);
-
-              // New interval with longer delay (10 seconds instead of 2)
-              const newInterval = setInterval(async () => {
-                // Same code as above, but we won't nest another recovery mechanism
-                try {
-                  const statusResponse = await chatbotService.getDocumentStatus(documentId);
-                  console.log(`Document ${documentId} status (recovery polling):`, statusResponse);
-
-                  // Same status handling as above
-                  if (statusResponse.status === 'PROCESSED' || statusResponse.status === 'ERROR') {
-                    clearInterval(newInterval);
-                    clearTimeout(processingTimeout);
-
-                    const finalMessage: ExtendedChatMessageType = {
-                      id: `system-${statusResponse.status.toLowerCase()}-${Date.now()}`,
-                      role: 'assistant',
-                      content: statusResponse.status === 'PROCESSED'
-                        ? "Your document has been processed! You can now ask questions about it using the RAG feature."
-                        : "There was an error processing your document. " + (statusResponse.error || "Please try again."),
-                      timestamp: new Date()
-                    };
-
-                    // If processed successfully, mark notification as shown
-                    if (statusResponse.status === 'PROCESSED') {
-                      setRagNotificationShown(true);
-                    }
-
-                    setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
-                    setMessages(prev => [...prev, finalMessage]);
-                    // Reset both loading and streaming states
-                    setIsLoading(false);
-                    setIsStreaming(false);
-
-                    // If document was processed successfully, check RAG availability
-                    if (statusResponse.status === 'PROCESSED') {
-                      // Check RAG availability multiple times with increasing delays
-                      console.log('Document processed (recovery path), checking RAG availability');
-                      const immediateCheck = await checkRagAvailability();
-
-                      if (!immediateCheck) {
-                        console.log('First RAG check failed (recovery path), scheduling additional checks');
-                        // Schedule additional checks with increasing delays and frequency
-                        const checkIntervals = [1000, 2000, 3000, 5000, 8000, 13000];
-
-                        for (const interval of checkIntervals) {
-                          setTimeout(async () => {
-                            console.log(`Checking RAG availability after ${interval}ms (recovery path)`);
-                            const available = await checkRagAvailability();
-                            if (available) {
-                              console.log(`RAG became available after ${interval}ms delay (recovery path)`);
-                            }
-                          }, interval);
-                        }
-                      }
-
-                      // Enable RAG mode automatically
-                      setIsRagEnabled(true);
-                      localStorage.setItem('ragEnabled', 'true');
-                    }
-                  }
-                } catch (recoveryError) {
-                  console.error('Error in recovery polling:', recoveryError);
-                  // Just log the error but don't take further action
-                }
-              }, 10000); // Poll every 10 seconds in recovery mode
-            }
-
-          }, 2000); // Poll every 2 seconds
-
-          // Clean up interval after 30 seconds (reduced from 5 minutes) to prevent waiting too long
-          setTimeout(() => {
-            clearInterval(statusInterval);
-
-            // Only add a timeout message if we're still loading
-            if (isLoading) {
-              const timeoutMessage: ExtendedChatMessageType = {
-                id: `system-timeout-${Date.now()}`,
-                role: 'assistant',
-                content: "I've received your file, but the processing is taking longer than expected. " +
-                         "I'll continue processing it in the background, and you can ask questions about it later.",
-                timestamp: new Date()
-              };
-
-              setMessages(prev => [...prev, timeoutMessage]);
-              // Reset both loading and streaming states
+              // Reset loading states
               setIsLoading(false);
               setIsStreaming(false);
             }
-          }, 30000);
+          }, [documentStatus, documentId, pollingMessageId, processingTimeout, usingWebSocket, isRagEnabled, checkRagAvailability, messages]);
+
+          // Clean up timeout when component unmounts
+          useEffect(() => {
+            return () => {
+              clearTimeout(processingTimeout);
+            };
+          }, [processingTimeout]);
 
           return; // Return early, we'll handle the AI response after processing
         }
@@ -795,19 +825,153 @@ const Chatbot: React.FC = () => {
         return;
       } catch (error) {
         console.error('Error uploading file:', error);
+
+        // Check if we got a document ID in the error response
+        // If we did, the document is likely still being processed
+        const documentId = error.response?.data?.document?.id;
+
+        if (documentId) {
+          console.log(`Document ID ${documentId} found in error response, document is being processed...`);
+
+          // We have a document ID, so the file was uploaded and is being processed
+          // First, remove any existing error messages
+          setMessages(prev => prev.filter(msg =>
+            !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error"))
+          ));
+
+          // Find or create a processing message with loading indicator
+          const processingMessageId = messages.find(msg => msg.isProcessingFile)?.id;
+
+          if (processingMessageId) {
+            // Update existing processing message - keep it simple with just the loading animation
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === processingMessageId
+                  ? {
+                      ...msg,
+                      content: 'Please wait while we do the processing for your document.',
+                      documentId: documentId,
+                      documentStatus: 'PROCESSING',
+                      isProcessingOnly: true, // Flag to indicate this is document processing
+                      isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
+                      isLoadingOnly: false // Not just a loading indicator, it has text
+                    }
+                  : msg
+              )
+            );
+          } else {
+            // Create new processing message with loading indicator - keep it simple
+            const loadingMessage: ExtendedChatMessageType = {
+              id: `system-loading-${Date.now()}`,
+              role: 'assistant',
+              content: 'Please wait while we do the processing for your document.',
+              timestamp: new Date(),
+              isProcessingFile: true,
+              isProcessingOnly: true, // Flag to indicate this is document processing
+              isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
+              documentId: documentId,
+              documentStatus: 'PROCESSING',
+              isLoadingOnly: false // Not just a loading indicator, it has text
+            };
+
+            setMessages(prev => [...prev.filter(msg => !msg.isProcessingFile), loadingMessage]);
+          }
+
+          // Use the document status hook instead of manual polling
+          // This will leverage WebSockets when available
+          const { status: documentStatus, usingWebSocket } = useDocumentStatus({
+            documentId,
+            initialStatus: {
+              status: 'PROCESSING',
+              progress: 0,
+              message: 'Processing document...'
+            },
+            pollingInterval: 2000, // Fallback to polling every 2 seconds if WebSocket is not available
+            enablePolling: true
+          });
+
+          // Keep track of the processing message ID
+          const pollingMessageId = processingMessageId || messages.find(msg => msg.isProcessingFile)?.id || `system-loading-${Date.now()}`;
+
+          // Watch for document status changes
+          useEffect(() => {
+            if (!documentStatus) return;
+
+            console.log(`Document ${documentId} status update (${usingWebSocket ? 'WebSocket' : 'Polling'}):`, documentStatus);
+
+            // Handle based on status
+            if (documentStatus.status === 'PROCESSED' || documentStatus.status === 'processed') {
+              // Document is processed, show success message and remove loading indicator
+
+              // First, completely remove ALL error messages and loading indicators
+              setMessages(prev => {
+                // Filter out any error messages and loading indicators
+                const filteredMessages = prev.filter(msg =>
+                  // Remove error messages
+                  !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error")) &&
+                  // Remove loading indicators
+                  !msg.isProcessingFile
+                );
+
+                // Check if we already have a success message
+                const hasSuccessMessage = filteredMessages.some(msg =>
+                  msg.role === 'assistant' &&
+                  msg.content.includes("Your document has been fully processed")
+                );
+
+                if (!hasSuccessMessage) {
+                  // Add success message
+                  const successMessage: ExtendedChatMessageType = {
+                    id: `system-success-${Date.now()}`,
+                    role: 'assistant',
+                    content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
+                    timestamp: new Date()
+                  };
+
+                  // Return filtered messages plus success message
+                  return [...filteredMessages, successMessage];
+                }
+
+                // Just return filtered messages if we already have a success message
+                return filteredMessages;
+              });
+
+              // Mark that we've shown the notification to prevent duplicates
+              setRagNotificationShown(true);
+
+              // Reset loading states
+              setIsLoading(false);
+              setIsStreaming(false);
+
+              // Enable RAG mode automatically
+              setIsRagEnabled(true);
+              localStorage.setItem('ragEnabled', 'true');
+            }
+          }, [documentStatus, documentId, pollingMessageId, usingWebSocket]);
+        } else {
+          // No document ID, so the file wasn't uploaded at all
+          // In this case, we should show an error
+
+          // First, remove any existing processing messages
+          setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
+
+          // Add error message
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `error-${Date.now()}`,
+              role: 'assistant',
+              content: 'Please wait while we do the processing for your document..',
+              timestamp: new Date()
+            }
+          ]);
+        }
+
         setIsUploading(false);
         setIsLoading(false);
 
-        // Show error message
-        setMessages(prev => [
-          ...prev.filter(msg => msg.id !== tempId && !msg.isProcessingFile),
-          {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: 'Sorry, there was an error uploading your file. Please try again.',
-            timestamp: new Date()
-          }
-        ]);
+        // Clear the upload in progress flag on error
+        localStorage.removeItem('uploadInProgress');
 
         return;
       }
