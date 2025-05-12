@@ -24,12 +24,14 @@ Platform Dashboard (Unified Architecture)
 ├── Frontend (React + TypeScript)
 │   ├── Context-based State Management
 │   ├── Component-based UI Architecture
+│   ├── WebSocket Integration
 │   └── Responsive Design
 └── Backend (Express.js)
     ├── RESTful API Endpoints (/api prefix)
+    ├── WebSocket Server
     ├── Static File Serving (frontend assets)
     ├── SPA Routing Support
-    ├── SQLite Database Integration
+    ├── PostgreSQL Database Integration
     └── Authentication & Authorization
 ```
 
@@ -39,8 +41,10 @@ The application follows a unified architecture where:
 - The backend serves both the API endpoints and static frontend files
 - All API endpoints are prefixed with `/api` to distinguish them from static assets
 - Frontend makes HTTP requests to backend endpoints
+- Real-time updates are delivered via WebSocket connections
 - Backend processes requests, interacts with the database, and returns responses
 - Authentication is managed through sessions with HTTP-only cookies
+- WebSocket connections are authenticated using the same session cookies
 - SPA routing is handled by the backend serving index.html for all non-API routes
 - Configuration is centralized in a single config.ini file and provided to the frontend via API
 
@@ -55,15 +59,20 @@ The application follows a unified architecture where:
 - **Axios**: HTTP client for API requests
 - **Heroicons**: SVG icon collection
 - **Context API**: State management
+- **WebSocket API**: Real-time communication
+- **Custom Hooks**: Reusable logic for WebSocket and document status
 
 ### Backend
 - **Node.js**: JavaScript runtime
 - **Express**: Web server framework
-- **SQLite3 (via better-sqlite3)**: Embedded database
+- **PostgreSQL**: Relational database
 - **bcrypt**: Password hashing
 - **express-session**: Session management
 - **cookie-parser**: Cookie handling
 - **ini**: Configuration file parsing
+- **ws**: WebSocket server implementation
+- **node-ssh**: SSH client for remote operations
+- **crypto-js**: Encryption for secure credential storage
 
 ## Project Structure
 
@@ -323,6 +332,32 @@ default_password = admin
 |----------|--------|-------------|--------------|
 | `/chatbot/message` | POST | Send a message | Yes |
 | `/chatbot/history` | GET | Get chat history | Yes |
+| `/chatbot/upload` | POST | Upload document for RAG | Yes |
+| `/chatbot/documents` | GET | Get user documents | Yes |
+| `/chatbot/documents/:id` | GET | Get document status | Yes |
+
+### MCP Integration
+
+| Endpoint | Method | Description | Auth Required | Admin Only |
+|----------|--------|-------------|--------------|------------|
+| `/mcp/ssh/config` | GET | Get SSH configurations | Yes | No |
+| `/mcp/ssh/config` | POST | Create SSH configuration | Yes | No |
+| `/mcp/ssh/config/:id` | PUT | Update SSH configuration | Yes | No |
+| `/mcp/ssh/config/:id` | DELETE | Delete SSH configuration | Yes | No |
+| `/mcp/ssh/test` | POST | Test SSH connection | Yes | No |
+| `/mcp/ssh/browse` | POST | Browse remote filesystem | Yes | No |
+| `/mcp/ssh/install-in-directory` | POST | Install MCP in directory | Yes | No |
+| `/mcp/config` | GET | Get MCP configurations | Yes | No |
+| `/mcp/config` | POST | Create MCP configuration | Yes | No |
+| `/mcp/config/:id` | PUT | Update MCP configuration | Yes | No |
+| `/mcp/config/:id` | DELETE | Delete MCP configuration | Yes | No |
+| `/mcp/test` | POST | Test MCP connection | Yes | No |
+
+### WebSocket
+
+| Endpoint | Description | Auth Required |
+|----------|-------------|--------------|
+| `/ws` | WebSocket connection endpoint | Yes |
 
 ## AI Integration with Ollama
 
@@ -395,13 +430,14 @@ Refer to `ai_integration.md` and `ollama-integration.md` for detailed workflows 
 
 ```sql
 CREATE TABLE users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   username TEXT UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   role TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 )
 ```
 
@@ -409,11 +445,70 @@ CREATE TABLE users (
 
 ```sql
 CREATE TABLE sessions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER,
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID,
   session_id TEXT UNIQUE NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users (id)
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+)
+```
+
+### Documents Table
+
+```sql
+CREATE TABLE documents (
+  id SERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  filename VARCHAR(255) NOT NULL DEFAULT 'unnamed_document',
+  original_name VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  file_type VARCHAR(50) NOT NULL,
+  file_size BIGINT NOT NULL,
+  mime_type VARCHAR(100),
+  status VARCHAR(50) DEFAULT 'UPLOADED',
+  processing_error TEXT,
+  collection_id UUID,
+  session_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+)
+```
+
+### MCP Configuration Tables
+
+```sql
+CREATE TABLE user_ssh_configurations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  machine_nickname VARCHAR(255) NOT NULL,
+  ssh_host VARCHAR(255) NOT NULL,
+  ssh_port INTEGER NOT NULL DEFAULT 22,
+  ssh_user VARCHAR(255) NOT NULL,
+  ssh_auth_method VARCHAR(50) NOT NULL,
+  ssh_password_encrypted TEXT,
+  ssh_key_path TEXT,
+  last_ssh_connection_status VARCHAR(50) DEFAULT 'unknown',
+  last_ssh_error_message TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, machine_nickname)
+)
+
+CREATE TABLE user_mcp_server_configurations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ssh_configuration_id UUID REFERENCES user_ssh_configurations(id) ON DELETE SET NULL,
+  mcp_nickname VARCHAR(255) NOT NULL,
+  mcp_host VARCHAR(255) NOT NULL,
+  mcp_port INTEGER NOT NULL,
+  mcp_connection_status VARCHAR(50) DEFAULT 'unknown',
+  mcp_last_error_message TEXT,
+  mcp_discovered_tools_schema JSONB,
+  mcp_server_version VARCHAR(100),
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, mcp_nickname)
 )
 ```
 
@@ -438,6 +533,20 @@ CREATE TABLE sessions (
    - Configurable session lifetime
    - Session invalidation on logout
    - Secure cookie settings
+
+### WebSocket Security
+- Cookie-based authentication for WebSocket connections
+- Connection limits per user
+- Message queuing with deduplication
+- Secure connection state management
+- Heartbeat mechanism for connection validation
+
+### MCP Security
+- Encrypted SSH credential storage
+- Command execution approval workflow
+- Secure private key handling
+- Server-side validation
+- Connection monitoring and logging
 
 ## Responsive Design
 
@@ -466,7 +575,7 @@ Implementation includes:
    - The server will read configuration from `conf/config.ini`
 
 3. **Build the Frontend with Watch Mode:**
-   - In a separate terminal, run `npm run dev:client` 
+   - In a separate terminal, run `npm run dev:client`
    - This builds the frontend and watches for changes
    - The backend will serve the built files from `client/build`
 
@@ -540,6 +649,87 @@ Potential areas for enhancement:
    - CI/CD pipeline
    - Comprehensive logging
 
+## Real-time Communication
+
+### WebSocket Integration
+
+The application implements WebSocket-based real-time communication for various features:
+
+#### Core Infrastructure
+- WebSocket server setup with connection management
+- Cookie-based authentication for WebSocket connections
+- Connection lifecycle management with heartbeat mechanism
+- Broadcast utilities for user-specific and global messages
+- Reconnection logic with exponential backoff
+- Connection limit per user (3 connections maximum)
+- Automatic cleanup of old connections
+- Connection state tracking across page refreshes
+
+#### Document Processing Updates
+- Real-time progress updates during document processing
+- Status notifications with progress percentage
+- Hybrid approach combining WebSockets with polling fallback
+- Message queuing for disconnected users
+- Deduplication of status messages
+- Automatic status updates during document upload, processing, and embedding
+- Clear UI indicators showing processing progress
+
+#### Connection Management
+- Singleton pattern for WebSocket connections
+- Connection limit per user (3 connections maximum)
+- Automatic cleanup of old connections
+- Connection state tracking across page refreshes
+- Heartbeat mechanism with ping/pong for connection health
+
+#### Error Handling
+- Aggressive reconnection strategy for initial attempts
+- Timeout detection for dead connections
+- Detailed logging for connection issues
+- Manual reconnect option in debugging settings
+- Fallback mechanisms for connection failures
+
+### Model Context Protocol (MCP) Integration
+
+The application includes a comprehensive MCP integration that enables AI interaction with the user's environment:
+
+#### Core Components
+- Database schema for SSH and MCP configurations
+- Backend services for connection management
+- SSH management and installation services
+- Remote filesystem exploration
+- Command approval system
+- MCP server installation and management
+
+#### Security Features
+- AES-256-GCM encryption for SSH passwords
+- Secure private key handling
+- Server-side credential validation
+- Command execution approval workflow
+- Injection prevention measures
+- Port specification handling for SSH connections
+
+#### User Interface
+- MCP Settings management interface
+- SSH configuration components with port toggle option
+- Multi-step installation wizard
+- Remote filesystem browser for selecting installation directory
+- Command approval UI
+- MCP server status monitoring
+
+#### MCP Installation Process
+- SSH connection testing with proper authentication
+- Directory navigation and selection on remote machine
+- Automatic port assignment for MCP server
+- Installation command execution with real-time feedback
+- Server status verification after installation
+- Support for various MCP commands (start, stop, restart, status, uninstall)
+
+#### Integration Status
+- Complete: Core infrastructure, database schema, backend services, SSH integration
+- Complete: MCP installation workflow, remote filesystem browser
+- Complete: Server configuration and management
+- In Progress: Chat interface integration with MCP tools
+
 ## Conclusion
 
-The Platform Dashboard provides a robust foundation for building modern web applications with user management, monitoring capabilities, and interactive features. Its modular architecture allows for easy extension and customization to meet various use cases and requirements. 
+The Platform Dashboard provides a robust foundation for building modern web applications with user management, monitoring capabilities, and interactive features. Its modular architecture allows for easy extension and customization to meet various use cases and requirements.

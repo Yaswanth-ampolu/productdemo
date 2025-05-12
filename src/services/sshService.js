@@ -151,8 +151,24 @@ async function executeSSHCommand(sshConfig, command, options = {}) {
  * @returns {Promise<Object>} - Installation result
  */
 async function installMCPViaSSH(sshConfig) {
-  // Get MCP installation command from config
+  // Get all MCP commands from config
+  const mcpName = config.get('mcp-server.mcp_terminal_name_1') || 'mcp-terminal_executor';
   const mcpInstallCommand = config.get('mcp-server.mcp_terminal_command_1');
+  const startCommand = config.get('mcp-server.mcp_terminal_command_1_install_cmd') || `${mcpName} start`;
+  const stopCommand = config.get('mcp-server.mcp_terminal_command_1_stop_cmd') || `${mcpName} stop`;
+  const restartCommand = config.get('mcp-server.mcp_terminal_command_1_restart_cmd') || `${mcpName} restart`;
+  const statusCommand = config.get('mcp-server.mcp_terminal_command_1_status_cmd') || `${mcpName} status`;
+  const uninstallCommand = config.get('mcp-server.mcp_terminal_command_1_uninstall_cmd') || `${mcpName} uninstall`;
+  const defaultPort = config.get('mcp-server.mcp_terminal_command_default_port_1') || 8080;
+
+  logger.info(`Using MCP commands from config:
+    - Install: ${mcpInstallCommand}
+    - Start: ${startCommand}
+    - Stop: ${stopCommand}
+    - Restart: ${restartCommand}
+    - Status: ${statusCommand}
+    - Uninstall: ${uninstallCommand}
+    - Default Port: ${defaultPort}`);
 
   if (!mcpInstallCommand) {
     return {
@@ -183,21 +199,79 @@ async function installMCPViaSSH(sshConfig) {
       throw new Error(`MCP installation failed: ${installResult.stderr}`);
     }
 
-    // Verify MCP server is running by checking the port
-    const defaultPort = config.get('mcp-server.mcp_terminal_command_default_port_1') || 8080;
-    const verifyCommand = `netstat -tulpn | grep ${defaultPort}`;
+    // Start the MCP server
+    logger.info(`Starting MCP server with command: ${startCommand}`);
+    const startResult = await executeSSHCommand(sshConfig, startCommand);
 
-    const verifyResult = await executeSSHCommand(sshConfig, verifyCommand);
+    if (!startResult.success) {
+      logger.warn(`Failed to start MCP server: ${startResult.stderr}`);
+      // Don't fail the installation if start fails, just log it
+    } else {
+      logger.info(`MCP server started successfully: ${startResult.stdout}`);
+    }
 
-    if (!verifyResult.success || !verifyResult.stdout.includes(defaultPort.toString())) {
-      throw new Error(`MCP server installation verification failed: Server not listening on port ${defaultPort}`);
+    // Check the status to verify installation
+    logger.info(`Checking MCP server status with command: ${statusCommand}`);
+    const statusResult = await executeSSHCommand(sshConfig, statusCommand);
+
+    // We'll skip the initial verification with default port and directly detect the actual port
+
+    // Parse the output to get the port - this should be detected from the actual output
+    // rather than assuming a default
+    let port = null;
+
+    // Try to find port in the output of start or status commands
+    const portMatch = startResult.stdout?.match(/port (\d+)/i) ||
+                      statusResult.stdout?.match(/port (\d+)/i) ||
+                      startResult.stdout?.match(/listening on .*:(\d+)/i) ||
+                      statusResult.stdout?.match(/listening on .*:(\d+)/i);
+
+    if (portMatch && portMatch[1]) {
+      port = parseInt(portMatch[1], 10);
+      logger.info(`Detected MCP server running on port: ${port}`);
+    } else {
+      // If we can't detect the port, try to find it using netstat
+      logger.info(`Port not found in command output, trying to detect using netstat...`);
+      const netstatCommand = `netstat -tulpn | grep "${mcpName}" | awk '{print $4}' | awk -F: '{print $NF}'`;
+      const netstatResult = await executeSSHCommand(sshConfig, netstatCommand);
+
+      if (netstatResult.success && netstatResult.stdout.trim()) {
+        const ports = netstatResult.stdout.trim().split('\n');
+        if (ports.length > 0 && /^\d+$/.test(ports[0])) {
+          port = parseInt(ports[0], 10);
+          logger.info(`Detected MCP server running on port: ${port} (via netstat)`);
+        }
+      }
+
+      // If we still can't find the port, use the default as a last resort
+      if (!port) {
+        port = defaultPort;
+        logger.warn(`Could not detect actual port, using default: ${port}`);
+      }
+    }
+
+    // Verify the server is running on the detected port
+    const specificVerifyCommand = `netstat -tulpn | grep ${port}`;
+    const specificVerifyResult = await executeSSHCommand(sshConfig, specificVerifyCommand);
+
+    if (!specificVerifyResult.success || !specificVerifyResult.stdout.includes(port.toString())) {
+      logger.warn(`MCP server installation verification failed: Server not listening on port ${port}`);
+      return {
+        success: true,
+        message: 'MCP server installed successfully, but verification failed. You may need to start it manually.',
+        host: host,
+        port: port,
+        warning: "Server verification failed. You may need to start it manually.",
+        portDetectionMethod: port !== defaultPort ? "detected" : "default"
+      };
     }
 
     return {
       success: true,
       message: 'MCP server installed successfully',
       host: host,
-      port: defaultPort
+      port: port,
+      portDetectionMethod: port !== defaultPort ? "detected" : "default"
     };
   } catch (err) {
     logger.error(`MCP installation failed: ${err.message}`);
@@ -599,8 +673,20 @@ async function installMCPInDirectory(sshConfig, installDir, installCommand, pass
 
     logger.info(`MCP installation output: ${installResult.stdout}`);
 
-    // Get the start command from config
-    const startCommand = config.get('mcp-server.mcp_terminal_command_1_install_cmd') || 'mcp-terminal start';
+    // Get all MCP commands from config
+    const mcpName = config.get('mcp-server.mcp_terminal_name_1') || 'mcp-terminal_executor';
+    const startCommand = config.get('mcp-server.mcp_terminal_command_1_install_cmd') || `${mcpName} start`;
+    const stopCommand = config.get('mcp-server.mcp_terminal_command_1_stop_cmd') || `${mcpName} stop`;
+    const restartCommand = config.get('mcp-server.mcp_terminal_command_1_restart_cmd') || `${mcpName} restart`;
+    const statusCommand = config.get('mcp-server.mcp_terminal_command_1_status_cmd') || `${mcpName} status`;
+    const uninstallCommand = config.get('mcp-server.mcp_terminal_command_1_uninstall_cmd') || `${mcpName} uninstall`;
+
+    logger.info(`Using MCP commands from config:
+      - Start: ${startCommand}
+      - Stop: ${stopCommand}
+      - Restart: ${restartCommand}
+      - Status: ${statusCommand}
+      - Uninstall: ${uninstallCommand}`);
 
     // Run the start command to start the MCP server
     logger.info(`Starting MCP server with command: ${startCommand}`);
@@ -613,9 +699,6 @@ async function installMCPInDirectory(sshConfig, installDir, installCommand, pass
       logger.info(`MCP server started successfully: ${startResult.stdout}`);
     }
 
-    // Get the status command from config
-    const statusCommand = config.get('mcp-server.mcp_terminal_command_1_status_cmd') || 'mcp-terminal status';
-
     // Check the status to verify installation
     logger.info(`Checking MCP server status with command: ${statusCommand}`);
     const statusResult = await ssh.execCommand(statusCommand);
@@ -623,12 +706,38 @@ async function installMCPInDirectory(sshConfig, installDir, installCommand, pass
     // Disconnect
     ssh.dispose();
 
-    // Parse the output to get the port
-    let port = 8080; // Default port
-    const portMatch = startResult.stdout.match(/port (\d+)/i) || statusResult.stdout.match(/port (\d+)/i);
+    // Parse the output to get the port - this should be detected from the actual output
+    // rather than assuming a default
+    let port = null;
+
+    // Try to find port in the output of start or status commands
+    const portMatch = startResult.stdout?.match(/port (\d+)/i) ||
+                      statusResult.stdout?.match(/port (\d+)/i) ||
+                      startResult.stdout?.match(/listening on .*:(\d+)/i) ||
+                      statusResult.stdout?.match(/listening on .*:(\d+)/i);
+
     if (portMatch && portMatch[1]) {
       port = parseInt(portMatch[1], 10);
       logger.info(`Detected MCP server running on port: ${port}`);
+    } else {
+      // If we can't detect the port, try to find it using netstat
+      logger.info(`Port not found in command output, trying to detect using netstat...`);
+      const netstatCommand = `netstat -tulpn | grep "${mcpName}" | awk '{print $4}' | awk -F: '{print $NF}'`;
+      const netstatResult = await ssh.execCommand(netstatCommand);
+
+      if (netstatResult.code === 0 && netstatResult.stdout.trim()) {
+        const ports = netstatResult.stdout.trim().split('\n');
+        if (ports.length > 0 && /^\d+$/.test(ports[0])) {
+          port = parseInt(ports[0], 10);
+          logger.info(`Detected MCP server running on port: ${port} (via netstat)`);
+        }
+      }
+
+      // If we still can't find the port, use the default as a last resort
+      if (!port) {
+        port = config.get('mcp-server.mcp_terminal_command_default_port_1') || 8080;
+        logger.warn(`Could not detect actual port, using default: ${port}`);
+      }
     }
 
     // If status command fails, installation might still be successful but server not running
@@ -640,7 +749,8 @@ async function installMCPInDirectory(sshConfig, installDir, installCommand, pass
         host: sshConfig.ssh_host || sshConfig.host,
         port: port,
         installDir: installDir,
-        warning: "Server status check failed. You may need to start it manually."
+        warning: "Server status check failed. You may need to start it manually.",
+        portDetectionMethod: port ? "detected" : "default"
       };
     }
 
@@ -649,7 +759,8 @@ async function installMCPInDirectory(sshConfig, installDir, installCommand, pass
       message: `MCP server installed successfully in ${installDir}`,
       host: sshConfig.ssh_host || sshConfig.host,
       port: port,
-      installDir: installDir
+      installDir: installDir,
+      portDetectionMethod: port ? "detected" : "default"
     };
   } catch (err) {
     // Make sure SSH connection is closed

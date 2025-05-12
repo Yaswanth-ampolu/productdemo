@@ -1,20 +1,237 @@
 # AI Integration Documentation
 
 ## Overview
-This document provides details about the AI integration for the platform dashboard using Ollama, including implementation details, configuration, and troubleshooting. The integration enables administrators to configure connections to an Ollama server, manage available models, and allows users to interact with selected AI models through the chat interface.
+The Platform Dashboard implements a sophisticated AI integration using Ollama, featuring real-time streaming responses, Retrieval-Augmented Generation (RAG), and a hybrid approach to document processing. The system provides a seamless chat experience with context-aware responses and source citations.
 
-## Components
+## Core Components
 
-### Backend Components
-- `src/services/ollamaService.js`: Core service handling communication with the Ollama API (`/api/tags`, `/api/chat`, `/api/version` etc.). Manages database interactions for settings and models.
-- `src/routes/ollama.js`: API routes (`/api/ollama/*`) exposing functionality for settings management, model syncing, connection testing, and chat interaction.
-- `src/database.js`: Database interface including interaction logic for `ollama_settings` and `ai_models` tables.
+### Backend Services
+1. **Ollama Service** (`src/services/ollamaService.js`):
+   - Manages communication with Ollama API
+   - Handles streaming responses
+   - Provides embedding generation
+   - Supports multiple models
+
+2. **RAG Service** (`src/services/ragService.js`):
+   - Orchestrates document retrieval and context augmentation
+   - Manages vector database interactions
+   - Provides context-aware responses
+   - Handles source citations
+
+3. **Vector Store Service** (`src/services/vectorStoreService.js`):
+   - Manages ChromaDB interactions
+   - Handles document embeddings storage
+   - Provides semantic search capabilities
 
 ### Frontend Components
-- `client/src/services/ollamaService.ts`: Frontend service wrapper for calling backend Ollama-related API endpoints.
-- `client/src/components/settings/OllamaSettings.tsx`: UI component for administrators to manage Ollama server connection settings, test connectivity, sync models, and enable/disable models stored in the database.
-- `client/src/pages/Chatbot.tsx`: Main chat interface, updated to include a model selector populated with active models from the database.
-- `client/src/components/chat/ModelSelector.tsx`: Dropdown component for selecting an active AI model for the chat session.
+1. **Chat Interface** (`client/src/pages/Chatbot.tsx`):
+   - Real-time message streaming
+   - RAG toggle functionality
+   - Source citation display
+   - Model selection
+
+2. **Message Components**:
+   - `ChatMessage.tsx`: Handles message display and markdown rendering
+   - `MessageList.tsx`: Manages message history and streaming states
+   - `ChatInput.tsx`: User input with RAG controls
+
+## Streaming Implementation
+
+### Frontend Streaming
+The chat interface implements streaming using the following approach:
+
+1. **Message Creation**:
+   ```typescript
+   const aiMessage = {
+     id: aiMessageId,
+     role: 'assistant',
+     content: '',
+     timestamp: new Date(),
+     isStreaming: true,
+     useRag: shouldUseRag
+   };
+   ```
+
+2. **Stream Processing**:
+   - Uses a WebSocket or SSE connection for real-time updates
+   - Maintains a content reference for accumulating streamed text
+   - Updates UI in real-time as chunks arrive
+   - Handles completion and error states
+
+3. **State Management**:
+   - Tracks streaming state with `isStreaming` flag
+   - Uses `streamedContentRef` for content accumulation
+   - Manages abort functionality for stream cancellation
+
+### Backend Streaming
+The Ollama service implements streaming through:
+
+1. **Stream Setup**:
+   ```javascript
+   const response = await client.post('/api/chat', {
+     model,
+     messages: formattedMessages,
+     stream: true
+   }, {
+     responseType: 'stream'
+   });
+   ```
+
+2. **Chunk Processing**:
+   - Parses incoming chunks in real-time
+   - Validates chunk structure
+   - Formats content for frontend consumption
+   - Handles stream completion
+
+3. **Error Handling**:
+   - Manages connection issues
+   - Handles timeout scenarios
+   - Provides fallback mechanisms
+
+## RAG Implementation
+
+### Document Processing
+1. **Text Extraction**:
+   - Supports multiple document formats (PDF, DOCX, etc.)
+   - Implements chunking with overlap
+   - Maintains document metadata
+
+2. **Embedding Generation**:
+   - Uses Ollama's `nomic-embed-text` model
+   - Processes chunks in batches
+   - Stores embeddings in ChromaDB
+
+3. **Vector Storage**:
+   - ChromaDB for vector storage
+   - Efficient similarity search
+   - Metadata management
+
+### Query Processing
+1. **Context Retrieval**:
+   ```javascript
+   const ragResult = await retrieveContext(message, {
+     model: embeddingModel,
+     sessionId,
+     topK: 5
+   });
+   ```
+
+2. **Response Generation**:
+   - Combines retrieved context with user query
+   - Uses system prompts for response formatting
+   - Includes source citations
+
+3. **Source Management**:
+   - Tracks source documents
+   - Provides relevance scores
+   - Formats citations for display
+
+### RAG Optimization Techniques
+
+1. **Chunking Strategies**:
+   - Recursive text splitting
+   - Overlap for context preservation
+   - Semantic boundary detection
+
+2. **Retrieval Enhancement**:
+   - Hybrid search (semantic + keyword)
+   - Re-ranking of results
+   - Context window optimization
+
+3. **Response Quality**:
+   - Source validation
+   - Confidence scoring
+   - Fallback mechanisms
+
+## Security and Performance
+
+### Security Measures
+1. **Authentication**:
+   - Session-based auth for API access
+   - Role-based access control
+   - Secure credential handling
+
+2. **Data Protection**:
+   - Encrypted storage
+   - Secure transmission
+   - Access logging
+
+### Performance Optimization
+1. **Caching**:
+   - Embedding cache
+   - Response cache
+   - Model loading optimization
+
+2. **Resource Management**:
+   - Connection pooling
+   - Batch processing
+   - Memory optimization
+
+## Future Enhancements
+
+1. **Advanced RAG Features**:
+   - Multi-document reasoning
+   - Cross-reference validation
+   - Dynamic context selection
+
+2. **Model Improvements**:
+   - Custom model fine-tuning
+   - Model performance metrics
+   - Automated model selection
+
+3. **User Experience**:
+   - Advanced source visualization
+   - Interactive context exploration
+   - Feedback integration
+
+## Troubleshooting
+
+### Common Issues
+1. **Streaming Issues**:
+   - Check WebSocket connection
+   - Verify Ollama server status
+   - Monitor memory usage
+
+2. **RAG Problems**:
+   - Verify ChromaDB connection
+   - Check embedding generation
+   - Validate document processing
+
+### Debugging Steps
+1. Check server logs for errors
+2. Verify model availability
+3. Test document processing pipeline
+4. Monitor resource usage
+
+## Configuration
+
+### Environment Setup
+```ini
+[ollama]
+host=localhost
+port=11434
+timeout=30000
+
+[chromadb]
+host=localhost
+port=8000
+collection=documents
+
+[rag]
+chunk_size=1000
+chunk_overlap=200
+top_k=5
+```
+
+### Model Configuration
+```javascript
+const defaultConfig = {
+  embeddingModel: 'nomic-embed-text',
+  chatModel: 'qwen2',
+  temperature: 0.7,
+  maxTokens: 2000
+};
+```
 
 ## Database Schema
 The AI integration utilizes the following tables (defined in `DatabaseStructure.md`):
@@ -61,22 +278,6 @@ The AI integration utilizes the following tables (defined in `DatabaseStructure.
 We are using Ollama's **`/api/chat`** endpoint for the chatbot interaction.
 - **Reasoning:** It natively supports conversational history through the `messages` array, simplifying backend logic compared to the deprecated `context` parameter in `/api/generate`.
 - **Future-Proofing:** The `/api/chat` endpoint supports `tools` (function calling), which provides a better foundation for future RAG implementations or agentic features where the AI might need to interact with external knowledge sources or tools.
-
-## Connection Troubleshooting
-
-### Common Issues
-1.  **Connection Refused**: Ollama server not running or wrong host/port configured. Verify server status (`ollama ps` or Task Manager) and settings in the UI.
-2.  **Timeout**: Network issue, firewall blocking the port (default 11434), or Ollama server is slow/unresponsive. Check network connectivity and firewall rules.
-3.  **Sync Fails / No Models Found**: Ollama server has no models pulled (`ollama pull <modelname>`), or connection failed during the `/api/tags` call. Check Ollama server status and ensure models are present.
-4.  **Chat Errors**: Model selected might not exist on the Ollama server (if deleted after sync), Ollama server issues, or errors during response streaming. Check backend logs and Ollama server logs.
-5.  **Authentication Errors**: Ensure the user is logged in and API endpoints are correctly protected (admin vs. regular user).
-
-### Debugging Steps
-1.  Use the "Test Connection" button in the admin settings.
-2.  Verify Ollama server status and models using Ollama CLI (`ollama list`).
-3.  Check network connectivity between the application backend server and the Ollama server (ping, curl `http://<ollama_host>:<ollama_port>/api/version`).
-4.  Review application backend logs (`server.log`) for detailed errors during API calls to Ollama.
-5.  Review Ollama server logs for any processing errors.
 
 ## Usage Guidelines
 

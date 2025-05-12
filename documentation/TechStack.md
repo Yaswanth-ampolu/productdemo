@@ -57,7 +57,9 @@ This document provides a comprehensive overview of the technology stack used in 
 
 ### API Communication
 - **Fetch API**: For making HTTP requests to the backend
-- **Custom API service**: Wrapper around Fetch for consistent API calls
+- **Axios**: HTTP client for API requests
+- **Custom API service**: Wrapper around HTTP clients for consistent API calls
+- **WebSocket API**: For real-time bidirectional communication
 
 ## Database
 
@@ -101,6 +103,9 @@ This document provides a comprehensive overview of the technology stack used in 
 ### Document Processing Pipeline
 - **Asynchronous processing**: Background processing of documents
 - **Progress tracking**: For monitoring document processing status
+- **WebSocket notifications**: Real-time updates during document processing
+- **Chunking strategies**: Intelligent document segmentation for RAG
+- **Fallback mechanisms**: Multiple extraction methods for different file types
 
 ## Infrastructure
 
@@ -122,6 +127,27 @@ This document provides a comprehensive overview of the technology stack used in 
 - **config.ini**: For application configuration
 - **Environment-specific settings**: Development vs. production
 - **Docker environment variables**: For container configuration
+
+### WebSocket Infrastructure
+- **Connection Management**: Singleton pattern with connection limits (max 3 per user)
+- **Authentication**: Cookie-based WebSocket authentication
+- **Broadcast System**: User-specific and global message broadcasting
+- **State Tracking**: Connection state management across page refreshes
+- **Error Recovery**: Automatic reconnection with exponential backoff
+- **Message Queuing**: Storage of messages for disconnected users
+- **Heartbeat Mechanism**: Connection health monitoring
+- **Deduplication**: Prevention of duplicate message delivery
+
+### MCP Infrastructure
+- **Database Tables**: SSH and MCP server configurations
+- **Service Layer**: Connection management and tool execution
+- **Security Layer**: Command validation and approval workflow
+- **UI Components**: Settings, installation wizard, remote filesystem browser, and command interface
+- **Status Monitoring**: Real-time connection and execution status
+- **SSH Integration**: Secure remote server management
+- **Installation Process**: Multi-step wizard with directory selection
+- **Port Detection**: Dynamic port discovery on target machines
+- **Command Management**: Start, stop, restart, status, and uninstall operations
 
 ## Development Tools
 
@@ -151,6 +177,24 @@ This document provides a comprehensive overview of the technology stack used in 
 - **File type validation**: For preventing malicious uploads
 - **File size limits**: For preventing DoS attacks
 
+### WebSocket Security
+- **Connection Authentication**: Cookie-based validation
+- **Connection Limits**: Maximum 3 connections per user
+- **Message Validation**: Input validation for WebSocket messages
+- **State Management**: Secure connection state tracking
+- **Heartbeat System**: Connection health monitoring
+
+### MCP Security
+- **Credential Encryption**: AES-256-GCM for SSH passwords
+- **Command Validation**: Server-side command verification
+- **Approval Workflow**: User confirmation for command execution
+- **Access Control**: Role-based access to MCP features
+- **Audit Logging**: Command execution and error tracking
+- **Input Sanitization**: Prevention of command injection
+- **Secure Directory Handling**: Path validation and sanitization
+- **Port Specification**: Proper handling of SSH port configurations
+- **Connection Verification**: Pre-execution connection testing
+
 ## Deployment and DevOps
 
 ### Production Deployment
@@ -165,6 +209,9 @@ This document provides a comprehensive overview of the technology stack used in 
 ### Monitoring
 - **Console logging**: For basic application monitoring
 - **Custom logger**: For structured logging
+- **WebSocket status**: Real-time connection monitoring
+- **MCP status tracking**: Server connection and execution monitoring
+- **Document processing tracking**: Progress and status monitoring
 
 ---
 
@@ -185,6 +232,10 @@ This document provides a comprehensive overview of the technology stack used in 
 │  ┌─────────────┐   ┌──────────────┐   ┌──────────────────┐  │
 │  │ TypeScript  │   │ CSS Modules  │   │ API Service      │  │
 │  └─────────────┘   └──────────────┘   └──────────────────┘  │
+│                                                             │
+│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────┐  │
+│  │ WebSocket   │   │ MCP UI       │   │ Document UI      │  │
+│  └─────────────┘   └──────────────┘   └──────────────────┘  │
 └───────────────────────────────┬─────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────┐
@@ -198,6 +249,11 @@ This document provides a comprehensive overview of the technology stack used in 
 │  │ REST API    │   │ Document     │   │ RAG Implementation│ │
 │  │             │   │ Processing   │   │                  │  │
 │  └─────────────┘   └──────────────┘   └─────────┬────────┘  │
+│                                                 │           │
+│  ┌─────────────┐   ┌──────────────┐   ┌────────┴────────┐  │
+│  │ WebSocket   │   │ MCP Service  │   │ SSH Service     │  │
+│  │ Server      │   │              │   │                 │  │
+│  └─────────────┘   └──────────────┘   └─────────────────┘  │
 └───┬───────────────────────────────────────────┬─┼───────────┘
     │                                           │ │
     │                                           │ │
@@ -216,8 +272,14 @@ This document provides a comprehensive overview of the technology stack used in 
 │  │ Chat History        │  │   │                             │
 │  └─────────────────────┘  │   │  ┌─────────────────────┐    │
 │                           │   │  │ Embeddings          │    │
-└───────────────────────────┘   │  └─────────────────────┘    │
-                                └─────────────────────────────┘
+│  ┌─────────────────────┐  │   │  └─────────────────────┘    │
+│  │ MCP Configurations  │  │   │                             │
+│  └─────────────────────┘  │   │  ┌─────────────────────┐    │
+│                           │   │  │ Remote MCP Servers  │    │
+│  ┌─────────────────────┐  │   │  └─────────────────────┘    │
+│  │ SSH Configurations  │  │   │                             │
+│  └─────────────────────┘  │   └─────────────────────────────┘
+└───────────────────────────┘
 ```
 
 ## Dependency Management
@@ -235,9 +297,14 @@ The application uses npm for dependency management. Key dependencies include:
 - **mammoth**: DOCX text extraction
 - **docker**: Container platform for ChromaDB
 - **docker-compose**: Multi-container Docker applications
+- **ws**: WebSocket server implementation
+- **node-ssh**: SSH client for MCP installation
+- **crypto-js**: For credential encryption
+- **reconnecting-websocket**: WebSocket client with reconnection
+- **event-source-polyfill**: SSE support for older browsers
 
 For a complete list of dependencies, refer to the `package.json` files in the project root and client directory.
 
 ---
 
-This document should be updated as the technology stack evolves. Last updated: May 2024.
+This document should be updated as the technology stack evolves. Last updated: June 2024.
