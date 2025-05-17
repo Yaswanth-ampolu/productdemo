@@ -7,7 +7,8 @@ import {
   DocumentTextIcon,
   MagnifyingGlassIcon,
   LightBulbIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 import { chatInputStyles } from './chatStyles';
 import FileUploadButton from './FileUploadButton';
@@ -25,6 +26,9 @@ interface ChatInputProps {
   isRagAvailable?: boolean;
   isRagEnabled?: boolean;
   onToggleRag?: () => void;
+  isMCPAvailable?: boolean;
+  isMCPEnabled?: boolean;
+  onToggleMCP?: () => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -37,7 +41,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onStopGeneration,
   isRagAvailable = false,
   isRagEnabled = true,
-  onToggleRag
+  onToggleRag,
+  isMCPAvailable = false,
+  isMCPEnabled = false,
+  onToggleMCP
 }) => {
   const [input, setInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -251,6 +258,25 @@ const ChatInput: React.FC<ChatInputProps> = ({
           >
             <DocumentTextIcon className="h-4 w-4 mr-1" />
             RAG
+          </button>
+
+          {/* MCP toggle button - always enabled */}
+          <button
+            type="button"
+            onClick={onToggleMCP}
+            disabled={isLoading || isUploading || isStreaming}
+            style={{
+              ...chatInputStyles.mcpToggleButton,
+              ...(isMCPEnabled ? chatInputStyles.mcpToggleEnabled : chatInputStyles.mcpToggleDisabled),
+              opacity: (isLoading || isUploading || isStreaming) ? 0.5 : 1,
+              cursor: (isLoading || isUploading || isStreaming) ? 'not-allowed' : 'pointer',
+            }}
+            className="hover:bg-opacity-90 transition-all"
+            aria-label={isMCPEnabled ? "Disable MCP agent" : "Enable MCP agent"}
+            title={isMCPEnabled ? "Disable MCP agent" : "Enable MCP agent"}
+          >
+            <CpuChipIcon className="h-4 w-4 mr-1" />
+            MCP
           </button>
         </div>
       </form>

@@ -1,53 +1,86 @@
 import React, { useState } from 'react';
 import { useMCP } from '../../contexts/MCPContext';
+import { useMCPAgent } from '../../contexts/MCPAgentContext';
 import {
   CheckCircleIcon,
   XCircleIcon,
   PencilIcon,
   ArrowPathIcon,
-  CommandLineIcon
+  CommandLineIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
 
 interface MCPCommandApprovalProps {
+  commandId: string;
   command: string;
-  onApprove: (command: string) => void;
-  onReject: () => void;
+  toolName: string;
+  parameters: any;
+  description: string;
 }
 
 const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
+  commandId,
   command,
-  onApprove,
-  onReject
+  toolName,
+  parameters,
+  description
 }) => {
-  const [editedCommand, setEditedCommand] = useState<string>(command);
+  const [editedParameters, setEditedParameters] = useState<any>(parameters);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  
   const { isConnected, defaultServer } = useMCP();
+  const { approveCommand, rejectCommand, modifyCommand } = useMCPAgent();
 
-  // Handle command edit
+  // Handle parameters edit
   const handleEdit = () => {
     setIsEditing(true);
   };
 
   // Handle save edit
   const handleSaveEdit = () => {
-    setIsEditing(false);
+    try {
+      // If editedParameters is a string, try to parse it as JSON
+      let parsedParams = editedParameters;
+      if (typeof editedParameters === 'string') {
+        try {
+          parsedParams = JSON.parse(editedParameters);
+        } catch (error) {
+          console.error('Invalid JSON parameters:', error);
+          // Keep the string version if parsing fails
+        }
+      }
+      
+      // Update the command with modified parameters
+      modifyCommand(commandId, parsedParams);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving parameters:', error);
+    }
   };
 
   // Handle command reject
   const handleReject = () => {
-    onReject();
+    rejectCommand(commandId);
   };
 
   // Handle command approval
   const handleApprove = async () => {
     setIsLoading(true);
     try {
-      onApprove(editedCommand);
+      await approveCommand(commandId);
     } catch (error) {
       console.error('Error approving command:', error);
-    } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Format parameters for display
+  const formatParameters = (params: any): string => {
+    try {
+      return JSON.stringify(params, null, 2);
+    } catch (error) {
+      return String(params);
     }
   };
 
@@ -55,7 +88,8 @@ const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
     <div className="rounded-lg border p-4 my-3 transition-all" 
       style={{ 
         backgroundColor: 'var(--color-surface-light)', 
-        borderColor: 'var(--color-primary-light)' 
+        borderColor: 'var(--color-primary-light)',
+        borderLeft: '3px solid var(--color-primary)'
       }}
     >
       <div className="flex items-center mb-3">
@@ -82,17 +116,37 @@ const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
       </div>
       
       <div className="mb-3">
-        <p className="text-sm mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-          AI is requesting to execute the following command:
-        </p>
+        <div className="flex items-start mb-2">
+          <div className="font-medium text-sm mr-1">Command:</div>
+          <div className="text-sm" style={{ color: 'var(--color-text)' }}>{command}</div>
+        </div>
+        
+        <div className="flex items-start mb-2">
+          <div className="font-medium text-sm mr-1">Tool:</div>
+          <div className="text-sm" style={{ color: 'var(--color-text)' }}>{toolName}</div>
+        </div>
+        
+        <div className="mb-3 p-3 rounded-md text-sm" style={{ 
+          backgroundColor: 'var(--color-primary-translucent)', 
+          color: 'var(--color-text)'
+        }}>
+          <div className="flex items-start">
+            <InformationCircleIcon className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }}/>
+            <div>{description}</div>
+          </div>
+        </div>
+        
+        <div className="mb-1">
+          <div className="font-medium text-sm">Parameters:</div>
+        </div>
         
         {isEditing ? (
           <div className="relative">
             <textarea
-              value={editedCommand}
-              onChange={(e) => setEditedCommand(e.target.value)}
+              value={typeof editedParameters === 'string' ? editedParameters : formatParameters(editedParameters)}
+              onChange={(e) => setEditedParameters(e.target.value)}
               className="w-full p-3 rounded font-mono text-sm focus:outline-none focus:ring-1"
-              rows={3}
+              rows={4}
               style={{
                 backgroundColor: 'var(--color-surface-dark)',
                 borderColor: 'var(--color-border)',
@@ -119,7 +173,7 @@ const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
                 color: 'var(--color-text)'
               }}
             >
-              <code>{editedCommand}</code>
+              <pre className="whitespace-pre-wrap break-words"><code>{formatParameters(editedParameters)}</code></pre>
             </div>
             <button
               onClick={handleEdit}
@@ -137,7 +191,7 @@ const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
       
       <div className="flex justify-between">
         <p className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>
-          Review the command before approving. You can edit it if needed.
+          Review the command before approving. You can edit parameters if needed.
         </p>
         
         <div className="flex space-x-2">

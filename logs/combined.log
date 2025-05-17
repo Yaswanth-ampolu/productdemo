@@ -15653,3 +15653,395 @@ You can access the server at: [0;32mhttp://localhost:8080[0m
 2025-05-12 15:46:36 info: Loaded Ollama settings from database
 2025-05-12 16:13:43 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
 2025-05-12 16:13:45 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 13:39:00 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:39:00 info: Loaded Ollama settings from database
+2025-05-17 13:39:00 info: OllamaService initialized
+2025-05-17 13:39:11 info: Loaded Ollama settings from database
+2025-05-17 13:39:11 info: OllamaService initialized
+2025-05-17 13:39:11 info: RAG: OllamaService initialized successfully
+2025-05-17 13:39:25 info: Loaded Ollama settings from database
+2025-05-17 13:39:31 info: Loaded Ollama settings from database
+2025-05-17 13:39:31 info: Saved Ollama settings to database
+2025-05-17 13:39:35 error: Error testing connection to Ollama server: timeout of 5000ms exceeded
+2025-05-17 13:39:36 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:39:36 info: Loaded Ollama settings from database
+2025-05-17 13:39:36 info: OllamaService initialized
+2025-05-17 13:39:48 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:39:48 info: Loaded Ollama settings from database
+2025-05-17 13:39:48 info: OllamaService initialized
+2025-05-17 13:40:02 info: Loaded Ollama settings from database
+2025-05-17 13:40:02 info: OllamaService initialized
+2025-05-17 13:40:02 info: RAG: OllamaService initialized successfully
+2025-05-17 13:40:05 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:40:05 info: Loaded Ollama settings from database
+2025-05-17 13:40:05 info: OllamaService initialized
+2025-05-17 13:40:20 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:40:20 info: Loaded Ollama settings from database
+2025-05-17 13:40:20 info: OllamaService initialized
+2025-05-17 13:40:40 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:40:40 info: Loaded Ollama settings from database
+2025-05-17 13:40:40 info: OllamaService initialized
+2025-05-17 13:41:08 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:41:08 info: Loaded Ollama settings from database
+2025-05-17 13:41:08 info: OllamaService initialized
+2025-05-17 13:41:21 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:41:21 info: Loaded Ollama settings from database
+2025-05-17 13:41:21 info: OllamaService initialized
+2025-05-17 13:41:32 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:41:32 info: Loaded Ollama settings from database
+2025-05-17 13:41:32 info: OllamaService initialized
+2025-05-17 13:41:44 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:41:44 info: Loaded Ollama settings from database
+2025-05-17 13:41:44 info: OllamaService initialized
+2025-05-17 13:42:05 info: Loaded Ollama settings from database
+2025-05-17 13:42:06 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 13:42:38 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:42:39 info: Loaded Ollama settings from database
+2025-05-17 13:42:39 info: OllamaService initialized
+2025-05-17 13:42:53 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:42:54 info: Loaded Ollama settings from database
+2025-05-17 13:42:54 info: OllamaService initialized
+2025-05-17 13:43:20 info: Loaded Ollama settings from database
+2025-05-17 13:43:20 info: OllamaService initialized
+2025-05-17 13:43:20 info: RAG: OllamaService initialized successfully
+2025-05-17 13:43:24 info: Deleting RAG data for session bf4bc307-7c8c-4f9f-a18a-6d8556dc299d requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 13:43:24 info: RAG data deletion result for session bf4bc307-7c8c-4f9f-a18a-6d8556dc299d: Success
+2025-05-17 13:43:24 info: Successfully deleted RAG data for session bf4bc307-7c8c-4f9f-a18a-6d8556dc299d
+2025-05-17 13:43:31 info: Deleting RAG data for session 8892c84a-df1d-43ef-a598-c928b01d4b65 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 13:43:31 info: RAG data deletion result for session 8892c84a-df1d-43ef-a598-c928b01d4b65: Success
+2025-05-17 13:43:31 info: Successfully deleted RAG data for session 8892c84a-df1d-43ef-a598-c928b01d4b65
+2025-05-17 13:43:34 info: Deleting RAG data for session 2b05cb9b-4797-4f78-995d-b30da5f8adf0 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 13:43:34 info: RAG data deletion result for session 2b05cb9b-4797-4f78-995d-b30da5f8adf0: Success
+2025-05-17 13:43:34 info: Successfully deleted RAG data for session 2b05cb9b-4797-4f78-995d-b30da5f8adf0
+2025-05-17 13:43:36 info: Deleting RAG data for session eaaa87e9-d33d-4010-ae90-c1a7278c7c8e requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 13:43:36 info: RAG data deletion result for session eaaa87e9-d33d-4010-ae90-c1a7278c7c8e: Success
+2025-05-17 13:43:36 info: Successfully deleted RAG data for session eaaa87e9-d33d-4010-ae90-c1a7278c7c8e
+2025-05-17 13:43:44 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 13:44:04 info: Authenticating SSH connection to 172.16.16.54:22 as yaswanth
+2025-05-17 13:44:04 info: SSH authentication successful to 172.16.16.54
+2025-05-17 13:44:04 info: Listing directory contents for /home
+2025-05-17 13:44:04 info: Found 72 items in directory (72 directories, 0 files)
+2025-05-17 13:44:16 info: Using default MCP installation tool from config: curl -o- https://raw.githubusercontent.com/Yaswanth-ampolu/smithery-mcp-server/main/main/install-mcp.sh | bash
+2025-05-17 13:44:16 info: Available MCP commands from config:
+      - Start: mcp-terminal start
+      - Stop: mcp-terminal stop
+      - Restart: mcp-terminal restart
+      - Status: mcp-terminal status
+2025-05-17 13:44:16 info: Installing MCP in directory /home/yaswanth
+2025-05-17 13:44:20 info: MCP installation output: [1;33mChecking dependencies...[0m
+[0;32mAll dependencies are satisfied![0m
+[1;33m=== MCP Terminal Server Installation ===[0m
+This script will install the MCP Terminal Server locally without root access
+[1;33mDownloading MCP Terminal Server...[0m
+[1;33mExtracting files...[0m
+[1;33mCreating mcp-terminal command...[0m
+[0;32m~/bin is already in your PATH![0m
+[0;32mMCP Terminal Server installed successfully![0m
+[1;33mUsage:[0m
+  To start the server:    [0;34mmcp-terminal start[0m
+  To stop the server:     [0;34mmcp-terminal stop[0m
+  To check status:        [0;34mmcp-terminal status[0m
+  To restart server:      [0;34mmcp-terminal restart[0m
+  To uninstall:           [0;34mmcp-terminal uninstall[0m
+  To use a different port:[0;34mmcp-terminal start --port 9000[0m
+
+The server will be available at: [0;34mhttp://localhost:8080[0m
+
+[1;33mNote:[0m You may need to restart your terminal or run 'source ~/.bashrc'
+to update your PATH before using the mcp-terminal command.
+2025-05-17 13:44:20 info: Using MCP commands from config:
+      - Start: mcp-terminal start
+      - Stop: mcp-terminal stop
+      - Restart: mcp-terminal restart
+      - Status: mcp-terminal status
+      - Uninstall: mcp-terminal uninstall
+2025-05-17 13:44:20 info: Starting MCP server with command: mcp-terminal start
+2025-05-17 13:44:22 info: MCP server started successfully: [0;32mStarting MCP Terminal Server on port 8080...[0m
+[0;32mServer started with PID: 562272[0m
+Log file: /home/yaswanth/mcp-terminal/mcp.log
+You can access the server at: [0;32mhttp://localhost:8080[0m
+2025-05-17 13:44:22 info: Checking MCP server status with command: mcp-terminal status
+2025-05-17 13:44:22 info: Detected MCP server running on port: 8080
+2025-05-17 13:44:22 info: Creating MCP server configuration: {"mcp_host":"172.16.16.54","mcp_port":8080,"is_default":true,"server_name":"MCP on rhel server (/home/yaswanth)"}
+2025-05-17 13:44:23 info: Available columns in user_mcp_server_configurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 13:44:28 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 13:44:45 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:44:46 info: Loaded Ollama settings from database
+2025-05-17 13:44:46 info: OllamaService initialized
+2025-05-17 13:45:05 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:45:05 info: Loaded Ollama settings from database
+2025-05-17 13:45:05 info: OllamaService initialized
+2025-05-17 13:45:16 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:45:16 info: Loaded Ollama settings from database
+2025-05-17 13:45:16 info: OllamaService initialized
+2025-05-17 13:45:26 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:45:26 info: Loaded Ollama settings from database
+2025-05-17 13:45:26 info: OllamaService initialized
+2025-05-17 13:45:39 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:45:39 info: Loaded Ollama settings from database
+2025-05-17 13:45:39 info: OllamaService initialized
+2025-05-17 13:45:52 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 13:45:52 info: Loaded Ollama settings from database
+2025-05-17 13:45:52 info: OllamaService initialized
+2025-05-17 13:49:42 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:03:05 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:03:05 info: Loaded Ollama settings from database
+2025-05-17 14:03:05 info: OllamaService initialized
+2025-05-17 14:03:16 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:03:17 info: Loaded Ollama settings from database
+2025-05-17 14:03:17 info: OllamaService initialized
+2025-05-17 14:03:27 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:03:28 info: Loaded Ollama settings from database
+2025-05-17 14:03:28 info: OllamaService initialized
+2025-05-17 14:11:50 info: Loaded Ollama settings from database
+2025-05-17 14:11:50 info: OllamaService initialized
+2025-05-17 14:11:50 info: RAG: OllamaService initialized successfully
+2025-05-17 14:11:56 info: Deleting RAG data for session 05651301-5019-444a-8ee8-6f3e300ef4b0 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 14:11:56 info: RAG data deletion result for session 05651301-5019-444a-8ee8-6f3e300ef4b0: Success
+2025-05-17 14:11:56 info: Successfully deleted RAG data for session 05651301-5019-444a-8ee8-6f3e300ef4b0
+2025-05-17 14:12:17 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:13:20 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:20:20 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:20:21 info: Loaded Ollama settings from database
+2025-05-17 14:20:21 info: OllamaService initialized
+2025-05-17 14:20:48 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:20:48 info: Loaded Ollama settings from database
+2025-05-17 14:20:48 info: OllamaService initialized
+2025-05-17 14:21:07 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:21:08 info: Loaded Ollama settings from database
+2025-05-17 14:21:08 info: OllamaService initialized
+2025-05-17 14:21:26 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:21:26 info: Loaded Ollama settings from database
+2025-05-17 14:21:26 info: OllamaService initialized
+2025-05-17 14:21:39 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:21:40 info: Loaded Ollama settings from database
+2025-05-17 14:21:40 info: OllamaService initialized
+2025-05-17 14:21:49 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:21:49 info: Loaded Ollama settings from database
+2025-05-17 14:21:49 info: OllamaService initialized
+2025-05-17 14:21:59 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:22:00 info: Loaded Ollama settings from database
+2025-05-17 14:22:00 info: OllamaService initialized
+2025-05-17 14:22:14 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:22:14 info: Loaded Ollama settings from database
+2025-05-17 14:22:14 info: OllamaService initialized
+2025-05-17 14:22:30 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:22:30 info: Loaded Ollama settings from database
+2025-05-17 14:22:30 info: OllamaService initialized
+2025-05-17 14:22:54 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:22:55 info: Loaded Ollama settings from database
+2025-05-17 14:22:55 info: OllamaService initialized
+2025-05-17 14:23:14 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:23:14 info: Loaded Ollama settings from database
+2025-05-17 14:23:14 info: OllamaService initialized
+2025-05-17 14:24:28 info: Loaded Ollama settings from database
+2025-05-17 14:24:28 info: OllamaService initialized
+2025-05-17 14:24:28 info: RAG: OllamaService initialized successfully
+2025-05-17 14:24:34 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:25:44 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:25:48 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:25:56 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:26:27 info: Deleting RAG data for session 8d0d2ada-4781-49c6-ad65-bf07f8add28b requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 14:26:27 info: RAG data deletion result for session 8d0d2ada-4781-49c6-ad65-bf07f8add28b: Success
+2025-05-17 14:26:27 info: Successfully deleted RAG data for session 8d0d2ada-4781-49c6-ad65-bf07f8add28b
+2025-05-17 14:26:34 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:26:34 error: Error setting up stream: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:26:37 info: Loaded Ollama settings from database
+2025-05-17 14:27:05 info: Loaded Ollama settings from database
+2025-05-17 14:27:05 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:27:06 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:27:19 info: Loaded Ollama settings from database
+2025-05-17 14:27:19 info: Saved Ollama settings to database
+2025-05-17 14:27:24 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:27:24 info: Loaded Ollama settings from database
+2025-05-17 14:27:33 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:27:53 info: Loaded Ollama settings from database
+2025-05-17 14:27:53 info: Saved Ollama settings to database
+2025-05-17 14:43:01 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:43:02 info: Loaded Ollama settings from database
+2025-05-17 14:43:02 info: OllamaService initialized
+2025-05-17 14:43:25 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:43:25 info: Loaded Ollama settings from database
+2025-05-17 14:43:25 info: OllamaService initialized
+2025-05-17 14:43:54 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:43:55 info: Loaded Ollama settings from database
+2025-05-17 14:43:55 info: OllamaService initialized
+2025-05-17 14:44:17 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:44:18 info: Loaded Ollama settings from database
+2025-05-17 14:44:18 info: OllamaService initialized
+2025-05-17 14:44:38 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:44:38 info: Loaded Ollama settings from database
+2025-05-17 14:44:38 info: OllamaService initialized
+2025-05-17 14:45:32 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:45:33 info: Loaded Ollama settings from database
+2025-05-17 14:45:33 info: OllamaService initialized
+2025-05-17 14:45:51 info: Loaded Ollama settings from database
+2025-05-17 14:45:51 info: OllamaService initialized
+2025-05-17 14:45:51 info: RAG: OllamaService initialized successfully
+2025-05-17 14:47:18 info: Loaded Ollama settings from database
+2025-05-17 14:47:24 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:50:05 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:50:05 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 14:50:34 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:50:34 info: Loaded Ollama settings from database
+2025-05-17 14:50:34 info: OllamaService initialized
+2025-05-17 14:50:50 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:50:51 info: Loaded Ollama settings from database
+2025-05-17 14:50:51 info: OllamaService initialized
+2025-05-17 14:51:03 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:51:03 info: Loaded Ollama settings from database
+2025-05-17 14:51:03 info: OllamaService initialized
+2025-05-17 14:51:19 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:51:19 info: Loaded Ollama settings from database
+2025-05-17 14:51:19 info: OllamaService initialized
+2025-05-17 14:51:58 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:51:58 info: Loaded Ollama settings from database
+2025-05-17 14:51:58 info: OllamaService initialized
+2025-05-17 14:52:13 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:52:14 info: Loaded Ollama settings from database
+2025-05-17 14:52:14 info: OllamaService initialized
+2025-05-17 14:52:22 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:52:23 info: Loaded Ollama settings from database
+2025-05-17 14:52:23 info: OllamaService initialized
+2025-05-17 14:52:31 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:52:32 info: Loaded Ollama settings from database
+2025-05-17 14:52:32 info: OllamaService initialized
+2025-05-17 14:52:51 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:52:51 info: Loaded Ollama settings from database
+2025-05-17 14:52:51 info: OllamaService initialized
+2025-05-17 14:53:15 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:53:15 info: Loaded Ollama settings from database
+2025-05-17 14:53:15 info: OllamaService initialized
+2025-05-17 14:53:23 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:53:23 info: Loaded Ollama settings from database
+2025-05-17 14:53:23 info: OllamaService initialized
+2025-05-17 14:53:38 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:53:38 info: Loaded Ollama settings from database
+2025-05-17 14:53:38 info: OllamaService initialized
+2025-05-17 14:53:51 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:53:51 info: Loaded Ollama settings from database
+2025-05-17 14:53:51 info: OllamaService initialized
+2025-05-17 14:54:13 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:54:13 info: Loaded Ollama settings from database
+2025-05-17 14:54:13 info: OllamaService initialized
+2025-05-17 14:54:24 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:54:24 info: Loaded Ollama settings from database
+2025-05-17 14:54:24 info: OllamaService initialized
+2025-05-17 14:54:36 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:54:37 info: Loaded Ollama settings from database
+2025-05-17 14:54:37 info: OllamaService initialized
+2025-05-17 14:55:23 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:55:23 info: Loaded Ollama settings from database
+2025-05-17 14:55:23 info: OllamaService initialized
+2025-05-17 14:55:32 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:55:33 info: Loaded Ollama settings from database
+2025-05-17 14:55:33 info: OllamaService initialized
+2025-05-17 14:55:51 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:55:51 info: Loaded Ollama settings from database
+2025-05-17 14:55:51 info: OllamaService initialized
+2025-05-17 14:56:00 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 14:56:00 info: Loaded Ollama settings from database
+2025-05-17 14:56:00 info: OllamaService initialized
+2025-05-17 14:56:59 info: Loaded Ollama settings from database
+2025-05-17 14:56:59 info: OllamaService initialized
+2025-05-17 14:56:59 info: RAG: OllamaService initialized successfully
+2025-05-17 14:57:36 info: Deleting RAG data for session 5d7fa0f5-fc61-4251-9885-7c99d357b1c3 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 14:57:36 info: RAG data deletion result for session 5d7fa0f5-fc61-4251-9885-7c99d357b1c3: Success
+2025-05-17 14:57:36 info: Successfully deleted RAG data for session 5d7fa0f5-fc61-4251-9885-7c99d357b1c3
+2025-05-17 14:57:44 info: Generating commands for request: hello
+2025-05-17 14:57:44 error: Error in generate-command endpoint: ollamaService.chat is not a function
+2025-05-17 15:32:46 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:32:46 info: Loaded Ollama settings from database
+2025-05-17 15:32:46 info: OllamaService initialized
+2025-05-17 15:33:03 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:33:03 info: Loaded Ollama settings from database
+2025-05-17 15:33:03 info: OllamaService initialized
+2025-05-17 15:33:15 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:33:16 info: Loaded Ollama settings from database
+2025-05-17 15:33:16 info: OllamaService initialized
+2025-05-17 15:33:31 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:33:31 info: Loaded Ollama settings from database
+2025-05-17 15:33:31 info: OllamaService initialized
+2025-05-17 15:33:43 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:33:43 info: Loaded Ollama settings from database
+2025-05-17 15:33:43 info: OllamaService initialized
+2025-05-17 15:33:56 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:33:56 info: Loaded Ollama settings from database
+2025-05-17 15:33:56 info: OllamaService initialized
+2025-05-17 15:34:13 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:34:14 info: Loaded Ollama settings from database
+2025-05-17 15:34:14 info: OllamaService initialized
+2025-05-17 15:36:35 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:36:36 info: Loaded Ollama settings from database
+2025-05-17 15:36:36 info: OllamaService initialized
+2025-05-17 15:36:51 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:36:52 info: Loaded Ollama settings from database
+2025-05-17 15:36:52 info: OllamaService initialized
+2025-05-17 15:37:55 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:37:56 info: Loaded Ollama settings from database
+2025-05-17 15:37:56 info: OllamaService initialized
+2025-05-17 15:38:06 info: Loaded Ollama settings from database
+2025-05-17 15:38:06 info: OllamaService initialized
+2025-05-17 15:38:06 info: RAG: OllamaService initialized successfully
+2025-05-17 15:38:21 info: Deleting RAG data for session 47f21d09-1064-45a6-b1ad-340c85236773 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 15:38:21 info: RAG data deletion result for session 47f21d09-1064-45a6-b1ad-340c85236773: Success
+2025-05-17 15:38:21 info: Successfully deleted RAG data for session 47f21d09-1064-45a6-b1ad-340c85236773
+2025-05-17 15:43:18 info: Deleting RAG data for session d9416d55-869d-44fe-8978-70cf782468e7 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 15:43:18 info: RAG data deletion result for session d9416d55-869d-44fe-8978-70cf782468e7: Success
+2025-05-17 15:43:18 info: Successfully deleted RAG data for session d9416d55-869d-44fe-8978-70cf782468e7
+2025-05-17 15:43:22 info: Deleting RAG data for session 913a85d5-64a8-4a46-b284-fbd0cdbab7dd requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 15:43:22 info: RAG data deletion result for session 913a85d5-64a8-4a46-b284-fbd0cdbab7dd: Success
+2025-05-17 15:43:22 info: Successfully deleted RAG data for session 913a85d5-64a8-4a46-b284-fbd0cdbab7dd
+2025-05-17 15:43:26 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 15:43:36 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 15:43:36 info: Loaded Ollama settings from database
+2025-05-17 15:43:36 info: OllamaService initialized
+2025-05-17 15:43:46 info: Loaded Ollama settings from database
+2025-05-17 15:43:46 info: OllamaService initialized
+2025-05-17 15:43:46 info: RAG: OllamaService initialized successfully
+2025-05-17 15:52:30 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:27:43 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:27:43 info: Loaded Ollama settings from database
+2025-05-17 16:27:43 info: OllamaService initialized
+2025-05-17 16:28:04 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:28:05 info: Loaded Ollama settings from database
+2025-05-17 16:28:05 info: OllamaService initialized
+2025-05-17 16:28:32 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:28:32 info: Loaded Ollama settings from database
+2025-05-17 16:28:32 info: OllamaService initialized
+2025-05-17 16:29:47 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:29:47 info: Loaded Ollama settings from database
+2025-05-17 16:29:47 info: OllamaService initialized
+2025-05-17 16:29:55 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:29:55 info: Loaded Ollama settings from database
+2025-05-17 16:29:55 info: OllamaService initialized
+2025-05-17 16:30:48 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:30:48 info: Loaded Ollama settings from database
+2025-05-17 16:30:48 info: OllamaService initialized
+2025-05-17 16:31:21 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:31:21 info: Loaded Ollama settings from database
+2025-05-17 16:31:21 info: OllamaService initialized
+2025-05-17 16:31:23 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:31:23 info: Loaded Ollama settings from database
+2025-05-17 16:31:23 info: OllamaService initialized
+2025-05-17 16:31:37 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:31:37 info: Loaded Ollama settings from database
+2025-05-17 16:31:37 info: OllamaService initialized
+2025-05-17 16:32:21 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:32:21 info: Loaded Ollama settings from database
+2025-05-17 16:32:21 info: OllamaService initialized
+2025-05-17 16:32:39 info: Loading configuration from: C:\Users\yaswanth\Desktop\productdemo\conf\config.ini
+2025-05-17 16:32:39 info: Loaded Ollama settings from database
+2025-05-17 16:32:39 info: OllamaService initialized
+2025-05-17 16:38:17 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:38:17 info: Loaded Ollama settings from database
+2025-05-17 16:38:17 info: OllamaService initialized
+2025-05-17 16:38:17 info: RAG: OllamaService initialized successfully
+2025-05-17 16:38:18 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:38:19 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:38:30 info: Deleting RAG data for session 2a9e03ab-4945-4df0-bebb-d5673c38c014 requested by user 23b818b5-c1c6-4832-9fd7-f2840c0168f9
+2025-05-17 16:38:30 info: RAG data deletion result for session 2a9e03ab-4945-4df0-bebb-d5673c38c014: Success
+2025-05-17 16:38:30 info: Successfully deleted RAG data for session 2a9e03ab-4945-4df0-bebb-d5673c38c014
+2025-05-17 16:38:32 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:39:18 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-17 16:40:00 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message

@@ -3,6 +3,8 @@ import { ChatMessage as ChatMessageType } from '../../types';
 import ChatMessage from './ChatMessage';
 import { ChatBubbleLeftRightIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
 import { messageListStyles, messageBubbleStyles } from './chatStyles';
+import MCPAgentCommands from './MCPAgentCommands';
+import { useMCPAgent } from '../../contexts/MCPAgentContext';
 
 // Import RagSource type
 import { RagSource } from '../../services/ragChatService';
@@ -47,11 +49,12 @@ const MessageList: React.FC<MessageListProps> = ({
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { isAgentEnabled, pendingCommands, commandResults } = useMCPAgent();
 
   // Auto-scroll to bottom of messages when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, pendingCommands, commandResults]);
 
   // Setup infinite scrolling for messages
   useEffect(() => {
@@ -173,6 +176,9 @@ const MessageList: React.FC<MessageListProps> = ({
             </div>
           </div>
         )}
+
+        {/* MCP Agent Commands and Results */}
+        <MCPAgentCommands />
 
         {/* Extra space at the bottom to ensure messages aren't hidden behind input */}
         <div style={{ height: '150px' }}></div>

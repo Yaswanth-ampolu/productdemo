@@ -15,10 +15,13 @@ import { ChatMessage, ChatSession } from '../types';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useDocumentStatus } from '../hooks/useDocumentStatus';
+import { useMCP } from '../contexts/MCPContext';
+import { useMCPAgent } from '../contexts/MCPAgentContext';
 import ChatInput from '../components/chat/ChatInput';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
+import MCPServerSelector from '../components/chat/MCPServerSelector';
 
 // Define a custom message type that includes all needed properties
 interface ExtendedChatMessageType {
@@ -94,6 +97,19 @@ const Chatbot: React.FC = () => {
   });
   // Track if we've already shown a RAG notification for the current document
   const [ragNotificationShown, setRagNotificationShown] = useState<boolean>(false);
+
+  // MCP state
+  const {
+    isConnected: isMCPConnected,
+    isMCPEnabled,
+    toggleMCPEnabled,
+    showServerSelector,
+    setShowServerSelector,
+    selectServer
+  } = useMCP();
+
+  // MCP Agent state
+  const { isAgentEnabled, toggleAgent, processUserRequest } = useMCPAgent();
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
@@ -549,6 +565,18 @@ const Chatbot: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+
+    // If MCP Agent is enabled and there's no file, process the request with the agent
+    if (isMCPEnabled && isAgentEnabled && !file && content.trim() !== '') {
+      try {
+        // Process the request with the MCP Agent
+        await processUserRequest(content.trim());
+        return; // Exit early as the agent will handle the request
+      } catch (error) {
+        console.error('Error processing request with MCP Agent:', error);
+        // Continue with normal processing if agent fails
+      }
+    }
 
     // Handle file upload if a file is provided
     if (file) {
@@ -1385,6 +1413,25 @@ const Chatbot: React.FC = () => {
     });
   };
 
+  // Toggle MCP mode - uses the context's toggle function
+  const handleToggleMCP = () => {
+    // Toggle MCP in MCPContext
+    toggleMCPEnabled();
+
+    // Toggle the AI agent to match MCP state
+    if (!isMCPEnabled) {
+      // If we're enabling MCP, enable the agent too
+      if (!isAgentEnabled) {
+        toggleAgent();
+      }
+    } else {
+      // If we're disabling MCP, disable the agent too
+      if (isAgentEnabled) {
+        toggleAgent();
+      }
+    }
+  };
+
   const isEmpty = messages.length === 0;
 
   useEffect(() => {
@@ -1424,6 +1471,12 @@ const Chatbot: React.FC = () => {
         width: isMainSidebarExpanded ? 'calc(100% - 64px)' : 'calc(100% - 50px)'
       }}
     >
+      {/* MCP Server Selector */}
+      <MCPServerSelector
+        isOpen={showServerSelector}
+        onClose={() => setShowServerSelector(false)}
+        onServerSelect={selectServer}
+      />
       <div
         className="px-4 py-3 flex items-center justify-between z-10 relative"
         style={{
@@ -1585,6 +1638,9 @@ const Chatbot: React.FC = () => {
               isRagAvailable={isRagAvailable}
               isRagEnabled={isRagEnabled}
               onToggleRag={toggleRagMode}
+              isMCPAvailable={isMCPConnected}
+              isMCPEnabled={isMCPEnabled}
+              onToggleMCP={handleToggleMCP}
             />
 
             {isEmpty && (

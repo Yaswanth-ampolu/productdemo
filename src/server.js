@@ -19,6 +19,7 @@ const ollamaRoutes = require('./routes/ollama');
 const mcpRoutes = require('./routes/mcp');
 const mcpPagesRoutes = require('./routes/mcp-pages');
 const websocketRoutes = require('./routes/websocket');
+const aiRoutes = require('./routes/ai');
 const { setSessionStore } = require('./services/sessionService');
 
 // Try to require the documents routes, but don't fail if they're not available
@@ -138,6 +139,7 @@ async function startServer() {
     apiRouter.use('/documents', documentsRoutes);
     apiRouter.use('/documents-status', documentsStatusRoutes);
     apiRouter.use('/websocket', websocketRoutes);
+    apiRouter.use('/ai', aiRoutes);
     apiRouter.use('/', configRoutes(config)); // Add config routes at the API root
 
     // Mount all API routes under /api

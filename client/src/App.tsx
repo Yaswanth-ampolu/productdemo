@@ -5,6 +5,8 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SidebarProvider } from './contexts/SidebarContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { MCPProvider } from './contexts/MCPContext';
+import { MCPAgentProvider } from './contexts/MCPAgentContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import Layout from './components/Layout';
@@ -29,12 +31,14 @@ function App() {
     <AuthProvider>
       <ThemeProvider>
         <WebSocketProvider>
-          <ChakraProvider theme={chakraTheme}>
-            <SidebarProvider>
-              <Router>
-                <Routes>
-                  {/* Public routes */}
-                  <Route path="/login" element={<Login />} />
+          <MCPProvider>
+            <MCPAgentProvider>
+              <ChakraProvider theme={chakraTheme}>
+                <SidebarProvider>
+                <Router>
+                  <Routes>
+                    {/* Public routes */}
+                    <Route path="/login" element={<Login />} />
 
                   {/* Protected routes wrapped in Layout */}
                   <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
@@ -61,9 +65,11 @@ function App() {
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
-              </Router>
-            </SidebarProvider>
-          </ChakraProvider>
+                </Router>
+                </SidebarProvider>
+              </ChakraProvider>
+            </MCPAgentProvider>
+          </MCPProvider>
         </WebSocketProvider>
       </ThemeProvider>
     </AuthProvider>

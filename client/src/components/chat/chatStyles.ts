@@ -286,6 +286,33 @@ export const chatInputStyles = {
     color: 'var(--color-text-muted)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
   },
+  mcpToggleButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '1.5rem',
+    padding: '0.4rem 0.8rem',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backdropFilter: 'blur(5px)',
+    WebkitBackdropFilter: 'blur(5px)',
+    height: '2.25rem',
+    minWidth: '4.5rem',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+  },
+  mcpToggleEnabled: {
+    backgroundColor: 'var(--color-success-translucent)',
+    color: 'var(--color-success)',
+    border: '1px solid var(--color-success-translucent)',
+  },
+  mcpToggleDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    color: 'var(--color-text-muted)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+  },
 };
 
 // Markdown content styles

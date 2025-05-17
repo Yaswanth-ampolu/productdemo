@@ -49,3 +49,8 @@
 2025-05-09 17:53:34 error: SSH authentication failed: connect ECONNREFUSED 172.16.16.54:52
 2025-05-11 18:37:19 error: SSH authentication failed: connect ECONNREFUSED 172.16.16.54:52
 2025-05-11 18:37:27 error: SSH authentication failed: connect ECONNREFUSED 172.16.16.54:52
+2025-05-17 13:39:35 error: Error testing connection to Ollama server: timeout of 5000ms exceeded
+2025-05-17 14:26:34 error: Error setting up stream: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:27:06 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:27:33 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
+2025-05-17 14:57:44 error: Error in generate-command endpoint: ollamaService.chat is not a function
