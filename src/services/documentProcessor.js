@@ -7,10 +7,32 @@ const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const { loadPathsFromConfig, ensureDirectoriesExist } = require('../utils/pathConfig');
+const { spawn, exec } = require('child_process');
+const ini = require('ini');
+const { chunkBySection } = require('../utils/headerChunker');
+const { extractTextAndTablesSmart } = require('./pdfProcessor');
 
 // Helper function to get documentService only when needed
 function getDocumentService() {
   return require('./documentService');
+}
+
+// Read config.ini file to get Python interpreter path
+function getPythonConfig() {
+  try {
+    const configPath = path.resolve(process.cwd(), './conf/config.ini');
+    if (fs.existsSync(configPath)) {
+      const config = ini.parse(fs.readFileSync(configPath, 'utf-8'));
+      return {
+        // Use Python 3.9 from virtual environment by default if not specified in config
+        pythonInterpreter: config.python?.interpreter || './python/venv/bin/python',
+      };
+    }
+    return { pythonInterpreter: './python/venv/bin/python' };
+  } catch (error) {
+    console.warn('Error reading Python config:', error);
+    return { pythonInterpreter: './python/venv/bin/python' };
+  }
 }
 
 // Get the OllamaService
@@ -78,6 +100,10 @@ class DocumentProcessor {
     // Set directory paths from config
     this.documentsDir = paths.documentsDir;
     this.embeddingsDir = paths.embeddingsDir;
+
+    // Get Python configuration
+    const pythonConfig = getPythonConfig();
+    this.pythonInterpreter = pythonConfig.pythonInterpreter;
 
     // Set up services
     this.ollamaService = null;
@@ -446,7 +472,35 @@ class DocumentProcessor {
    */
   async extractPdfText(filePath) {
     try {
-      // Try using LangChain's PDFLoader first
+      // First try using the Python pdfplumber extraction with table support
+      console.log(`Attempting to extract PDF text with tables using pdfplumber for ${filePath}`);
+      try {
+        const tableResult = await extractTextAndTablesSmart(filePath);
+        if (tableResult.success) {
+          console.log(`Successfully extracted ${tableResult.text.length} characters from PDF with ${tableResult.hasTables ? 'tables' : 'no tables'}`);
+          return tableResult.text;
+        } else {
+          console.warn(`Table-aware extraction failed: ${tableResult.error}. Falling back to text-only extraction.`);
+        }
+      } catch (tableError) {
+        console.warn(`Table-aware extraction error: ${tableError.message}. Falling back to text-only extraction.`);
+      }
+      
+      // Fall back to basic text extraction if table extraction fails
+      console.log(`Attempting to extract PDF text using basic pdfplumber for ${filePath}`);
+      try {
+        const smartResult = await this.extractTextSmart(filePath);
+        if (smartResult.success) {
+          console.log(`Successfully extracted ${smartResult.text.length} characters from PDF using basic pdfplumber`);
+          return smartResult.text;
+        } else {
+          console.warn(`Python pdfplumber extraction failed: ${smartResult.error}. Falling back to other methods.`);
+        }
+      } catch (pythonError) {
+        console.warn(`Python pdfplumber extraction error: ${pythonError.message}. Falling back to other methods.`);
+      }
+      
+      // Try using LangChain's PDFLoader as the first fallback
       if (PDFLoader) {
         console.log(`Using LangChain PDFLoader for ${filePath}`);
         try {
@@ -480,6 +534,165 @@ class DocumentProcessor {
       console.error(`Error extracting text from PDF ${filePath}:`, error);
       throw new Error(`Failed to extract text from PDF: ${error.message}`);
     }
+  }
+
+  /**
+   * Extract text from PDF using Python pdfplumber
+   * @param {string} filePath - Path to the PDF file
+   * @returns {Promise<Object>} - Result with extracted text or error
+   */
+  async extractTextSmart(filePath) {
+    return new Promise((resolve) => {
+      try {
+        // Path to the Python script in the python directory
+        const pythonScriptPath = path.resolve(process.cwd(), 'python/extract_text.py');
+        
+        // Check if the Python script exists
+        if (!fs.existsSync(pythonScriptPath)) {
+          console.warn(`Python script not found at ${pythonScriptPath}`);
+          return resolve({
+            success: false,
+            error: `Python script not found at ${pythonScriptPath}`
+          });
+        }
+        
+        // Check if the PDF file exists and is accessible
+        if (!fs.existsSync(filePath)) {
+          console.warn(`PDF file not found at ${filePath}`);
+          return resolve({
+            success: false,
+            error: `PDF file not found at ${filePath}`
+          });
+        }
+        
+        console.log(`Running Python script with interpreter ${this.pythonInterpreter}`);
+        console.log(`Script path: ${pythonScriptPath}`);
+        console.log(`PDF path: ${filePath}`);
+        
+        // Execute the Python script (Python 3.9 from virtual environment) as a child process
+        const pythonProcess = spawn(this.pythonInterpreter, [pythonScriptPath, filePath]);
+        
+        let stdout = '';
+        let stderr = '';
+        
+        // Collect stdout data
+        pythonProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        // Collect stderr data
+        pythonProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.warn(`Python stderr: ${data.toString()}`);
+        });
+        
+        // Handle process completion
+        pythonProcess.on('close', (code) => {
+          if (code !== 0) {
+            console.warn(`Python process exited with code ${code}`);
+            console.warn(`stderr: ${stderr}`);
+            
+            // Check if the error indicates missing dependencies
+            if (stderr.includes('ModuleNotFoundError: No module named') || 
+                stderr.includes('ImportError:')) {
+              console.warn('Python module dependency missing. You may need to install required packages.');
+              console.warn('Try: pip install --user pdfplumber');
+            }
+            
+            return resolve({
+              success: false,
+              error: `Python extraction failed with code ${code}: ${stderr}`
+            });
+          }
+          
+          try {
+            // Try to parse JSON output
+            let jsonOutput = stdout.trim();
+            
+            // Handle case where there might be non-JSON content in stdout
+            const jsonStart = jsonOutput.indexOf('{');
+            if (jsonStart > 0) {
+              console.warn(`Non-JSON prefix in output: ${jsonOutput.substring(0, jsonStart)}`);
+              jsonOutput = jsonOutput.substring(jsonStart);
+            }
+            
+            const result = JSON.parse(jsonOutput);
+            
+            if (!result.success) {
+              console.warn(`Python extraction reported failure: ${result.error}`);
+              
+              // Check for pdfplumber installation issue
+              if (result.error && result.error.includes('pdfplumber module not installed')) {
+                console.warn('pdfplumber module not installed in Python environment.');
+                console.warn('Please install it using: pip install --user pdfplumber');
+              }
+              
+              return resolve({
+                success: false,
+                error: result.error || 'Unknown error in Python extraction'
+              });
+            }
+            
+            console.log(`Successfully extracted ${result.page_count} pages with Python pdfplumber`);
+            
+            return resolve({
+              success: true,
+              text: result.text,
+              pageCount: result.page_count,
+              pages: result.pages
+            });
+          } catch (parseError) {
+            console.error('Error parsing Python script output:', parseError);
+            console.error('Raw output:', stdout);
+            
+            return resolve({
+              success: false,
+              error: `Error parsing Python output: ${parseError.message}`,
+              rawOutput: stdout.substring(0, 500) // Include part of the raw output for debugging
+            });
+          }
+        });
+        
+        // Handle process errors
+        pythonProcess.on('error', (error) => {
+          console.error('Error executing Python script:', error);
+          
+          // Check for specific errors
+          if (error.code === 'ENOENT') {
+            console.error(`Python interpreter '${this.pythonInterpreter}' not found.`);
+            console.error('Please check your config.ini file and ensure the python.interpreter path is correct.');
+          }
+          
+          return resolve({
+            success: false,
+            error: `Failed to execute Python script: ${error.message} (${error.code})`,
+            hint: error.code === 'ENOENT' ? 'Python interpreter not found. Check config.ini.' : null
+          });
+        });
+        
+        // Set a timeout for the Python process (30 seconds)
+        const timeout = setTimeout(() => {
+          console.warn('Python process is taking too long, killing it...');
+          pythonProcess.kill();
+          
+          return resolve({
+            success: false,
+            error: 'Python extraction timed out after 30 seconds'
+          });
+        }, 30000);
+        
+        // Clear the timeout when the process completes
+        pythonProcess.on('close', () => {
+          clearTimeout(timeout);
+        });
+      } catch (error) {
+        console.error('Error in extractTextSmart:', error);
+        return resolve({
+          success: false,
+          error: `Exception in extractTextSmart: ${error.message}`
+        });
+      }
+    });
   }
 
   /**
@@ -682,8 +895,50 @@ class DocumentProcessor {
       }
     }
 
-    // Fallback to custom chunking implementation
-    console.log(`Using custom text chunking method`);
+    // Try header-based chunking for structured documents (pdf, docx)
+    const structuredDocTypes = ['application/pdf', 'pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'];
+    if (structuredDocTypes.includes(fileType?.toLowerCase())) {
+      console.log(`Using header-based chunking for structured document type: ${fileType}`);
+      try {
+        // Use the header-based chunking strategy
+        const headerChunks = chunkBySection(text, { 
+          chunkSize, 
+          overlap: chunkOverlap 
+        });
+        
+        // Transform the chunks to match the expected format
+        const formattedChunks = headerChunks.map(chunk => ({
+          text: chunk.text,
+          index: chunk.index,
+          length: chunk.text.length,
+          // Include section title as metadata
+          metadata: { sectionTitle: chunk.sectionTitle }
+        }));
+        
+        console.log(`Header-based chunking created ${formattedChunks.length} chunks from sections`);
+        
+        if (formattedChunks.length > 0) {
+          // Log some section titles for debugging
+          const sampleTitles = formattedChunks
+            .slice(0, Math.min(5, formattedChunks.length))
+            .map(chunk => chunk.metadata.sectionTitle);
+          console.log(`Section titles found: ${sampleTitles.join(', ')}${formattedChunks.length > 5 ? '...' : ''}`);
+          
+          return formattedChunks;
+        }
+        
+        // If header chunking didn't produce any chunks, fall through to basic chunking
+        console.warn('Header-based chunking produced no chunks, falling back to basic chunking');
+      } catch (headerChunkError) {
+        console.warn(`Header-based chunking failed: ${headerChunkError.message}, falling back to basic chunking`);
+        // Fall through to basic implementation
+      }
+    } else {
+      console.log(`Using basic chunking for non-structured document type: ${fileType}`);
+    }
+
+    // Fallback to basic chunking implementation
+    console.log(`Using basic text chunking method`);
     const chunks = [];
     let startIndex = 0;
 
