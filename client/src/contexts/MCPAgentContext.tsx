@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { useMCP } from './MCPContext';
+import { useWebSocket } from './WebSocketContext';
 import axios from 'axios';
 
 // Define the structure for a command that needs approval
@@ -74,9 +75,11 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
     mcpConnection,
     reconnect,
     getClientId,
-    registerToolResultHandler,
-    dispatchToolResult
+    registerToolResultHandler
   } = useMCP();
+
+  // Get WebSocket context
+  const { isFullyReady, waitForReady } = useWebSocket();
 
   // State for agent
   const [isAgentEnabled, setIsAgentEnabled] = useState<boolean>(() => {
@@ -89,6 +92,7 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
   const [commandResults, setCommandResults] = useState<CommandResult[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [activeModel, setActiveModel] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
   // New state for analysis loop
   const [pendingAnalysis, setPendingAnalysis] = useState<CommandResult[]>([]);
@@ -101,6 +105,9 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
   const MAX_RECOVERY_ATTEMPTS = 3;
 
   const lastProcessedClientIdRef = useRef<string | null>(null); // Ref to track processed clientId for welcome message
+
+  // Use a ref to store processed client IDs across renders
+  const processedClientIdsRef = useRef<Set<string>>(new Set());
 
   // Stable addCommandResult using useCallback
   const addCommandResult = useCallback((result: CommandResult) => {
@@ -324,109 +331,136 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
     addToPendingAnalysis
   ]);
 
-  // Enhanced initialization of agent when connected
+  // Track if we're currently processing a welcome message
+  const isProcessingWelcomeRef = useRef(false);
+
+  // Improved welcome message handling with better deduplication
   useEffect(() => {
-    // Add debouncing for welcome messages to prevent duplicates
-    const welcomeMessageDebounceTime = 5000; // 5 seconds
-    let welcomeMessageTimer: number | null = null;
-    
-    // Clear any existing timer
-    if (welcomeMessageTimer) {
-      clearTimeout(welcomeMessageTimer);
-      welcomeMessageTimer = null;
+    // If agent is not enabled or we're in the process of connecting, do nothing
+    if (!isAgentEnabled || isConnecting) {
+      return;
     }
-    
+
+    // Add debouncing for welcome messages to prevent duplicates
+    const welcomeMessageDebounceTime = 300; // Reduced to 300ms for faster responsiveness
+    let welcomeMessageTimer: number | null = null;
+    let connectingMessageTimer: number | null = null;
+
+    // Function to clear any existing timers
+    const clearTimers = () => {
+      if (welcomeMessageTimer) {
+        clearTimeout(welcomeMessageTimer);
+        welcomeMessageTimer = null;
+      }
+
+      if (connectingMessageTimer) {
+        clearTimeout(connectingMessageTimer);
+        connectingMessageTimer = null;
+      }
+    };
+
+    // Clear timers on initial run
+    clearTimers();
+
     const initializeAgentLogic = () => {
-      // If agent enabled, connected, and we have a server
-      if (isAgentEnabled && isConnected && defaultServer) {
-        const currentClientId = mcpConnection.clientId;
-        
-        // If we have a valid clientId that's new or different from the last one
-        if (currentClientId && currentClientId !== lastProcessedClientIdRef.current) {
-          console.log(`[MCP-AGENT] New connection detected with clientId: ${currentClientId}. Scheduling welcome message.`);
-          
-          // Schedule welcome message with debounce to prevent duplicates
+      // If agent enabled, connected, and we have a server with client ID
+      if (
+        isAgentEnabled &&
+        mcpConnection.status === 'connected' &&
+        mcpConnection.clientId &&
+        availableTools.length > 0
+      ) {
+        // Check if we've already processed this client ID
+        const clientId = mcpConnection.clientId;
+        const alreadyProcessed = processedClientIdsRef.current.has(clientId);
+
+        // Check if we already have a welcome message for this client ID
+        const alreadyHasWelcome = commandResults.some(
+          r => r.commandId === 'welcome' &&
+               (r.result?.text?.includes(`ClientId: ${clientId}`) ||
+                r.result?.text?.includes(clientId.substring(0, 8)))
+        );
+
+        if (!alreadyProcessed && !isProcessingWelcomeRef.current && !alreadyHasWelcome) {
+          console.log(`[MCP-AGENT] New connection detected with clientId: ${clientId}. Scheduling welcome message.`);
+
+          // Mark as processing to prevent race conditions
+          isProcessingWelcomeRef.current = true;
+
+          // Mark this client ID as processed immediately
+          processedClientIdsRef.current.add(clientId);
+          lastProcessedClientIdRef.current = clientId;
+
+          // Set a short timeout just to let other operations complete
           welcomeMessageTimer = window.setTimeout(() => {
-            // Check again to make sure the client ID is still valid by the time timer fires
-            if (mcpConnection.clientId === currentClientId) {
-              console.log(`[MCP-AGENT] Displaying welcome message for clientId: ${currentClientId}`);
-              
-              const welcomeResult: CommandResult = {
-                id: `result-welcome-${Date.now()}`,
-                commandId: 'welcome', // Consistent commandId for welcome messages
-                success: true,
-                result: {
-                  type: 'text',
-                  text: `MCP Agent initialized. Connected to ${defaultServer.mcp_nickname} at ${defaultServer.mcp_host}:${defaultServer.mcp_port}. ${availableTools.length} tools available. ClientId: ${currentClientId}`
-                },
-                timestamp: Date.now()
-              };
-              
-              // Check if a welcome message for this client ID already exists in results
-              const alreadyHasWelcome = commandResults.some(
-                r => r.commandId === 'welcome' && r.result?.text?.includes(`ClientId: ${currentClientId}`)
-              );
-              
-              if (!alreadyHasWelcome) {
-                addCommandResult(welcomeResult);
-                lastProcessedClientIdRef.current = currentClientId;
-              }
-            } else {
-              console.log(`[MCP-AGENT] Client ID changed during welcome message debounce, skipping welcome.`);
-            }
-            
+            console.log(`[MCP-AGENT] Displaying welcome message for clientId: ${clientId}`);
+
+            // Determine server details to show in welcome message - handle case of missing defaultServer
+            const serverName = defaultServer ? 
+              (defaultServer.mcp_nickname || defaultServer.mcp_host) : 
+              'Unknown';
+            const serverAddress = defaultServer ? 
+              `${defaultServer.mcp_host}:${defaultServer.mcp_port}` : 
+              'Unknown address';
+
+            const welcomeResult: CommandResult = {
+              id: `result-welcome-${Date.now()}`,
+              commandId: 'welcome', // Consistent commandId for welcome messages
+              success: true,
+              result: {
+                type: 'text',
+                text: `MCP Agent initialized. Connected to ${serverName} at ${serverAddress}. ${availableTools.length} tools available. ClientId: ${clientId}`
+              },
+              timestamp: Date.now()
+            };
+
+            addCommandResult(welcomeResult);
             welcomeMessageTimer = null;
+            isProcessingWelcomeRef.current = false;
           }, welcomeMessageDebounceTime);
-          
-        } else if (isConnected && !currentClientId) {
-          // We're connected but missing clientId - show connecting message if it doesn't exist
-          const connectingMessageExists = commandResults.some(r => r.commandId === 'agent_connecting');
-          
-          if (!connectingMessageExists && mcpConnection.error === null) {
+        } else {
+          console.log(`[MCP-AGENT] Client ID ${clientId} already processed or welcome message in progress, skipping.`);
+        }
+      } else if (isAgentEnabled && mcpConnection.status === 'connecting' && !mcpConnection.clientId) {
+        // We're connecting but missing clientId - show connecting message if it doesn't exist
+        const connectingMessageExists = commandResults.some(r => r.commandId === 'agent_connecting');
+
+        if (!connectingMessageExists && mcpConnection.error === null) {
+          connectingMessageTimer = window.setTimeout(() => {
             const connectingMsg: CommandResult = {
               id: `result-agent-connecting-${Date.now()}`,
               commandId: 'agent_connecting',
               success: true,
               result: {
                 type: 'text',
-                text: `MCP connection active. Initializing agent services with ${defaultServer.mcp_nickname}...`
+                text: `Establishing connection to MCP server ${defaultServer?.mcp_nickname || 'Unknown'}. Please wait...`
               },
               timestamp: Date.now()
             };
-            
+
             addCommandResult(connectingMsg);
-          }
-        }
-      } else if (!isConnected && lastProcessedClientIdRef.current) {
-        // If connection lost, reset the ref
-        console.log('[MCP-AGENT] MCP connection lost. Resetting last processed clientId for welcome message.');
-        lastProcessedClientIdRef.current = null;
-        
-        // Clear any pending welcome message timer
-        if (welcomeMessageTimer) {
-          clearTimeout(welcomeMessageTimer);
-          welcomeMessageTimer = null;
+            connectingMessageTimer = null;
+          }, 300); // Short delay to avoid racing with other messages
         }
       }
     };
-    
+
     initializeAgentLogic();
-    
-    // Clean up timer on unmount
+
+    // Clean up timers on unmount
     return () => {
-      if (welcomeMessageTimer) {
-        clearTimeout(welcomeMessageTimer);
-      }
+      clearTimers();
     };
   }, [
     isAgentEnabled,
-    isConnected,
+    isConnecting,
+    mcpConnection.status,
+    mcpConnection.clientId,
+    mcpConnection.error,
     defaultServer,
     availableTools.length,
-    mcpConnection.clientId,
-    mcpConnection.status,
-    mcpConnection.error,
-    addCommandResult
+    addCommandResult,
+    commandResults
   ]);
 
   // Monitor SSE connection status changes for errors (from MCPAgentContext perspective)
@@ -474,7 +508,7 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
     };
   }, [mcpConnection, getClientId, hasClientIdIssue]);
 
-  // Function to attempt client ID recovery
+  // Enhanced function to attempt client ID recovery with better error handling
   const attemptClientIdRecovery = async (): Promise<boolean> => {
     if (!defaultServer) {
       console.error('No default server selected');
@@ -483,14 +517,171 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
 
     if (recoveryAttemptsRef.current >= MAX_RECOVERY_ATTEMPTS) {
       console.error(`Max recovery attempts (${MAX_RECOVERY_ATTEMPTS}) reached`);
+
+      // Add a recovery failure message
+      const recoveryFailedMsg: CommandResult = {
+        id: `result-recovery-failed-${Date.now()}`,
+        commandId: 'error',
+        success: false,
+        result: null,
+        error: `Client ID recovery failed after ${MAX_RECOVERY_ATTEMPTS} attempts. Please try refreshing the page.`,
+        timestamp: Date.now()
+      };
+
+      addCommandResult(recoveryFailedMsg);
       return false;
     }
 
     recoveryAttemptsRef.current++;
     console.log(`Attempting client ID recovery (attempt ${recoveryAttemptsRef.current}/${MAX_RECOVERY_ATTEMPTS})`);
 
+    // Add a recovery attempt message
+    const recoveryAttemptMsg: CommandResult = {
+      id: `result-recovery-attempt-${Date.now()}`,
+      commandId: 'system',
+      success: true,
+      result: {
+        type: 'text',
+        text: `Attempting to recover client ID (attempt ${recoveryAttemptsRef.current}/${MAX_RECOVERY_ATTEMPTS})...`
+      },
+      timestamp: Date.now()
+    };
+
+    addCommandResult(recoveryAttemptMsg);
+
     try {
-      // First try reconnection
+      // First try direct retrieval - this is more reliable than reconnection
+      console.log('Attempting direct client ID retrieval from API endpoint...');
+      
+      // Try the direct API endpoint
+      try {
+        const response = await axios.get('/api/mcp/get-client-id', {
+          params: {
+            host: defaultServer.mcp_host,
+            port: defaultServer.mcp_port
+          },
+          timeout: 8000
+        });
+
+        if (response.data && response.data.clientId) {
+          const directClientId = response.data.clientId;
+          console.log(`Recovered client ID via direct API: ${directClientId}`);
+
+          // Store this client ID in local storage to be picked up by MCPContext
+          const connectionInfo = {
+            connectionId: `recovery-${Date.now()}`,
+            clientId: directClientId,
+            timestamp: Date.now(),
+            server: `${defaultServer.mcp_host}:${defaultServer.mcp_port}`
+          };
+          
+          try {
+            localStorage.setItem('mcp_connection_info', JSON.stringify(connectionInfo));
+            console.log('Successfully saved connection info to localStorage');
+          } catch (storageError) {
+            console.error('Error saving connection info to localStorage:', storageError);
+          }
+
+          // Force a reconnect to use the new client ID
+          reconnect();
+
+          // Wait a bit and check if we now have a client ID
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          const finalClientId = getClientId();
+          if (finalClientId) {
+            // Add a success message
+            const directSuccessMsg: CommandResult = {
+              id: `result-direct-success-${Date.now()}`,
+              commandId: 'system',
+              success: true,
+              result: {
+                type: 'text',
+                text: `Client ID recovery successful via direct method. New client ID: ${finalClientId}`
+              },
+              timestamp: Date.now()
+            };
+
+            addCommandResult(directSuccessMsg);
+
+            // Reset the processed client IDs to allow a new welcome message
+            processedClientIdsRef.current.clear();
+
+            return true;
+          }
+        }
+      } catch (directError) {
+        console.error('Error using direct client ID retrieval:', directError);
+      }
+      
+      // If direct retrieval failed, try a direct fetch to the SSE endpoint
+      try {
+        console.log(`Attempting direct fetch to SSE endpoint: http://${defaultServer.mcp_host}:${defaultServer.mcp_port}/sse`);
+        
+        // Use fetch API with AbortController for timeout control
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const directResponse = await fetch(`http://${defaultServer.mcp_host}:${defaultServer.mcp_port}/sse`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        const text = await directResponse.text();
+        console.log('Direct SSE response:', text);
+        
+        // Try to extract clientId from the SSE response
+        const clientIdMatch = text.match(/clientId["\s:]*["']?([^"',}\s]+)/);
+        if (clientIdMatch && clientIdMatch[1]) {
+          const extractedClientId = clientIdMatch[1];
+          console.log(`Extracted client ID from direct SSE response: ${extractedClientId}`);
+          
+          // Store this client ID
+          const connectionInfo = {
+            connectionId: `recovery-sse-${Date.now()}`,
+            clientId: extractedClientId,
+            timestamp: Date.now(),
+            server: `${defaultServer.mcp_host}:${defaultServer.mcp_port}`
+          };
+          
+          localStorage.setItem('mcp_connection_info', JSON.stringify(connectionInfo));
+          
+          // Force a reconnect to use the new client ID
+          reconnect();
+          
+          // Wait a bit and check if we now have a client ID
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const sseClientId = getClientId();
+          if (sseClientId) {
+            // Add a success message
+            const sseSuccessMsg: CommandResult = {
+              id: `result-sse-success-${Date.now()}`,
+              commandId: 'system',
+              success: true,
+              result: {
+                type: 'text',
+                text: `Client ID recovery successful via SSE endpoint. New client ID: ${sseClientId}`
+              },
+              timestamp: Date.now()
+            };
+            
+            addCommandResult(sseSuccessMsg);
+            
+            // Reset the processed client IDs to allow a new welcome message
+            processedClientIdsRef.current.clear();
+            
+            return true;
+          }
+        }
+      } catch (sseError) {
+        console.error('Error accessing SSE endpoint directly:', sseError);
+      }
+
+      // If all direct methods failed, try reconnection
+      console.log('Direct client ID retrieval methods failed, trying reconnection');
+
       reconnect();
 
       // Wait a bit and check if that fixed it
@@ -500,55 +691,70 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
       const clientId = getClientId();
       if (clientId) {
         console.log('Client ID recovery successful via reconnection');
+
+        // Add a success message
+        const recoverySuccessMsg: CommandResult = {
+          id: `result-recovery-success-${Date.now()}`,
+          commandId: 'system',
+          success: true,
+          result: {
+            type: 'text',
+            text: `Client ID recovery successful. New client ID: ${clientId}`
+          },
+          timestamp: Date.now()
+        };
+
+        addCommandResult(recoverySuccessMsg);
+
+        // Reset the processed client IDs to allow a new welcome message
+        processedClientIdsRef.current.clear();
+
         return true;
       }
 
-      // If reconnect failed, try the direct API endpoint
-      console.log('Reconnection did not provide client ID, trying direct API endpoint...');
-      
-      // Use the new direct client ID retrieval method
-      const response = await axios.get('/api/mcp/get-client-id', {
-        params: {
-          host: defaultServer.mcp_host,
-          port: defaultServer.mcp_port
-        },
-        timeout: 8000
-      });
-
-      if (response.data && response.data.clientId) {
-        const directClientId = response.data.clientId;
-        console.log(`Recovered client ID via direct API: ${directClientId}`);
-        
-        // Store this client ID in local storage to be picked up by MCPContext
-        const connectionInfo = {
-          connectionId: `recovery-${Date.now()}`,
-          clientId: directClientId,
-          timestamp: Date.now(),
-          server: `${defaultServer.mcp_host}:${defaultServer.mcp_port}`
-        };
-        localStorage.setItem('mcp_connection_info', JSON.stringify(connectionInfo));
-        
-        // Force a reconnect to use the new client ID
-        reconnect();
-        
-        // Wait a bit and check if we now have a client ID
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return getClientId() !== null;
-      }
-
       console.log('Client ID recovery failed');
+
+      // Add a failure message
+      const recoveryFailedMsg: CommandResult = {
+        id: `result-recovery-failed-${Date.now()}`,
+        commandId: 'error',
+        success: false,
+        result: null,
+        error: `Client ID recovery attempt ${recoveryAttemptsRef.current} failed. ${recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS ? 'Will try again.' : 'Please refresh the page.'}`,
+        timestamp: Date.now()
+      };
+
+      addCommandResult(recoveryFailedMsg);
+
       return false;
     } catch (error) {
       console.error('Error during client ID recovery:', error);
+
+      // Add an error message
+      const recoveryErrorMsg: CommandResult = {
+        id: `result-recovery-error-${Date.now()}`,
+        commandId: 'error',
+        success: false,
+        result: null,
+        error: `Error during client ID recovery: ${error.message || 'Unknown error'}`,
+        timestamp: Date.now()
+      };
+
+      addCommandResult(recoveryErrorMsg);
+
       return false;
     }
   };
 
-  // Function to reconnect to the server
+  // Enhanced function to reconnect to the server with better feedback
   const reconnectToServer = () => {
     if (isAgentEnabled) {
-      // Clear existing results
-      setCommandResults([]);
+      // Clear existing results but preserve important system messages
+      const systemMessages = commandResults.filter(r =>
+        r.commandId === 'system' ||
+        r.commandId === 'error' ||
+        r.commandId === 'welcome'
+      );
 
       // Add a reconnecting message
       const reconnectingResult: CommandResult = {
@@ -562,17 +768,329 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
         timestamp: Date.now()
       };
 
-      setCommandResults([reconnectingResult]);
+      // Keep system messages and add the reconnecting message
+      setCommandResults([...systemMessages, reconnectingResult]);
+
+      // Reset the processed client IDs to allow a new welcome message
+      processedClientIdsRef.current.clear();
+
+      // Reset recovery attempts counter
+      recoveryAttemptsRef.current = 0;
 
       // Attempt to reconnect
       reconnect();
+
+      // Schedule a check to verify if reconnection was successful
+      setTimeout(() => {
+        if (!isConnected || !getClientId()) {
+          // If still not connected after a delay, show a message suggesting page refresh
+          const reconnectFailedResult: CommandResult = {
+            id: `result-reconnect-failed-${Date.now()}`,
+            commandId: 'error',
+            success: false,
+            result: null,
+            error: 'Reconnection attempt did not establish a connection. You may need to refresh the page.',
+            timestamp: Date.now()
+          };
+
+          addCommandResult(reconnectFailedResult);
+        }
+      }, 5000); // Check after 5 seconds
     }
   };
 
-  // Toggle agent enabled state
-  const toggleAgent = () => {
-    // Simply toggle the state - the useEffect will handle initialization
-    setIsAgentEnabled(!isAgentEnabled);
+  // Further enhanced toggle agent function with improved connection handling and WebSocket readiness check
+  const toggleAgent = async () => {
+    const newState = !isAgentEnabled;
+    setIsAgentEnabled(newState);
+
+    // If enabling the agent, clear any previous state and reset
+    if (newState) {
+      // Don't try to connect if we already have a clientId or are in the process of connecting
+      if (mcpConnection.clientId) {
+        console.log('[MCP-AGENT] Already connected with client ID, skipping connection process');
+        checkAndEstablishMCPConnection();
+        return;
+      }
+      
+      if (isConnecting) {
+        console.log('[MCP-AGENT] Connection already in progress, skipping duplicate attempt');
+        return;
+      }
+      
+      setIsConnecting(true);
+      
+      // Clear existing results
+      setCommandResults([]);
+
+      // Reset the processed client IDs to allow a new welcome message
+      processedClientIdsRef.current.clear();
+
+      // Reset recovery attempts counter
+      recoveryAttemptsRef.current = 0;
+
+      // Add an initial status message
+      const initializingMsg: CommandResult = {
+        id: `result-initializing-${Date.now()}`,
+        commandId: 'system',
+        success: true,
+        result: {
+          type: 'text',
+          text: 'Initializing MCP Agent...'
+        },
+        timestamp: Date.now()
+      };
+
+      addCommandResult(initializingMsg);
+
+      try {
+        // Check WebSocket readiness first with a more robust approach
+        if (!isFullyReady) {
+          console.log('[MCP-AGENT] WebSocket not fully ready, using waitForReady function...');
+
+          // Add a waiting message
+          const waitingMsg: CommandResult = {
+            id: `result-waiting-websocket-${Date.now()}`,
+            commandId: 'system',
+            success: true,
+            result: {
+              type: 'text',
+              text: 'Waiting for WebSocket connection to be fully established...'
+            },
+            timestamp: Date.now()
+          };
+
+          addCommandResult(waitingMsg);
+
+          try {
+            // Use the Promise-based waitForReady function with a longer timeout
+            await waitForReady(15000); // 15 second timeout for better reliability
+            console.log('[MCP-AGENT] WebSocket is now ready, proceeding with MCP connection');
+
+            // Add a success message
+            const readyMsg: CommandResult = {
+              id: `result-websocket-ready-${Date.now()}`,
+              commandId: 'system',
+              success: true,
+              result: {
+                type: 'text',
+                text: 'WebSocket connection established successfully.'
+              },
+              timestamp: Date.now()
+            };
+
+            addCommandResult(readyMsg);
+          } catch (error) {
+            console.error('[MCP-AGENT] Error waiting for WebSocket readiness:', error);
+
+            // Add an error message
+            const errorMsg: CommandResult = {
+              id: `result-websocket-error-${Date.now()}`,
+              commandId: 'error',
+              success: false,
+              result: null,
+              error: `WebSocket connection failed to establish: ${error.message}. Please refresh the page.`,
+              timestamp: Date.now()
+            };
+
+            addCommandResult(errorMsg);
+
+            // Try one more time with a different approach - sometimes the WebSocket is actually ready
+            // but the readiness detection failed
+            setTimeout(() => {
+              console.log('[MCP-AGENT] Attempting MCP connection despite WebSocket readiness failure');
+              checkAndEstablishMCPConnection();
+            }, 2000);
+
+            return;
+          }
+        } else {
+          console.log('[MCP-AGENT] WebSocket is already ready, proceeding with MCP connection');
+        }
+
+        // Now that WebSocket check is complete, proceed with MCP connection
+        await checkAndEstablishMCPConnection();
+
+      } catch (error) {
+        console.error('[MCP-AGENT] Error during agent initialization:', error);
+
+        // Add a general error message
+        const generalErrorMsg: CommandResult = {
+          id: `result-init-error-${Date.now()}`,
+          commandId: 'error',
+          success: false,
+          result: null,
+          error: `Error initializing MCP Agent: ${error.message}. Please try again or refresh the page.`,
+          timestamp: Date.now()
+        };
+
+        addCommandResult(generalErrorMsg);
+      } finally {
+        setIsConnecting(false);
+      }
+    }
+  };
+
+  // Enhanced helper function to check and establish MCP connection with async support
+  const checkAndEstablishMCPConnection = async (): Promise<boolean> => {
+    // If we're already connected with a client ID, just show a welcome message
+    if (mcpConnection.clientId) {
+      console.log(`[MCP-AGENT] Agent enabled with existing connection. Displaying welcome message.`);
+
+      // Skip if we're already showing a welcome message for this clientId
+      const clientId = mcpConnection.clientId;
+      const alreadyHasWelcome = commandResults.some(
+        r => r.commandId === 'welcome' &&
+            (r.result?.text?.includes(`ClientId: ${clientId}`) ||
+              r.result?.text?.includes(clientId.substring(0, 8)))
+      );
+
+      if (!alreadyHasWelcome) {
+        // Determine server details to show in welcome message - handle case of missing defaultServer
+        const serverName = defaultServer ? 
+          (defaultServer.mcp_nickname || defaultServer.mcp_host) : 
+          'Unknown';
+        const serverAddress = defaultServer ? 
+          `${defaultServer.mcp_host}:${defaultServer.mcp_port}` : 
+          'Unknown address';
+
+        // Add a welcome message
+        const welcomeResult: CommandResult = {
+          id: `result-welcome-${Date.now()}`,
+          commandId: 'welcome',
+          success: true,
+          result: {
+            type: 'text',
+            text: `MCP Agent initialized. Connected to ${serverName} at ${serverAddress}. ${availableTools.length} tools available. ClientId: ${mcpConnection.clientId}`
+          },
+          timestamp: Date.now()
+        };
+
+        addCommandResult(welcomeResult);
+      } else {
+        console.log(`[MCP-AGENT] Welcome message already exists for clientId: ${mcpConnection.clientId}, skipping.`);
+      }
+      
+      setHasClientIdIssue(false);
+      return true;
+    }
+    
+    // If we're not connected but connecting, don't start another connection
+    if (mcpConnection.status === 'connecting') {
+      console.log('[MCP-AGENT] Connection already in progress, waiting...');
+      
+      const waitingMsg: CommandResult = {
+        id: `result-waiting-${Date.now()}`,
+        commandId: 'system',
+        success: true,
+        result: {
+          type: 'text',
+          text: 'Connection attempt already in progress, waiting...'
+        },
+        timestamp: Date.now()
+      };
+      
+      addCommandResult(waitingMsg);
+      return false;
+    }
+    
+    // If we're not connected, try to reconnect
+    if (defaultServer) {
+      console.log('[MCP-AGENT] Not connected to MCP server, attempting to connect...');
+
+      // Add a connecting message
+      const connectingMsg: CommandResult = {
+        id: `result-connecting-${Date.now()}`,
+        commandId: 'system',
+        success: true,
+        result: {
+          type: 'text',
+          text: `Connecting to MCP server ${defaultServer.mcp_nickname || defaultServer.mcp_host}...`
+        },
+        timestamp: Date.now()
+      };
+
+      addCommandResult(connectingMsg);
+
+      // Attempt to reconnect
+      reconnect();
+
+      // Wait a bit to see if connection is established
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Check if connection was successful
+      if (mcpConnection.clientId) {
+        console.log('[MCP-AGENT] Successfully connected to MCP server');
+
+        // Add a success message
+        const successMsg: CommandResult = {
+          id: `result-connection-success-${Date.now()}`,
+          commandId: 'system',
+          success: true,
+          result: {
+            type: 'text',
+            text: `Successfully connected to MCP server ${defaultServer.mcp_nickname || defaultServer.mcp_host}.`
+          },
+          timestamp: Date.now()
+        };
+
+        addCommandResult(successMsg);
+        return true;
+      } else {
+        console.log('[MCP-AGENT] Failed to connect to MCP server');
+
+        // Add a failure message
+        const failureMsg: CommandResult = {
+          id: `result-connection-failure-${Date.now()}`,
+          commandId: 'error',
+          success: false,
+          result: null,
+          error: 'Failed to connect to MCP server. Please try again or check your server settings.',
+          timestamp: Date.now()
+        };
+
+        addCommandResult(failureMsg);
+
+        // Try to recover client ID if we have a connection issue
+        if (hasClientIdIssue) {
+          console.log('[MCP-AGENT] Detected client ID issue, attempting recovery...');
+
+          const recoveryMsg: CommandResult = {
+            id: `result-recovery-attempt-${Date.now()}`,
+            commandId: 'system',
+            success: true,
+            result: {
+              type: 'text',
+              text: 'Attempting to recover client ID...'
+            },
+            timestamp: Date.now()
+          };
+
+          addCommandResult(recoveryMsg);
+
+          // Attempt client ID recovery
+          const recovered = await attemptClientIdRecovery();
+          return recovered;
+        }
+
+        return false;
+      }
+    } else if (!defaultServer) {
+      // No default server selected
+      const noServerMsg: CommandResult = {
+        id: `result-no-server-${Date.now()}`,
+        commandId: 'error',
+        success: false,
+        result: null,
+        error: 'No MCP server selected. Please select a server from the dropdown.',
+        timestamp: Date.now()
+      };
+
+      addCommandResult(noServerMsg);
+      return false;
+    }
+
+    return false;
   };
 
   // Toggle stop/resume processing
@@ -610,39 +1128,16 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
     }
   };
 
-  // Process a user request using AI to generate commands
+  // Process a user request using AI to generate commands or respond directly
   const processUserRequest = async (request: string) => {
-    if (!isAgentEnabled || !isConnected || !defaultServer) {
-      console.error('Cannot process request: Agent is disabled or MCP is not connected');
-      return;
-    }
-
-    // Check if we have a valid SSE connection with clientId
-    if (mcpConnection.status !== 'connected' || !mcpConnection.clientId) {
-      // Add an error message
-      const errorResult: CommandResult = {
-        id: `result-no-connection-${Date.now()}`,
-        commandId: 'error',
-        success: false,
-        result: null,
-        error: 'Not connected to MCP server. Please reconnect and try again.',
-        timestamp: Date.now()
-      };
-
-      setCommandResults(prev => [...prev, errorResult]);
-      return;
+    // Always enable the agent when a user sends a request
+    if (!isAgentEnabled) {
+      setIsAgentEnabled(true);
     }
 
     setIsProcessing(true);
 
     try {
-      // Get available tools to include in the AI prompt
-      const toolsInfo = availableTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters
-      }));
-
       // First, check if we have a valid model selected
       if (!activeModel) {
         // No model selected, show error
@@ -660,44 +1155,215 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
         return;
       }
 
-      // Call AI service to generate command
-      const aiResponse = await axios.post('/api/ai/generate-command', {
-        request,
-        tools: toolsInfo,
-        mcpServer: {
-          host: defaultServer.mcp_host,
-          port: defaultServer.mcp_port,
-          clientId: mcpConnection.clientId
-        },
-        modelId: activeModel // Pass the selected model to use
-      });
+      // Check if the request is specifically asking to connect to MCP
+      const isConnectionRequest = /connect|establish connection|connect to (mcp|server)|setup connection/i.test(request);
 
-      if (aiResponse.data && aiResponse.data.commands && aiResponse.data.commands.length > 0) {
-        // Add generated commands to pending commands
-        const newCommands = aiResponse.data.commands.map((cmd: any) => ({
-          id: `cmd-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          command: cmd.command,
-          toolName: cmd.toolName,
-          parameters: cmd.parameters,
-          description: cmd.description,
-          timestamp: Date.now()
-        }));
-
-        setPendingCommands(prev => [...prev, ...newCommands]);
-      } else {
-        // No commands generated, show a message
-        const noCommandsResult: CommandResult = {
-          id: `result-no-commands-${Date.now()}`,
-          commandId: 'no-commands',
+      if (isConnectionRequest && (!isConnected || !mcpConnection.clientId)) {
+        // User is asking to connect to MCP and we're not connected
+        const connectingMsg: CommandResult = {
+          id: `result-connecting-request-${Date.now()}`,
+          commandId: 'system',
           success: true,
           result: {
             type: 'text',
-            text: 'I couldn\'t determine which MCP command to use for your request. Could you provide more details or try a different request?'
+            text: 'Attempting to establish connection to MCP server...'
           },
           timestamp: Date.now()
         };
 
-        setCommandResults(prev => [...prev, noCommandsResult]);
+        addCommandResult(connectingMsg);
+
+        // Try to connect to MCP
+        reconnect();
+
+        // Wait a bit and check if connection was established
+        setTimeout(() => {
+          if (isConnected && mcpConnection.clientId) {
+            const successMsg: CommandResult = {
+              id: `result-connected-${Date.now()}`,
+              commandId: 'system',
+              success: true,
+              result: {
+                type: 'text',
+                text: `Successfully connected to MCP server ${defaultServer?.mcp_nickname || defaultServer?.mcp_host || 'Unknown'}. You can now use MCP tools.`
+              },
+              timestamp: Date.now()
+            };
+
+            addCommandResult(successMsg);
+          } else {
+            const failureMsg: CommandResult = {
+              id: `result-connection-failed-${Date.now()}`,
+              commandId: 'error',
+              success: false,
+              result: null,
+              error: 'Failed to establish connection to MCP server. Please check your server settings and try again.',
+              timestamp: Date.now()
+            };
+
+            addCommandResult(failureMsg);
+          }
+          setIsProcessing(false);
+        }, 3000);
+
+        return;
+      }
+
+      // Check if the request is asking about available tools
+      const isToolsRequest = /what tools|available tools|list tools|show tools|tools available/i.test(request);
+
+      if (isToolsRequest) {
+        if (isConnected && mcpConnection.clientId && availableTools.length > 0) {
+          // We're connected and have tools available
+          const toolsList = availableTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n');
+
+          const toolsMsg: CommandResult = {
+            id: `result-tools-list-${Date.now()}`,
+            commandId: 'system',
+            success: true,
+            result: {
+              type: 'text',
+              text: `Available MCP tools:\n\n${toolsList}`
+            },
+            timestamp: Date.now()
+          };
+
+          addCommandResult(toolsMsg);
+          setIsProcessing(false);
+          return;
+        } else if (!isConnected || !mcpConnection.clientId) {
+          // We're not connected
+          const notConnectedMsg: CommandResult = {
+            id: `result-not-connected-${Date.now()}`,
+            commandId: 'system',
+            success: true,
+            result: {
+              type: 'text',
+              text: 'Not connected to MCP server. Please establish a connection first to see available tools.'
+            },
+            timestamp: Date.now()
+          };
+
+          addCommandResult(notConnectedMsg);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // If we're connected to MCP, try to generate and execute commands
+      if (isConnected && mcpConnection.clientId && defaultServer) {
+        // Get available tools to include in the AI prompt
+        const toolsInfo = availableTools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters
+        }));
+
+        try {
+          // Double-check client ID before proceeding
+          if (!mcpConnection.clientId) {
+            throw new Error('Client ID is missing. Please reconnect to the MCP server.');
+          }
+
+          // Add a processing message
+          const processingMsg: CommandResult = {
+            id: `result-processing-${Date.now()}`,
+            commandId: 'system',
+            success: true,
+            result: {
+              type: 'text',
+              text: 'Processing your request...'
+            },
+            timestamp: Date.now()
+          };
+
+          addCommandResult(processingMsg);
+
+          // Call AI service to generate command
+          const aiResponse = await axios.post('/api/ai/generate-command', {
+            request,
+            tools: toolsInfo,
+            mcpServer: {
+              host: defaultServer.mcp_host,
+              port: defaultServer.mcp_port,
+              clientId: mcpConnection.clientId
+            },
+            modelId: activeModel // Pass the selected model to use
+          });
+
+          if (aiResponse.data && aiResponse.data.commands && aiResponse.data.commands.length > 0) {
+            // Add generated commands to pending commands
+            const newCommands = aiResponse.data.commands.map((cmd: any) => ({
+              id: `cmd-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              command: cmd.command,
+              toolName: cmd.toolName,
+              parameters: cmd.parameters,
+              description: cmd.description,
+              timestamp: Date.now()
+            }));
+
+            setPendingCommands(prev => [...prev, ...newCommands]);
+            setIsProcessing(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error generating MCP commands:', error);
+          // Fall through to regular chat response
+        }
+      }
+
+      // If we're not connected to MCP or command generation failed, use regular chat
+      console.log('Using regular chat response for request:', request);
+
+      // Call the chat API instead
+      const chatResponse = await axios.post('/api/ai/chat', {
+        message: request,
+        modelId: activeModel
+      });
+
+      if (chatResponse.data && chatResponse.data.response) {
+        const chatResult: CommandResult = {
+          id: `result-chat-${Date.now()}`,
+          commandId: 'chat',
+          success: true,
+          result: {
+            type: 'text',
+            text: chatResponse.data.response
+          },
+          timestamp: Date.now()
+        };
+
+        addCommandResult(chatResult);
+
+        // If we're not connected, add a hint about connecting
+        if (!isConnected || !mcpConnection.clientId) {
+          setTimeout(() => {
+            const hintMsg: CommandResult = {
+              id: `result-hint-${Date.now()}`,
+              commandId: 'system',
+              success: true,
+              result: {
+                type: 'text',
+                text: 'Tip: You can ask me to "establish connection" to connect to the MCP server and use tools.'
+              },
+              timestamp: Date.now()
+            };
+
+            addCommandResult(hintMsg);
+          }, 1000);
+        }
+      } else {
+        // No response from chat API
+        const errorResult: CommandResult = {
+          id: `result-error-${Date.now()}`,
+          commandId: 'error',
+          success: false,
+          result: null,
+          error: 'Unable to get a response from the AI. Please try again.',
+          timestamp: Date.now()
+        };
+
+        addCommandResult(errorResult);
       }
     } catch (error) {
       console.error('Error processing user request:', error);
@@ -713,19 +1379,19 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
           timestamp: Date.now()
         };
 
-        setCommandResults(prev => [...prev, networkErrorResult]);
+        addCommandResult(networkErrorResult);
       } else if (error.response && error.response.status === 404) {
-        // API not found - likely the backend doesn't have the generate-command endpoint
+        // API not found
         const apiErrorResult: CommandResult = {
           id: `result-error-${Date.now()}`,
           commandId: 'error',
           success: false,
           result: null,
-          error: 'The AI command generation service is not available. Please make sure the backend API is properly configured.',
+          error: 'The AI service is not available. Please make sure the backend API is properly configured.',
           timestamp: Date.now()
         };
 
-        setCommandResults(prev => [...prev, apiErrorResult]);
+        addCommandResult(apiErrorResult);
       } else {
         // For all other errors, create a general error message
         const errorResult: CommandResult = {
@@ -733,11 +1399,11 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
           commandId: 'error',
           success: false,
           result: null,
-          error: `Error generating MCP commands: ${error.message || 'Unknown error'}`,
-        timestamp: Date.now()
-      };
+          error: `Error processing request: ${error.message || 'Unknown error'}`,
+          timestamp: Date.now()
+        };
 
-        setCommandResults(prev => [...prev, errorResult]);
+        addCommandResult(errorResult);
       }
     } finally {
       setIsProcessing(false);
@@ -756,7 +1422,7 @@ export const MCPAgentProvider: React.FC<MCPAgentProviderProps> = ({ children }) 
     setIsProcessing(true);
 
     try {
-      let result;
+      let result: any;
       let hasError = false;
 
       try {

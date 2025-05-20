@@ -402,6 +402,13 @@ function setupSSEConnection(host, port, connectionId, ws, connection) {
     // Handle SSE errors
     es.onerror = (err) => {
       logger.error(`WebSocket: SSE connection error for ${host}:${port}: ${err.message || 'Unknown error'}`);
+      
+      // If we already have a clientId, just log the error and return without retrying
+      if (connection.clientId) {
+        logger.warn(`WebSocket: SSE error occurred after clientId was obtained for ${host}:${port}. Keeping existing connection.`);
+        return; // Do not attempt to reconnect; tolerate transient errors
+      }
+      
       connection.status = 'error';
       
       // Clear the timeout
@@ -416,8 +423,8 @@ function setupSSEConnection(host, port, connectionId, ws, connection) {
         port
       }));
       
-      // Try to reconnect if this is not the last attempt
-      if (connection.connectAttempts <= 2) {
+      // Try to reconnect if this is not the last attempt and no clientId yet
+      if (connection.connectAttempts <= 2 && !connection.clientId) {
         logger.info(`WebSocket: Retrying SSE connection to ${host}:${port} (attempt ${connection.connectAttempts + 1})`);
         // Wait briefly before retry
         setTimeout(() => {

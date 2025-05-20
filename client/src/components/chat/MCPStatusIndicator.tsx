@@ -12,6 +12,7 @@ import {
 import { useMCP } from '../../contexts/MCPContext';
 import { useMCPAgent } from '../../contexts/MCPAgentContext';
 import MCPDiagnosticsButton from './MCPDiagnosticsButton';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 
 interface MCPStatusIndicatorProps {
   className?: string;
@@ -20,6 +21,7 @@ interface MCPStatusIndicatorProps {
 const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' }) => {
   const { isConnected, defaultServer, mcpConnection, reconnect, getClientId } = useMCP();
   const { isAgentEnabled, reconnectToServer, hasClientIdIssue, attemptClientIdRecovery } = useMCPAgent();
+  const { connected: wsConnected, isFullyReady, reconnect: reconnectWs } = useWebSocket();
 
   if (!isAgentEnabled) {
     return null;
@@ -28,9 +30,49 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
   // Determine if we have a client ID
   const clientId = getClientId();
   const clientIdMissing = mcpConnection.status === 'connected' && !clientId;
+  const webSocketDown = !wsConnected;
+
+  // Handle WebSocket reconnect
+  const handleReconnectWebSocket = () => {
+    reconnectWs();
+  };
+
+  // Handle client ID recovery
+  const handleFixClientId = async () => {
+    const recovered = await attemptClientIdRecovery();
+    if (recovered) {
+      // Success feedback
+      const statusElement = document.querySelector('.mcp-status-indicator') as HTMLElement;
+      if (statusElement) {
+        const originalBg = statusElement.style.backgroundColor;
+        statusElement.style.backgroundColor = 'var(--color-success-bg)';
+        setTimeout(() => {
+          if (statusElement) {
+            statusElement.style.backgroundColor = originalBg || '';
+          }
+        }, 1500);
+      }
+    }
+  };
+
+  // Add page refresh function
+  const handlePageRefresh = () => {
+    window.location.reload();
+  };
 
   // Determine status styles based on connection state
   const getStatusStyles = () => {
+    // First check WebSocket connection status as it's most fundamental
+    if (!wsConnected) {
+      return {
+        bgColor: 'bg-red-50 dark:bg-red-900/20',
+        textColor: 'text-red-700 dark:text-red-400',
+        borderColor: 'border-red-200 dark:border-red-800',
+        icon: <ExclamationCircleIcon className="h-4 w-4 mr-1.5 text-red-700 dark:text-red-400" />
+      };
+    }
+    
+    // Then check MCP connection status
     if (mcpConnection.status === 'connected') {
       if (clientIdMissing) {
         // Connected but missing clientId - warning state
@@ -73,24 +115,7 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
 
   const styles = getStatusStyles();
 
-  // Handle client ID recovery
-  const handleFixClientId = async () => {
-    const recovered = await attemptClientIdRecovery();
-    if (recovered) {
-      // Success feedback
-      const statusElement = document.querySelector('.mcp-status-indicator') as HTMLElement;
-      if (statusElement) {
-        const originalBg = statusElement.style.backgroundColor;
-        statusElement.style.backgroundColor = 'var(--color-success-bg)';
-        setTimeout(() => {
-          if (statusElement) {
-            statusElement.style.backgroundColor = originalBg || '';
-          }
-        }, 1500);
-      }
-    }
-  };
-
+  // Render function for the component
   return (
     <div className={`mcp-status-indicator flex flex-col mb-4 ${className}`}>
       <div 
@@ -98,15 +123,17 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
       >
         {styles.icon}
         <span className="text-sm font-medium">
-          {mcpConnection.status === 'connected'
-            ? clientIdMissing 
-              ? 'Connected but Missing ClientId' 
-              : 'Connected to MCP Server'
-            : mcpConnection.status === 'error'
-              ? 'MCP Connection Error'
-              : mcpConnection.status === 'connecting'
-                ? 'Connecting to MCP Server...'
-                : 'MCP Agent Ready'}
+          {!wsConnected
+            ? 'WebSocket Connection Lost'
+            : mcpConnection.status === 'connected'
+              ? clientIdMissing 
+                ? 'Connected but Missing ClientId' 
+                : 'Connected to MCP Server'
+              : mcpConnection.status === 'error'
+                ? 'MCP Connection Error'
+                : mcpConnection.status === 'connecting'
+                  ? 'Connecting to MCP Server...'
+                  : 'MCP Agent Ready'}
         </span>
         
         {/* Server info (when connected) */}
@@ -134,8 +161,20 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
           <MCPDiagnosticsButton />
         </div>
         
+        {/* WebSocket reconnect button */}
+        {!wsConnected && (
+          <button 
+            onClick={handleReconnectWebSocket}
+            className="ml-2 flex items-center text-xs py-0.5 px-1.5 rounded hover:bg-white hover:bg-opacity-20"
+            title="Reconnect WebSocket"
+          >
+            <ArrowPathIcon className="h-3 w-3 mr-1" />
+            Reconnect WebSocket
+          </button>
+        )}
+        
         {/* Fix ClientId button */}
-        {clientIdMissing && (
+        {clientIdMissing && wsConnected && (
           <button 
             onClick={handleFixClientId}
             className="ml-2 flex items-center text-xs py-0.5 px-1.5 rounded hover:bg-white hover:bg-opacity-20"
@@ -147,7 +186,7 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
         )}
         
         {/* Reconnect button (when error) */}
-        {mcpConnection.status === 'error' && (
+        {mcpConnection.status === 'error' && wsConnected && (
           <button 
             onClick={reconnectToServer}
             className="ml-2 flex items-center text-xs py-0.5 px-1.5 rounded hover:bg-white hover:bg-opacity-20"
@@ -158,11 +197,37 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
         )}
       </div>
       
+      {/* WebSocket warning */}
+      {!wsConnected && (
+        <div className="mt-1 text-xs flex items-start text-red-600 dark:text-red-400 font-medium justify-between">
+          <div className="flex items-start">
+            <ExclamationCircleIcon className="h-3.5 w-3.5 mr-1 mt-0.5 flex-shrink-0" />
+            <span>
+              WebSocket connection is down. Please click "Reconnect WebSocket" or refresh the page.
+            </span>
+          </div>
+          <button 
+            onClick={handlePageRefresh}
+            className="ml-2 flex items-center text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-800/50"
+          >
+            Refresh Page
+          </button>
+        </div>
+      )}
+      
       {/* Error message or help text */}
       {mcpConnection.status === 'error' && mcpConnection.error && (
-        <div className="mt-1 text-xs flex items-start text-red-600 dark:text-red-400">
-          <InformationCircleIcon className="h-3.5 w-3.5 mr-1 mt-0.5 flex-shrink-0" />
-          <span>{mcpConnection.error}</span>
+        <div className="mt-1 text-xs flex items-start text-red-600 dark:text-red-400 justify-between">
+          <div className="flex items-start">
+            <InformationCircleIcon className="h-3.5 w-3.5 mr-1 mt-0.5 flex-shrink-0" />
+            <span>{mcpConnection.error}</span>
+          </div>
+          <button 
+            onClick={handlePageRefresh}
+            className="ml-2 flex items-center text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-800/50"
+          >
+            Refresh Page
+          </button>
         </div>
       )}
       
@@ -177,7 +242,7 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
       )}
       
       {/* Status when everything is good */}
-      {mcpConnection.status === 'connected' && !clientIdMissing && (
+      {mcpConnection.status === 'connected' && !clientIdMissing && wsConnected && (
         <div className="mt-1 text-xs flex items-start text-gray-600 dark:text-gray-400">
           <InformationCircleIcon className="h-3.5 w-3.5 mr-1 mt-0.5 flex-shrink-0" />
           <span>Start typing to interact with the MCP Agent</span>

@@ -209,11 +209,18 @@ function setupWebSocketServer(server) {
 
     console.log(`WebSocket client connected for user ${userId}. Total connections for this user: ${clients.get(userId).size}`);
 
-    // Send a welcome message to the client
-    ws.send(JSON.stringify({
-      type: 'connection_established',
-      message: 'WebSocket connection established'
-    }));
+    // Now that we have authenticated the user, send a confirmation message immediately
+    try {
+      ws.send(JSON.stringify({
+        type: 'connection_established',
+        message: 'WebSocket connection established and authenticated',
+        userId: userId, 
+        timestamp: Date.now()
+      }));
+      console.log(`Sent connection_established confirmation to user ${userId}`);
+    } catch (error) {
+      console.error(`Error sending connection confirmation to user ${userId}:`, error);
+    }
 
     // Check if there are any pending messages for this user
     if (pendingMessages.has(userId) && pendingMessages.get(userId).length > 0) {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useMCP } from '../../contexts/MCPContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useMCPAgent } from '../../contexts/MCPAgentContext';
 
 interface MCPStatusIndicatorProps {
   hideWhenDisconnected?: boolean;
@@ -20,6 +21,10 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
     reconnect,
     error
   } = useMCP();
+  
+  // Add MCP Agent context to check for client ID issues
+  const { hasClientIdIssue, attemptClientIdRecovery } = useMCPAgent();
+  
   const { currentTheme } = useTheme();
 
   // Different statuses
@@ -34,8 +39,13 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
     return null;
   }
 
+  // Handle page refresh 
+  const handleRefreshPage = () => {
+    window.location.reload();
+  };
+
   // Determine status appearance
-  if (isConnected) {
+  if (isConnected && !hasClientIdIssue) {
     // Connected
     backgroundColor = currentTheme === 'dark' ? 'rgba(0, 150, 0, 0.2)' : 'rgba(0, 160, 0, 0.1)';
     textColor = currentTheme === 'dark' ? '#4ADE80' : '#16A34A'; // text-green-400 dark or text-green-600 light
@@ -44,6 +54,17 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
     statusIcon = (
       <svg className="w-3 h-3 mr-1 fill-current" viewBox="0 0 24 24">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm4.59-12.42L10 14.17l-2.59-2.58L6 13l4 4 8-8z" />
+      </svg>
+    );
+  } else if (isConnected && hasClientIdIssue) {
+    // Connected but missing client ID
+    backgroundColor = currentTheme === 'dark' ? 'rgba(150, 100, 0, 0.2)' : 'rgba(160, 100, 0, 0.1)';
+    textColor = currentTheme === 'dark' ? '#FB923C' : '#EA580C'; // text-orange-400 dark or text-orange-600 light
+    borderColor = currentTheme === 'dark' ? '#FB923C' : '#EA580C';
+    statusText = 'Client ID Issue';
+    statusIcon = (
+      <svg className="w-3 h-3 mr-1 fill-current" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
       </svg>
     );
   } else if (mcpConnection.status === 'connecting') {
@@ -89,7 +110,7 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
         className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-xs"
         style={{ backgroundColor, color: textColor, borderColor }}
       >
-        <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : mcpConnection.status === 'connecting' ? 'bg-yellow-500' : mcpConnection.status === 'error' ? 'bg-red-500' : 'bg-gray-500'}`} 
+        <div className={`h-2 w-2 rounded-full ${isConnected && !hasClientIdIssue ? 'bg-green-500' : hasClientIdIssue ? 'bg-orange-500' : mcpConnection.status === 'connecting' ? 'bg-yellow-500' : mcpConnection.status === 'error' ? 'bg-red-500' : 'bg-gray-500'}`} 
           style={{ animation: mcpConnection.status === 'connecting' ? 'pulse 2s infinite' : 'none' }} />
       </div>
     );
@@ -117,7 +138,7 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
       )}
 
       {mcpConnection.status === 'error' && (
-        <div className="flex items-center ml-2">
+        <div className="flex items-center ml-2 gap-1">
           <button
             className="text-xs px-1 rounded"
             style={{
@@ -127,6 +148,43 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({
             title={error || "Reconnect to MCP server"}
           >
             Reconnect
+          </button>
+          
+          <button
+            className="text-xs px-1 rounded"
+            style={{
+              backgroundColor: currentTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            }}
+            onClick={handleRefreshPage}
+            title="Refresh the page to restart all connections"
+          >
+            Refresh Page
+          </button>
+        </div>
+      )}
+      
+      {isConnected && hasClientIdIssue && (
+        <div className="flex items-center ml-2 gap-1">
+          <button
+            className="text-xs px-1 rounded"
+            style={{
+              backgroundColor: currentTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            }}
+            onClick={() => attemptClientIdRecovery()}
+            title="Attempt to recover the Client ID"
+          >
+            Recover ID
+          </button>
+          
+          <button
+            className="text-xs px-1 rounded"
+            style={{
+              backgroundColor: currentTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            }}
+            onClick={handleRefreshPage}
+            title="Refresh the page to restart all connections"
+          >
+            Refresh Page
           </button>
         </div>
       )}

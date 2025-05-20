@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useMCP } from '../../contexts/MCPContext';
 import { useMCPAgent } from '../../contexts/MCPAgentContext';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 
 interface MCPServer {
   id: string;
@@ -35,8 +36,9 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
   onClose,
   onServerSelect
 }) => {
-  const { testServerConnection, connectToServer, mcpConnection } = useMCP();
+  const { testServerConnection, connectToServer, mcpConnection, defaultServer } = useMCP();
   const { isAgentEnabled, toggleAgent } = useMCPAgent();
+  const { connected: wsConnected, isFullyReady } = useWebSocket();
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,7 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
   const [testingServer, setTestingServer] = useState<string | null>(null);
   const [defaultMCPPort, setDefaultMCPPort] = useState<string>('');
   const [connecting, setConnecting] = useState(false);
+  const [connectionPhase, setConnectionPhase] = useState<string>('');
 
   // Direct connection states
   const [showDirectConnect, setShowDirectConnect] = useState(false);
@@ -53,30 +56,55 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
   const [directConnecting, setDirectConnecting] = useState(false);
   const [sseConnectionStatus, setSSEConnectionStatus] = useState<string>('');
 
-  // Update SSE connection status when mcpConnection changes
+  // New state to track direct SSE success
+  const [directSseSuccess, setDirectSseSuccess] = useState<string | null>(null);
+
+  // Update the useEffect that monitors connection status to show detailed phases
   useEffect(() => {
     setSSEConnectionStatus(mcpConnection.status);
     
+    // Check WebSocket readiness first
+    if (connecting && (!wsConnected || !isFullyReady)) {
+      setConnectionPhase('websocket');
+      return;
+    }
+    
+    // Update connection phase based on status
+    if (connecting) {
+      if (mcpConnection.status === 'connecting') {
+        setConnectionPhase('mcp');
+      } else if (mcpConnection.status === 'connected') {
+        setConnectionPhase('complete');
+      }
+    }
+    
     // If SSE connection is established, close the dialog
-    if (mcpConnection.status === 'connected' && connecting) {
-      // Add a slight delay to ensure the user sees the success state
+    if (
+      mcpConnection.status === 'connected' &&
+      mcpConnection.clientId &&
+      connecting
+    ) {
       setTimeout(() => {
         setConnecting(false);
+        setConnectionPhase('');
         onClose();
-        
-        // Make sure the agent is enabled
+        // Only toggle the agent if it's not already enabled
         if (!isAgentEnabled) {
+          console.log('Enabling MCP Agent after successful connection');
           toggleAgent();
+        } else {
+          console.log('MCP Agent already enabled, not toggling');
         }
-      }, 1000); // 1-second delay for better UX
+      }, 500); // shorter delay for snappier UX
     }
     
     // If there's an error with the SSE connection, show it
     if (mcpConnection.status === 'error' && connecting) {
       setConnecting(false);
+      setConnectionPhase('');
       setError(mcpConnection.error || 'Failed to establish connection to MCP server');
     }
-  }, [mcpConnection, connecting, onClose, isAgentEnabled, toggleAgent]);
+  }, [mcpConnection, connecting, wsConnected, isFullyReady, onClose, isAgentEnabled, toggleAgent]);
 
   // Fetch default MCP port from configuration when component mounts
   useEffect(() => {
@@ -121,28 +149,33 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
     try {
       setLoading(true);
       setError(null);
+      setSelectedServerId(null); // Clear previous selection before fetching
+      setServers([]); // Clear previous server list
 
       const response = await axios.get('/api/mcp/server/config');
 
       if (response.data && (response.data.servers || response.data.configurations)) {
-        // Handle both response formats (servers or configurations)
         const serverData = response.data.servers || response.data.configurations || [];
         setServers(serverData);
 
-        // If there's a default server, select it
         const defaultServer = serverData.find((server: MCPServer) => server.is_default);
         if (defaultServer) {
           setSelectedServerId(defaultServer.id);
         } else if (serverData.length > 0) {
-          // Otherwise, select the first server
           setSelectedServerId(serverData[0].id);
         }
       } else {
-        setServers([]);
+        setServers([]); // Ensure servers is empty if response is not as expected
       }
     } catch (err: any) {
       console.error('Error fetching MCP servers:', err);
-      setError(err.response?.data?.error || 'Failed to fetch MCP servers');
+      if (err.response && err.response.status === 401) {
+        setError('Authentication failed. Please log in to see MCP servers.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to fetch MCP servers. Check console for details.');
+      }
+      setServers([]); // Ensure servers list is empty on error
+      setSelectedServerId(null); // Clear selected server ID on error
     } finally {
       setLoading(false);
     }
@@ -153,44 +186,67 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
     try {
       setTestingServer(server.id);
       setError(null);
+      setDirectSseSuccess(null); // Clear any previous direct SSE success message
 
-      // Use the direct test connection from MCPContext
+      // Use the simplified test connection from MCPContext (checks /info and /tools only)
       const testResult = await testServerConnection(server);
 
       if (testResult.success) {
-        // Update server status in the UI
+        // Update server status in the UI - marks as generally available
         setServers(prevServers =>
           prevServers.map(s =>
             s.id === server.id
               ? {
                   ...s,
-                  mcp_connection_status: 'connected',
+                  mcp_connection_status: 'connecting', // Mark as connecting since we're proceeding
                   mcp_server_version: testResult.server?.version || 'unknown',
                   tools_count: testResult.toolCount || 0
                 }
               : s
           )
         );
-
-        // Select this server
+        
+        // Automatically connect if test is successful
+        console.log(`Test successful for ${server.mcp_nickname}. Auto-connecting...`);
         setSelectedServerId(server.id);
+        setConnecting(true);
+        setSSEConnectionStatus('connecting');
+        
+        // Call onServerSelect to notify parent component
+        onServerSelect(server.id);
+        
+        // Call connectToServer from MCPContext
+        try {
+          await connectToServer(server);
+          // Success/failure will be handled by useEffect monitoring mcpConnection
+        } catch (connectError) {
+          console.error('Error connecting to MCP server after successful test:', connectError);
+          setError(connectError.message || 'Failed to connect after successful test');
+          setConnecting(false);
+          setSSEConnectionStatus('error');
+          
+          // Update server status to error
+          setServers(prevServers =>
+            prevServers.map(s =>
+              s.id === server.id
+                ? { ...s, mcp_connection_status: 'error' }
+                : s
+            )
+          );
+        }
       } else {
         // Update server status to error
         setServers(prevServers =>
           prevServers.map(s =>
             s.id === server.id
-              ? { ...s, mcp_connection_status: 'error' }
+              ? { ...s, mcp_connection_status: 'error' } 
               : s
           )
         );
-
-        // Show error
-        setError(testResult.error || 'Failed to connect to MCP server');
+        setError(testResult.error || 'Test connection failed for /info or /tools.');
       }
     } catch (err: any) {
-      console.error('Error testing MCP connection:', err);
-
-      // Update server status to error
+      console.error('Error testing MCP connection in component:', err);
       setServers(prevServers =>
         prevServers.map(s =>
           s.id === server.id
@@ -198,46 +254,14 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
             : s
         )
       );
-
-      // Show error
-      setError(err.message || 'Failed to connect to MCP server');
+      setError(err.message || 'Failed to connect to MCP server during test.');
     } finally {
       setTestingServer(null);
     }
   };
 
-  // Handle server selection
-  const handleServerSelect = () => {
-    if (selectedServerId) {
-      // Find the selected server
-      const selectedServer = servers.find(s => s.id === selectedServerId);
-      
-      if (selectedServer) {
-        setConnecting(true);
-        setError(null);
-        
-        console.log(`Connecting to MCP server: ${selectedServer.mcp_nickname || selectedServer.mcp_host}`);
-        
-        // Add a connecting message
-        const connectingMsg = `Establishing connection to ${selectedServer.mcp_nickname || selectedServer.mcp_host}. This may take a moment...`;
-        setSSEConnectionStatus('connecting');
-        
-        // Call the parent onServerSelect handler which will trigger the connection
-        onServerSelect(selectedServerId);
-        
-        // Don't close the dialog immediately - wait for connection status to update
-        // The effect listening to mcpConnection will handle closing when connected
-      } else {
-        setError('Server not found');
-      }
-    } else {
-      setError('Please select a server to connect');
-    }
-  };
-
-  // Handle direct connection
+  // Handle direct connection: This function is called directly after direct test
   const handleDirectConnect = async () => {
-    // Simple validation
     if (!directHost.trim()) {
       setError('Please enter a valid host');
       return;
@@ -251,12 +275,15 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
       return;
     }
 
-    setDirectConnecting(true);
+    setDirectConnecting(true); // Specific to direct connect UI
+    setConnecting(true); // General connecting flag
     setSSEConnectionStatus('connecting');
     setError(null);
+    setDirectSseSuccess(null);
 
+    // Try to test the connection first
     try {
-      // Create a temporary server object
+      // Quick test of /info and /tools
       const tempServer: MCPServer = {
         id: `direct-${Date.now()}`,
         mcp_nickname: directName,
@@ -266,11 +293,28 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
         is_default: true
       };
 
-      // Connect to the server - skip test step for faster connection
-      setConnecting(true);
+      // Test the connection
+      const testResult = await testServerConnection(tempServer);
+      
+      if (!testResult.success) {
+        // If test fails, show error
+        setError(testResult.error || 'Server test failed');
+        setDirectConnecting(false);
+        setConnecting(false);
+        setSSEConnectionStatus('error');
+        return;
+      }
+      
+      // If test passes, connect
+      console.log(`Direct connection test successful. Auto-connecting...`);
+      
+      // Call onServerSelect to notify parent component
+      onServerSelect(tempServer.id);
+      
+      // Call connectToServer from MCPContext
       await connectToServer(tempServer);
-
-      // Save the server configuration to the database
+      
+      // Save the server configuration for future use
       try {
         const response = await axios.post('/api/mcp/server/config', {
           server_name: directName,
@@ -278,23 +322,82 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
           mcp_port: parseInt(directPort),
           is_default: true
         });
-
+        
         if (response.data && response.data.id) {
-          // Success will be handled by the SSE status effect above
           console.log('Server configuration saved with ID:', response.data.id);
         }
       } catch (saveError: any) {
-        console.error('Failed to save MCP server configuration:', saveError);
-        // Don't fail the connection - just log a warning
-        console.warn('Server connection succeeded but configuration could not be saved');
+        console.warn('Server connection initiated, but configuration could not be saved:', saveError.message);
       }
+      
     } catch (err: any) {
-      console.error('Error connecting to MCP server:', err);
-      setError(err.message || 'Failed to connect to MCP server');
+      console.error('Error during direct connection test/connect:', err);
+      setError(err.message || 'Failed to connect directly to MCP server');
       setDirectConnecting(false);
       setConnecting(false);
-      setSSEConnectionStatus('');
+      setSSEConnectionStatus('error');
     }
+  };
+
+  // Update the renderConnectionStatus function to show detailed phases and direct SSE success
+  const renderConnectionStatus = () => {
+    // Show direct SSE success if available
+    if (directSseSuccess) {
+      return (
+        <div className="mb-4 p-3 rounded-md bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 flex items-center">
+          <CheckCircleIcon className="w-5 h-5 mr-2" />
+          <div>
+            <p className="font-medium">Direct SSE Connection Successful!</p>
+            <p className="text-xs mt-1">Client ID: {directSseSuccess}</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (!connecting) return null;
+    
+    if (!wsConnected || !isFullyReady) {
+      return (
+        <div className="mb-4 p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 flex items-center">
+          <ArrowPathIcon className="w-5 h-5 mr-2 animate-spin" />
+          <div>
+            <p className="font-medium">Initializing WebSocket connection...</p>
+            <p className="text-xs mt-1">This step is required before connecting to the MCP server.</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (connectionPhase === 'mcp') {
+      return (
+        <div className="mb-4 p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 flex items-center">
+          <ArrowPathIcon className="w-5 h-5 mr-2 animate-spin" />
+          <div>
+            <p className="font-medium">Establishing MCP connection...</p>
+            <p className="text-xs mt-1">Connecting to server and acquiring client ID.</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (connectionPhase === 'complete') {
+      return (
+        <div className="mb-4 p-3 rounded-md bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 flex items-center">
+          <CheckCircleIcon className="w-5 h-5 mr-2" />
+          <div>
+            <p className="font-medium">Connection successful!</p>
+            <p className="text-xs mt-1">Client ID acquired. Redirecting to chat...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="mb-4 p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 flex items-center">
+        <ArrowPathIcon className="w-5 h-5 mr-2 animate-spin" />
+        <span>Establishing connection to server...</span>
+      </div>
+    );
   };
 
   // Render the server list
@@ -378,6 +481,22 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                   <ExclamationCircleIcon className="w-3 h-3 mr-1" />
                   Error
                 </div>
+              ) : server.mcp_connection_status === 'available' ? (
+                <div className="flex items-center text-xs mr-2 px-2 py-1 rounded-full" style={{ 
+                  backgroundColor: 'var(--color-info-bg)',  // Use a different color for 'available'
+                  color: 'var(--color-info)'
+                }}>
+                  <InformationCircleIcon className="w-3 h-3 mr-1" />
+                  Available
+                </div>
+              ) : server.mcp_connection_status === 'connecting' ? (
+                <div className="flex items-center text-xs mr-2 px-2 py-1 rounded-full" style={{ 
+                  backgroundColor: 'var(--color-warning-bg)', 
+                  color: 'var(--color-warning)'
+                }}>
+                  <ArrowPathIcon className="w-3 h-3 mr-1 animate-spin" />
+                  Connecting
+                </div>
               ) : (
                 <div className="flex items-center text-xs mr-2 px-2 py-1 rounded-full" style={{ 
                   backgroundColor: 'var(--color-primary-translucent)', 
@@ -396,7 +515,7 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                   e.stopPropagation();
                   testConnection(server);
                 }}
-                disabled={testingServer === server.id}
+                disabled={testingServer === server.id || connecting}
               >
                 {testingServer === server.id ? (
                   <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -441,13 +560,8 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
 
         {/* Body */}
         <div className="p-4">
-          {/* Connecting indicator */}
-          {connecting && (
-            <div className="mb-4 p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 flex items-center">
-              <ArrowPathIcon className="w-5 h-5 mr-2 animate-spin" />
-              <span>Establishing connection to server...</span>
-            </div>
-          )}
+          {/* Connection status indicator */}
+          {renderConnectionStatus()}
           
           {/* SSE Connection Status */}
           {sseConnectionStatus && !connecting && (
@@ -477,13 +591,16 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                 </p>
                 <p className="text-xs mt-1">
                   {sseConnectionStatus === 'connected' 
-                    ? 'Successfully established SSE connection with a valid ClientID.'
+                    ? `Successfully established SSE connection${mcpConnection.clientId ? ` with client ID: ${mcpConnection.clientId}` : ''}`
                     : sseConnectionStatus === 'error'
                       ? 'Failed to establish SSE connection. Please try another server or check your network.'
                       : sseConnectionStatus === 'connecting'
-                        ? 'Attempting to establish SSE connection. Please wait...'
+                        ? 'Attempting to establish direct connection with the SSE endpoint...'
                         : 'No active MCP connection.'}
                 </p>
+                {mcpConnection.clientId && sseConnectionStatus === 'connected' && (
+                  <p className="text-xs mt-1 font-medium">Client ID: {mcpConnection.clientId}</p>
+                )}
               </div>
             </div>
           )}
@@ -496,8 +613,7 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                 <p className="mb-1 font-medium">Select an MCP server to connect to</p>
                 <ol className="list-decimal pl-5 space-y-1">
                   <li>Select a server from the list</li>
-                  <li>Test the connection using the refresh button</li>
-                  <li>Click "Connect" to establish the connection</li>
+                  <li>Click the refresh button to test and automatically connect to the server</li>
                 </ol>
               </div>
             </div>
@@ -542,29 +658,6 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                 >
                   <PlusIcon className="w-4 h-4 mr-1" />
                   New Connection
-                </button>
-
-                <button
-                  className="px-4 py-2 rounded-md flex items-center text-sm"
-                  style={{
-                    backgroundColor: selectedServerId ? 'var(--color-primary)' : 'var(--color-surface-light)',
-                    color: selectedServerId ? 'white' : 'var(--color-text-muted)',
-                    opacity: (selectedServerId && !connecting) ? 1 : 0.7
-                  }}
-                  onClick={handleServerSelect}
-                  disabled={!selectedServerId || connecting}
-                >
-                  {connecting ? (
-                    <>
-                      <ArrowPathIcon className="w-4 h-4 mr-1 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <ArrowRightCircleIcon className="w-4 h-4 mr-1" />
-                      Connect
-                    </>
-                  )}
                 </button>
               </div>
             </>
@@ -641,29 +734,40 @@ const MCPServerSelector: React.FC<MCPServerSelectorProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end">
+              <div className="mt-4 text-center">
                 <button
-                  className="px-4 py-2 rounded-md flex items-center text-sm"
+                  className="px-4 py-2 w-full rounded-md flex items-center justify-center text-sm"
                   style={{
                     backgroundColor: 'var(--color-primary)',
                     color: 'white',
-                    opacity: (directConnecting || connecting) ? 0.7 : 1
+                    opacity: (directConnecting || connecting || loading) ? 0.7 : 1
                   }}
                   onClick={handleDirectConnect}
-                  disabled={directConnecting || connecting}
+                  disabled={directConnecting || connecting || loading}
                 >
-                  {directConnecting || connecting ? (
+                  {directConnecting || (connecting && !selectedServerId) ? (
                     <>
                       <ArrowPathIcon className="w-4 h-4 mr-1 animate-spin" />
-                      Connecting...
+                      Testing & Connecting...
                     </>
                   ) : (
                     <>
                       <ServerIcon className="w-4 h-4 mr-1" />
-                      Connect
+                      Test & Connect
                     </>
                   )}
                 </button>
+              </div>
+
+              {/* Direct SSE Connection information - Can be removed or rephrased */}
+              <div className="mt-4 p-3 rounded-md text-xs" style={{ backgroundColor: 'var(--color-primary-translucent)' }}>
+                <div className="flex items-start">
+                  <InformationCircleIcon className="w-4 h-4 mr-1 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }} />
+                  <div>
+                    <p className="mb-1">Test & Connect</p>
+                    <p>Clicking this button will test the server and automatically connect if it's available.</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

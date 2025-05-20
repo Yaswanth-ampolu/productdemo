@@ -59,3 +59,27 @@
 2025-05-20 13:40:27 error: Error sending chat message to Ollama: Request failed with status code 404
 2025-05-20 17:21:54 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
 2025-05-20 17:23:36 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 17:32:28 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 17:39:45 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 17:40:33 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 19:16:25 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 19:57:40 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 19:59:55 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 20:00:04 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 20:14:30 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 20:16:04 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 20:59:11 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 20:59:48 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 21:00:02 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 22:21:14 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:26:37 error: WebSocket: Error executing MCP tool echo: Request failed with status code 400
+2025-05-20 22:26:39 error: WebSocket: Error executing MCP tool echo: Request failed with status code 400
+2025-05-20 22:26:41 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:26:42 error: WebSocket: Error executing MCP tool echo: Request failed with status code 400
+2025-05-20 22:26:46 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:26:47 error: WebSocket: Error executing MCP tool echo: Request failed with status code 400
+2025-05-20 22:29:36 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:29:47 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:29:54 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:33:35 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 22:35:20 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
