@@ -54,3 +54,8 @@
 2025-05-17 14:27:06 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
 2025-05-17 14:27:33 error: Error fetching available models from Ollama server: connect ETIMEDOUT 172.16.16.54:11434
 2025-05-17 14:57:44 error: Error in generate-command endpoint: ollamaService.chat is not a function
+2025-05-20 11:51:38 error: Error setting up stream: Request failed with status code 404
+2025-05-20 13:38:26 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 13:40:27 error: Error sending chat message to Ollama: Request failed with status code 404
+2025-05-20 17:21:54 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-20 17:23:36 error: Error sending chat message to Ollama: Request failed with status code 404

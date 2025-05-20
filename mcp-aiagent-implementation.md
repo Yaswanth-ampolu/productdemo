@@ -1,673 +1,619 @@
-# MCP AI Agent Implementation Plan
+# MCP AI Agent Implementation Documentation
 
 ## Overview
 
-This document outlines the implementation plan for creating an AI agent that integrates with the Model Context Protocol (MCP) system. The agent will provide a three-way communication flow between the user, the AI model, and the MCP server, allowing for command execution with user approval.
+The MCP AI Agent is an intelligent assistant that integrates with MCP (Machine Command Protocol) servers to execute commands on behalf of users. This document describes the implementation details and provides guidance for using and extending the agent.
 
-## Core Components
+## Key Features
 
-### 1. MCP Agent Architecture
+1. **Server Integration**: Connect to any MCP server by selecting from configured servers or creating direct connections
+2. **AI Assistance**: Analyzes user requests to determine appropriate MCP commands
+3. **Command Approval**: Displays generated commands for user approval before execution
+4. **Result Display**: Shows command execution results in a user-friendly format
+5. **Error Handling**: Provides clear error messages and recovery suggestions
 
-The MCP AI Agent will consist of the following components:
+## Architecture
 
-1. **Agent Controller**: Orchestrates the interaction between the AI model, user, and MCP server
-2. **Command Parser**: Extracts and formats commands from AI responses
-3. **Command Approval UI**: Presents commands to the user for approval/rejection
-4. **MCP Client**: Handles communication with the MCP server
-5. **Result Processor**: Processes and displays results from MCP tool executions
-6. **Context Manager**: Maintains conversation context and agent state
+The MCP AI Agent is built using a context-based architecture with the following key components:
 
-### 2. Workflow
+### Core Components
 
-The agent workflow will follow these steps:
+1. **MCPContext**: Manages connections to MCP servers, handles SSE connections, and executes commands
+2. **MCPAgentContext**: Processes user requests, generates commands, and manages command approval workflow
+3. **MCPServerSelector**: User interface for selecting and connecting to MCP servers
+4. **MCPCommandApproval**: Displays commands awaiting approval and allows parameter editing
+5. **MCPCommandResult**: Formats and displays command execution results
+6. **MCPStatusIndicator**: Displays connection status and provides guidance
+7. **MCPAgentCommands**: Container for commands, results, and status indicators
 
-1. **Activation**: User toggles the MCP agent on in the chat interface
-2. **Connection**: Agent connects to the configured MCP server
-3. **Tool Discovery**: Agent discovers available tools on the MCP server
-4. **User Input**: User sends a message to the AI
-5. **AI Processing**: AI generates a response, potentially including MCP commands
-6. **Command Extraction**: Agent extracts commands from the AI response
-7. **Command Approval**: User approves or rejects each command
-8. **Command Execution**: Approved commands are sent to the MCP server
-9. **Result Display**: Results are displayed to the user and fed back to the AI
-10. **Continuation**: AI continues the conversation based on command results
+### Connection Flow
 
-## Implementation Plan
+1. User activates the MCP Agent using the toggle in the chat interface
+2. System retrieves available MCP servers from the database
+3. User selects a server to connect to
+4. System establishes connections to MCP endpoints:
+   - `/info` - Basic server information
+   - `/tools` - Available tools and commands
+   - `/sse` - Server-Sent Events for real-time communication
+   - `/messages` - Command execution endpoint
+5. Agent receives a clientId from the SSE connection
+6. Agent displays welcome message with available tools and capabilities
+7. Agent is ready to process user requests
 
-### Phase 1: Agent Core Components
+### Command Generation and Execution
 
-#### 1.1 Create MCP Agent Context
+1. User enters a request in natural language
+2. AI model analyzes the request and generates appropriate MCP commands
+3. Commands are displayed for user approval
+4. User can modify command parameters if needed
+5. Upon approval, command is sent to the MCP server with the valid clientId
+6. Results are displayed in the chat interface
 
-Create a new context provider to manage the agent state and provide access to agent functionality throughout the application.
+## Protocol Requirements
 
-```typescript
-// client/src/contexts/MCPAgentContext.tsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useMCP } from './MCPContext';
+The MCP Agent interacts with MCP servers using a specific protocol:
 
-interface MCPAgentContextType {
-  isAgentEnabled: boolean;
-  toggleAgent: () => void;
-  isProcessingCommand: boolean;
-  pendingCommands: MCPCommand[];
-  approveCommand: (commandId: string) => Promise<void>;
-  rejectCommand: (commandId: string) => Promise<void>;
-  modifyCommand: (commandId: string, newCommand: string) => void;
-  commandResults: MCPCommandResult[];
-}
+### SSE Connection
 
-interface MCPCommand {
-  id: string;
-  tool: string;
-  parameters: Record<string, any>;
-  originalText: string;
-  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
-}
+- Endpoint: `/sse`
+- Purpose: Establish real-time connection and receive clientId
+- Response: `{"type":"connected","clientId":"XXXX"}`
+- The clientId must be stored and used for all subsequent commands
 
-interface MCPCommandResult {
-  commandId: string;
-  result: any;
-  error?: string;
-}
+### Command Execution
 
-const MCPAgentContext = createContext<MCPAgentContextType | undefined>(undefined);
+- Endpoint: `/messages`
+- Method: POST
+- Payload: `{"clientId":"XXX","tool":"toolName","parameters":{...}}`
+- The clientId must be valid from an active SSE connection
+- Commands without a valid clientId are rejected
 
-export const MCPAgentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isConnected, executeCommand, availableTools } = useMCP();
-  const [isAgentEnabled, setIsAgentEnabled] = useState<boolean>(false);
-  const [isProcessingCommand, setIsProcessingCommand] = useState<boolean>(false);
-  const [pendingCommands, setPendingCommands] = useState<MCPCommand[]>([]);
-  const [commandResults, setCommandResults] = useState<MCPCommandResult[]>([]);
+### Tool Discovery
 
-  // Toggle agent enabled state
-  const toggleAgent = () => {
-    setIsAgentEnabled(prev => !prev);
-  };
+- Endpoint: `/tools`
+- Method: GET
+- Returns a list of available tools with their parameters and descriptions
 
-  // Approve and execute a command
-  const approveCommand = async (commandId: string) => {
-    // Implementation details
-  };
+## User Guide
 
-  // Reject a command
-  const rejectCommand = async (commandId: string) => {
-    // Implementation details
-  };
+### Enabling the MCP Agent
 
-  // Modify a command before approval
-  const modifyCommand = (commandId: string, newCommand: string) => {
-    // Implementation details
-  };
+1. Click the MCP toggle button in the chat interface
+2. Select a server from the list or create a direct connection
+3. Wait for the connection to be established
+4. The agent will automatically initialize and display a welcome message
 
-  return (
-    <MCPAgentContext.Provider
-      value={{
-        isAgentEnabled,
-        toggleAgent,
-        isProcessingCommand,
-        pendingCommands,
-        approveCommand,
-        rejectCommand,
-        modifyCommand,
-        commandResults
-      }}
-    >
-      {children}
-    </MCPAgentContext.Provider>
-  );
-};
+### Using the MCP Agent
 
-export const useMCPAgent = () => {
-  const context = useContext(MCPAgentContext);
-  if (context === undefined) {
-    throw new Error('useMCPAgent must be used within an MCPAgentProvider');
+1. Enter your request in natural language
+2. Review the generated commands
+3. Modify parameters if needed
+4. Click "Approve & Execute" to run the command
+5. View the results in the chat interface
+
+### Handling Errors
+
+If you encounter connection issues or errors:
+
+1. Check the status indicator for error messages
+2. Click the "Reconnect" button to re-establish the connection
+3. If problems persist, try selecting a different server
+4. Check network connectivity and server availability
+
+## Implementation Details
+
+### New Components (July 2024)
+
+#### MCPStatusIndicator
+
+A new component that displays the current status of the MCP connection:
+
+- Shows different status indicators based on connection state (connected, error, connecting)
+- Includes server information when connected
+- Provides a reconnect button when there's an error
+- Displays helpful guidance messages for users
+
+```jsx
+<MCPStatusIndicator />
+```
+
+#### Enhanced MCPAgentCommands
+
+Updated to provide better user experience:
+
+- Incorporates the status indicator for better visibility
+- Displays a welcome message with server and tools information
+- Shows examples of commands users can try
+- Includes processing indicators for better feedback
+
+```jsx
+<MCPAgentCommands />
+```
+
+#### Improved MCPServerSelector
+
+Enhanced to provide better connection feedback:
+
+- Added connecting indicator for clearer feedback
+- Automatically closes upon successful connection
+- Better error handling for connection failures
+- Ensures agent is automatically enabled after connection
+
+```jsx
+<MCPServerSelector 
+  isOpen={showServerSelector}
+  onClose={() => setShowServerSelector(false)}
+  onServerSelect={handleServerSelect}
+/>
+```
+
+### SSE Connection Management
+
+The agent maintains an SSE connection while active and handles various connection states:
+- `connecting`: Initial connection attempt
+- `connected`: Successfully connected with valid clientId
+- `disconnected`: Not connected or disconnected
+- `error`: Error establishing or maintaining connection
+
+### ClientId Handling
+
+The clientId from the SSE connection is:
+1. Stored in the MCPContext state
+2. Validated before each command execution
+3. Renewed if connection is lost and reestablished
+4. Included in all requests to the `/messages` endpoint
+
+### Command Formatting
+
+Commands are sent to the server in the format:
+```json
+{
+  "clientId": "generated-client-id",
+  "tool": "toolName",
+  "parameters": {
+    "param1": "value1",
+    "param2": "value2"
   }
-  return context;
-};
-```
-
-#### 1.2 Create Command Parser Service
-
-Create a service to extract and parse commands from AI responses.
-
-```typescript
-// client/src/services/mcpAgentService.ts
-interface ParsedCommand {
-  id: string;
-  tool: string;
-  parameters: Record<string, any>;
-  originalText: string;
-}
-
-export const mcpAgentService = {
-  /**
-   * Parse AI response to extract MCP commands
-   */
-  parseCommands: (aiResponse: string): ParsedCommand[] => {
-    const commands: ParsedCommand[] = [];
-    
-    // Regular expression to match MCP command patterns
-    // This is a simplified example - actual implementation would be more robust
-    const commandRegex = /```mcp\s+([\s\S]+?)```/g;
-    let match;
-    
-    while ((match = commandRegex.exec(aiResponse)) !== null) {
-      try {
-        const commandText = match[1].trim();
-        const commandParts = commandText.split('\n');
-        const toolName = commandParts[0].trim();
-        
-        // Parse parameters
-        const parameters: Record<string, any> = {};
-        for (let i = 1; i < commandParts.length; i++) {
-          const paramLine = commandParts[i].trim();
-          if (paramLine && paramLine.includes(':')) {
-            const [key, value] = paramLine.split(':', 2);
-            parameters[key.trim()] = value.trim();
-          }
-        }
-        
-        commands.push({
-          id: `cmd-${Date.now()}-${commands.length}`,
-          tool: toolName,
-          parameters,
-          originalText: commandText
-        });
-      } catch (error) {
-        console.error('Error parsing MCP command:', error);
-      }
-    }
-    
-    return commands;
-  },
-  
-  /**
-   * Format command for display
-   */
-  formatCommandForDisplay: (command: ParsedCommand): string => {
-    return `${command.tool}\n${Object.entries(command.parameters)
-      .map(([key, value]) => `  ${key}: ${value}`)
-      .join('\n')}`;
-  }
-};
-```
-
-### Phase 2: UI Components
-
-#### 2.1 Create Command Approval Component
-
-Create a component to display commands and allow user approval/rejection.
-
-```typescript
-// client/src/components/chat/MCPCommandApproval.tsx
-import React, { useState } from 'react';
-import { useMCPAgent } from '../../contexts/MCPAgentContext';
-
-interface MCPCommandApprovalProps {
-  commandId: string;
-  tool: string;
-  parameters: Record<string, any>;
-  originalText: string;
-}
-
-const MCPCommandApproval: React.FC<MCPCommandApprovalProps> = ({
-  commandId,
-  tool,
-  parameters,
-  originalText
-}) => {
-  const { approveCommand, rejectCommand, modifyCommand } = useMCPAgent();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedCommand, setEditedCommand] = useState(originalText);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleApprove = async () => {
-    setIsProcessing(true);
-    try {
-      await approveCommand(commandId);
-    } catch (error) {
-      console.error('Error approving command:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleReject = async () => {
-    setIsProcessing(true);
-    try {
-      await rejectCommand(commandId);
-    } catch (error) {
-      console.error('Error rejecting command:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
-
-  const handleSaveEdit = () => {
-    modifyCommand(commandId, editedCommand);
-    setIsEditing(false);
-  };
-
-  return (
-    <div className="mcp-command-approval">
-      <div className="mcp-command-header">
-        <span className="mcp-command-tool">{tool}</span>
-      </div>
-      
-      {isEditing ? (
-        <div className="mcp-command-edit">
-          <textarea
-            value={editedCommand}
-            onChange={(e) => setEditedCommand(e.target.value)}
-            className="mcp-command-edit-textarea"
-          />
-          <div className="mcp-command-edit-actions">
-            <button onClick={handleSaveEdit} disabled={isProcessing}>
-              Save
-            </button>
-            <button onClick={() => setIsEditing(false)} disabled={isProcessing}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="mcp-command-content">
-          <pre>{Object.entries(parameters)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join('\n')}</pre>
-        </div>
-      )}
-      
-      <div className="mcp-command-actions">
-        <button 
-          onClick={handleApprove} 
-          disabled={isProcessing}
-          className="mcp-approve-button"
-        >
-          Approve
-        </button>
-        <button 
-          onClick={handleReject} 
-          disabled={isProcessing}
-          className="mcp-reject-button"
-        >
-          Reject
-        </button>
-        <button 
-          onClick={handleEdit} 
-          disabled={isProcessing || isEditing}
-          className="mcp-edit-button"
-        >
-          Edit
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default MCPCommandApproval;
-```
-
-#### 2.2 Create Command Result Component
-
-Create a component to display the results of executed commands.
-
-```typescript
-// client/src/components/chat/MCPCommandResult.tsx
-import React from 'react';
-
-interface MCPCommandResultProps {
-  result: any;
-  error?: string;
-}
-
-const MCPCommandResult: React.FC<MCPCommandResultProps> = ({ result, error }) => {
-  if (error) {
-    return (
-      <div className="mcp-command-result error">
-        <div className="mcp-result-header">
-          <span className="mcp-result-error-label">Error</span>
-        </div>
-        <div className="mcp-result-content">
-          <pre>{error}</pre>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mcp-command-result">
-      <div className="mcp-result-header">
-        <span className="mcp-result-label">Result</span>
-      </div>
-      <div className="mcp-result-content">
-        {typeof result === 'object' ? (
-          <pre>{JSON.stringify(result, null, 2)}</pre>
-        ) : (
-          <pre>{String(result)}</pre>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default MCPCommandResult;
-```
-
-### Phase 3: Integration with Chat Interface
-
-#### 3.1 Update Chat Input Component
-
-Add MCP agent toggle to the chat input component.
-
-```typescript
-// client/src/components/chat/ChatInput.tsx (update)
-import { useMCPAgent } from '../../contexts/MCPAgentContext';
-import { useMCP } from '../../contexts/MCPContext';
-
-// Inside the ChatInput component
-const { isConnected } = useMCP();
-const { isAgentEnabled, toggleAgent } = useMCPAgent();
-
-// Add to the JSX
-<div className="chat-input-controls">
-  {/* Existing controls */}
-  
-  {isConnected && (
-    <button
-      className={`mcp-agent-toggle ${isAgentEnabled ? 'active' : ''}`}
-      onClick={toggleAgent}
-      title={isAgentEnabled ? 'Disable MCP Agent' : 'Enable MCP Agent'}
-    >
-      <CpuChipIcon className="h-5 w-5" />
-    </button>
-  )}
-</div>
-```
-
-#### 3.2 Update Message Component
-
-Enhance the message component to display command approvals and results.
-
-```typescript
-// client/src/components/chat/ChatMessage.tsx (update)
-import MCPCommandApproval from './MCPCommandApproval';
-import MCPCommandResult from './MCPCommandResult';
-import { useMCPAgent } from '../../contexts/MCPAgentContext';
-
-// Inside the ChatMessage component
-const { pendingCommands, commandResults } = useMCPAgent();
-
-// Add to the JSX where message content is rendered
-{message.role === 'assistant' && pendingCommands.length > 0 && (
-  <div className="mcp-commands-container">
-    {pendingCommands.map(command => (
-      <MCPCommandApproval
-        key={command.id}
-        commandId={command.id}
-        tool={command.tool}
-        parameters={command.parameters}
-        originalText={command.originalText}
-      />
-    ))}
-  </div>
-)}
-
-{message.role === 'assistant' && commandResults.length > 0 && (
-  <div className="mcp-results-container">
-    {commandResults.map(result => (
-      <MCPCommandResult
-        key={result.commandId}
-        result={result.result}
-        error={result.error}
-      />
-    ))}
-  </div>
-)}
-```
-
-### Phase 4: AI Model Integration
-
-#### 4.1 Update AI Chat Service
-
-Enhance the AI chat service to include MCP agent capabilities in the prompt.
-
-```typescript
-// client/src/services/aiChatService.ts (update)
-// Add to the sendChatCompletion and streamChatCompletion methods
-
-// If MCP agent is enabled, add system message about MCP capabilities
-if (request.enableMCPAgent && request.mcpTools) {
-  const mcpSystemMessage = {
-    role: 'system',
-    content: `You have access to the following MCP tools that can interact with the user's system:
-${request.mcpTools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
-
-To use a tool, format your response with a command block like this:
-\`\`\`mcp
-toolName
-param1: value1
-param2: value2
-\`\`\`
-
-The user will be asked to approve or reject each command before execution.`
-  };
-  
-  // Add the MCP system message to the beginning of the messages array
-  transformedRequest.messages = [mcpSystemMessage, ...transformedRequest.messages];
 }
 ```
 
-#### 4.2 Update Chatbot Component
+## Error Handling
 
-Enhance the main Chatbot component to integrate with the MCP agent.
+The MCP Agent includes comprehensive error handling for various scenarios:
 
-```typescript
-// client/src/pages/Chatbot.tsx (update)
-import { useMCPAgent } from '../contexts/MCPAgentContext';
-import { useMCP } from '../contexts/MCPContext';
-import { mcpAgentService } from '../services/mcpAgentService';
+1. **Connection Errors**: 
+   - Timeout or network issues connecting to MCP server
+   - Invalid server details
+   - Server not responding
 
-// Inside the Chatbot component
-const { isAgentEnabled, pendingCommands, setPendingCommands } = useMCPAgent();
-const { isConnected, availableTools } = useMCP();
+2. **SSE Errors**:
+   - Failed to establish SSE connection
+   - Connection dropped or timed out
+   - Invalid clientId received
 
-// Modify handleSendMessage to include MCP agent information
-const handleSendMessage = async (content: string) => {
-  // Existing code...
-  
-  // If MCP agent is enabled, include MCP tools in the request
-  const mcpOptions = isAgentEnabled && isConnected
-    ? {
-        enableMCPAgent: true,
-        mcpTools: availableTools
-      }
-    : {};
-  
-  // Include mcpOptions in the AI request
-  const aiResponse = await aiChatService.sendChatCompletion({
-    modelId: selectedModelId,
-    messages: conversationHistory,
-    ...mcpOptions
-  });
-  
-  // If MCP agent is enabled, parse the response for commands
-  if (isAgentEnabled && isConnected) {
-    const parsedCommands = mcpAgentService.parseCommands(aiResponse.choices[0].message.content);
-    if (parsedCommands.length > 0) {
-      setPendingCommands(parsedCommands.map(cmd => ({
-        ...cmd,
-        status: 'pending'
-      })));
-    }
-  }
-  
-  // Existing code...
-};
-```
+3. **Command Execution Errors**:
+   - Missing or invalid clientId
+   - Invalid command parameters
+   - Command timeout or failure
+   - Server-side errors
 
-### Phase 5: Styling and User Experience
+Each error is displayed with a clear message and recovery suggestion where applicable.
 
-#### 5.1 Create CSS Styles for MCP Components
+## UX Improvements
 
-Create styles for the MCP agent components.
+The agent now provides several UX improvements:
 
-```css
-/* client/src/styles/mcpAgent.css */
-.mcp-command-approval {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  margin: 12px 0;
-  overflow: hidden;
-  background-color: var(--color-bg-secondary);
-}
+1. **Visual Feedback**:
+   - Connection status indicators
+   - Processing indicators
+   - Command approval UI
+   - Result display formatting
 
-.mcp-command-header {
-  background-color: var(--color-primary);
-  color: white;
-  padding: 8px 12px;
-  font-weight: 600;
-}
+2. **Guidance**:
+   - Welcome message with capabilities
+   - Examples of commands
+   - Error recovery suggestions
+   - Contextual help
 
-.mcp-command-content {
-  padding: 12px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.mcp-command-content pre {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: monospace;
-}
-
-.mcp-command-actions {
-  display: flex;
-  padding: 8px 12px;
-  border-top: 1px solid var(--color-border);
-  background-color: var(--color-bg-tertiary);
-}
-
-.mcp-command-actions button {
-  margin-right: 8px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.mcp-approve-button {
-  background-color: var(--color-success);
-  color: white;
-  border: none;
-}
-
-.mcp-reject-button {
-  background-color: var(--color-danger);
-  color: white;
-  border: none;
-}
-
-.mcp-edit-button {
-  background-color: var(--color-bg);
-  border: 1px solid var(--color-border);
-}
-
-.mcp-command-edit-textarea {
-  width: 100%;
-  min-height: 100px;
-  padding: 8px;
-  font-family: monospace;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  resize: vertical;
-}
-
-.mcp-command-edit-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.mcp-command-result {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  margin: 12px 0;
-  overflow: hidden;
-}
-
-.mcp-command-result.error {
-  border-color: var(--color-danger);
-}
-
-.mcp-result-header {
-  background-color: var(--color-success);
-  color: white;
-  padding: 6px 12px;
-  font-weight: 600;
-}
-
-.mcp-result-error-label {
-  background-color: var(--color-danger);
-}
-
-.mcp-result-content {
-  padding: 12px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.mcp-agent-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
-  background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-}
-
-.mcp-agent-toggle.active {
-  background-color: var(--color-primary);
-  color: white;
-}
-```
-
-## Implementation Timeline
-
-### Week 1: Core Components
-- Create MCPAgentContext
-- Implement command parsing service
-- Set up basic UI components
-
-### Week 2: UI Integration
-- Integrate with chat interface
-- Implement command approval flow
-- Style components
-
-### Week 3: AI Integration
-- Enhance AI prompts for MCP tools
-- Implement command extraction
-- Test with various commands
-
-### Week 4: Testing and Refinement
-- End-to-end testing
-- Bug fixes
-- Performance optimization
-- Documentation
+3. **Seamless Flow**:
+   - Automatic initialization
+   - Smooth transitions
+   - Consistent UI elements
+   - Error recovery mechanisms
 
 ## Future Enhancements
 
-1. **Command History**: Store and display history of executed commands
-2. **Command Templates**: Predefined templates for common tasks
-3. **Multi-step Workflows**: Support for sequences of commands
-4. **Visual Command Builder**: GUI for building commands
-5. **Result Visualization**: Enhanced display of command results (charts, tables, etc.)
-6. **Command Suggestions**: AI-powered suggestions for useful commands
-7. **Permission Management**: Fine-grained control over which tools can be used
+- **Command History**: Store and recall previously executed commands
+- **Favorites**: Save frequently used commands for quick access
+- **Multi-Server Support**: Connect to multiple MCP servers simultaneously
+- **Advanced Visualizations**: Enhanced display of command results
+- **Command Sequences**: Chain multiple commands together
+
+## Critical Issue: SSE Connection and ClientId Reliability
+
+Based on our in-depth analysis, there is a critical issue preventing the iterative agent workflow from functioning properly. While the connection is established (green badge appears), the SSE clientId is not being reliably captured, causing subsequent commands to fail with "Missing clientId" errors.
+
+### Root Causes
+
+1. **SSE Event Handling Gap**: The current implementation only listens for the generic `onmessage` event, but the MCP server might be sending the clientId on a named event (`event: connected`).
+
+2. **Race Condition**: The timeout mechanism doesn't properly handle race conditions between event reception and timeout expiration.
+
+3. **Missing Verification**: Commands are attempted without verifying if a valid clientId exists.
+
+4. **Incomplete Tool Result Handling**: The SSE `tool_result` events never reach React state, so outputs don't appear.
+
+5. **No Iteration Loop**: Even when results appear, there's no mechanism to analyze them and suggest follow-up actions.
+
+### Step-by-Step Implementation Plan
+
+#### Step 1: Fix SSE ClientId Acquisition
+
+1. Update `client/src/contexts/MCPContext.tsx` to add a specific listener for the 'connected' event:
+
+```typescript
+// In connectSSE function, after creating eventSource
+eventSource.addEventListener('connected', (event) => {
+  try {
+    console.log('SSE connected event received:', event.data);
+    const data = JSON.parse(event.data);
+    if (data.clientId) {
+      console.log(`Received clientId from 'connected' event: ${data.clientId}`);
+      setSSEConnection(prev => ({
+        ...prev,
+        clientId: data.clientId,
+        status: 'connected',
+        error: null
+      }));
+      
+      // Clear timeout if it exists
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+  } catch (error) {
+    console.error('Error parsing connected event:', error);
+  }
+});
+```
+
+2. Keep the existing `onmessage` handler as a fallback, but improve its structure:
+
+```typescript
+eventSource.onmessage = (event) => {
+  try {
+    console.log('SSE message received:', event.data);
+    const data = JSON.parse(event.data);
+    
+    // Handle connected message with clientId
+    if (data.type === 'connected' && data.clientId) {
+      console.log(`Received clientId from generic message: ${data.clientId}`);
+      setSSEConnection(prev => ({
+        ...prev,
+        clientId: data.clientId,
+        status: 'connected',
+        error: null
+      }));
+      
+      // Clear timeout if it exists
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+  } catch (error) {
+    console.error('Error parsing SSE message:', error);
+  }
+};
+```
+
+#### Step 2: Improve Timeout Handling
+
+1. Replace the setTimeout with a ref-based approach to prevent memory leaks and enable cleanup:
+
+```typescript
+// Add at the top of MCPContext component
+const timeoutRef = useRef<number | null>(null);
+
+// In connectSSE function
+// Clear any existing timeout first
+if (timeoutRef.current) {
+  clearTimeout(timeoutRef.current);
+}
+
+// Set new timeout
+timeoutRef.current = window.setTimeout(() => {
+  console.error('Timeout waiting for clientId');
+  setSSEConnection(prev => ({
+    ...prev,
+    status: 'error',
+    error: 'Timeout waiting for clientId from MCP server'
+  }));
+  
+  // Disconnect on timeout
+  if (sseConnection.eventSource) {
+    sseConnection.eventSource.close();
+    setSSEConnection(prev => ({
+      ...prev,
+      eventSource: null,
+      status: 'disconnected'
+    }));
+  }
+  
+  timeoutRef.current = null;
+}, 10000);
+
+// Add cleanup function to return statement
+return () => {
+  if (timeoutRef.current) {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }
+};
+```
+
+#### Step 3: Add ClientId Verification
+
+1. Create a verification method in MCPContext:
+
+```typescript
+// Add to MCPContext
+const verifyClientId = (): boolean => {
+  if (!sseConnection.clientId) {
+    console.error('No valid clientId available');
+    setError('Missing clientId. Please reconnect to the MCP server.');
+    
+    // Attempt to reconnect if needed
+    if (sseConnection.status !== 'connecting') {
+      reconnectSSE();
+    }
+    
+    return false;
+  }
+  return true;
+};
+```
+
+2. Update executeCommand to verify clientId before sending:
+
+```typescript
+// Update executeCommand function
+const executeCommand = async (toolName: string, parameters: any = {}) => {
+  if (!isConnected || !defaultServer) {
+    throw new Error('MCP is not connected');
+  }
+
+  // Verify clientId exists
+  if (!verifyClientId()) {
+    throw new Error('No valid clientId. SSE connection not established.');
+  }
+
+  try {
+    console.log(`Executing MCP command: ${toolName}`, parameters);
+    
+    // Rest of the existing executeCommand function
+    // ...
+  } catch (err: any) {
+    // Existing error handling
+    // ...
+  }
+};
+```
+
+#### Step 4: Add Tool Result Processing
+
+1. Add event listener for tool_result events:
+
+```typescript
+// In connectSSE function
+eventSource.addEventListener('tool_result', (event) => {
+  try {
+    console.log('Tool result received:', event.data);
+    const data = JSON.parse(event.data);
+    
+    // Dispatch the tool result to any registered listeners
+    dispatchToolResult(data);
+  } catch (error) {
+    console.error('Error parsing tool_result event:', error);
+  }
+});
+```
+
+2. Create a dispatcher method and context value:
+
+```typescript
+// Add to MCPContext
+const mcpAgentDispatcher = useRef<((data: any) => void) | null>(null);
+
+const dispatchToolResult = (data: any) => {
+  if (mcpAgentDispatcher.current) {
+    mcpAgentDispatcher.current(data);
+  }
+};
+
+// Export in context
+return (
+  <MCPContext.Provider
+    value={{
+      // Existing values...
+      dispatchToolResult,
+      registerToolResultHandler: (handler) => {
+        mcpAgentDispatcher.current = handler;
+      }
+    }}
+  >
+    {children}
+  </MCPContext.Provider>
+);
+```
+
+3. Update MCPContext type definition:
+
+```typescript
+interface MCPContextType {
+  // Existing properties...
+  dispatchToolResult: (data: any) => void;
+  registerToolResultHandler: (handler: (data: any) => void) => void;
+}
+```
+
+#### Step 5: Add Debug Logging
+
+1. Add verbose logging to track the SSE connection lifecycle:
+
+```typescript
+// At the start of connectSSE
+console.log(`Establishing SSE connection to ${server.mcp_host}:${server.mcp_port}/sse`);
+
+// When clientId is received
+console.log(`SSE connection established with clientId: ${data.clientId}`);
+
+// On error
+console.error(`SSE connection error:`, error);
+```
+
+2. Add connection validation endpoint to verify clientId:
+
+```typescript
+// Add to MCPContext
+const validateClientId = async (): Promise<boolean> => {
+  if (!sseConnection.clientId || !defaultServer) {
+    return false;
+  }
+  
+  try {
+    // Simple validation request
+    const response = await axios.post(
+      `http://${defaultServer.mcp_host}:${defaultServer.mcp_port}/messages`,
+      {
+        clientId: sseConnection.clientId,
+        tool: 'echo',
+        parameters: { message: 'validate-connection' }
+      },
+      { timeout: 5000 }
+    );
+    
+    return !response.data.error;
+  } catch (error) {
+    console.error('ClientId validation failed:', error);
+    return false;
+  }
+};
+```
+
+#### Step 6: Update Reconnection Logic
+
+1. Implement exponential backoff for reconnection attempts:
+
+```typescript
+// Add to MCPContext
+const reconnectWithBackoff = () => {
+  // Get current attempt count or initialize
+  const attempts = reconnectAttemptsRef.current || 0;
+  
+  // Max reconnect attempts
+  const maxAttempts = 5;
+  
+  if (attempts >= maxAttempts) {
+    setError(`Failed to reconnect after ${maxAttempts} attempts. Please try manually.`);
+    return;
+  }
+  
+  // Calculate delay with exponential backoff (1s, 2s, 4s, 8s, 16s)
+  const delay = Math.pow(2, attempts) * 1000;
+  
+  console.log(`Reconnect attempt ${attempts + 1}/${maxAttempts} scheduled in ${delay}ms`);
+  
+  // Set reconnect timeout
+  reconnectTimeoutRef.current = window.setTimeout(() => {
+    reconnectAttemptsRef.current = attempts + 1;
+    reconnectSSE();
+  }, delay);
+};
+
+// Update disconnectSSE to reset reconnect attempts
+const disconnectSSE = () => {
+  // Clear any reconnect timeout
+  if (reconnectTimeoutRef.current) {
+    clearTimeout(reconnectTimeoutRef.current);
+    reconnectTimeoutRef.current = null;
+  }
+  
+  // Reset reconnect attempts
+  reconnectAttemptsRef.current = 0;
+  
+  // Close event source
+  if (sseConnection.eventSource) {
+    sseConnection.eventSource.close();
+    setSSEConnection({
+      eventSource: null,
+      clientId: null,
+      status: 'disconnected',
+      error: null
+    });
+  }
+};
+```
+
+### Expected Results
+
+After implementing these changes:
+
+1. SSE connection will reliably capture clientId from either named or generic events
+2. Commands won't be attempted without a valid clientId
+3. Reconnection will happen automatically with exponential backoff
+4. Tool results will be dispatched to the agent for further processing
+5. Debug logs will provide visibility into the connection process
+
+### Testing Plan
+
+1. **Connection Test**: After implementing fixes, toggle the MCP agent and verify:
+   - Debug logs show SSE connection established
+   - ClientId is properly captured and logged
+   - Connection indicator turns green
+
+2. **Verification Test**: Execute a simple command and verify:
+   - Command is sent with valid clientId
+   - Command executes successfully
+   - Tool result event is received and logged
+
+3. **Recovery Test**: Simulate connection loss and verify:
+   - Error is detected and logged
+   - Reconnection attempt is made with backoff
+   - New clientId is acquired on reconnect
+   - New commands work after reconnection
+
+4. **Event Handling Test**: Execute a long-running command and verify:
+   - Tool result events are dispatched to handlers
+   - Updates appear in the UI as they arrive
+
+### Next Steps After SSE Fixes
+
+Once the SSE connection and clientId acquisition issues are resolved, we'll proceed to:
+
+1. Implement the Analysis Loop for command result processing
+2. Create Task Orchestration for multi-step workflows
+3. Add session persistence for context maintenance
+4. Improve the UI with better status indicators and controls
+
+## Long-term Enhancement Roadmap
+
+After fixing the critical issues:
+
+1. **Reliability Enhancements**:
+   - Add connection heartbeats to detect silent failures
+   - Implement clientId renewal for long-running sessions
+   - Add network connectivity checks before commands
+
+2. **UX Improvements**:
+   - Add progress bar for long-running commands
+   - Implement collapsible result sections
+   - Add command history and favorites
+
+3. **Performance Optimizations**:
+   - Implement result streaming for large outputs
+   - Add result pagination for very large data
+   - Optimize React rendering for rapid updates
+
+By addressing these issues systematically, we'll create a robust, responsive agent that maintains reliable connections and provides a smooth user experience.

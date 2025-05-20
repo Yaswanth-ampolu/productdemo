@@ -822,6 +822,39 @@ class OllamaService {
       };
     }
   }
+
+  /**
+   * Generates a response for a text prompt using the specified model
+   * This is a simplified wrapper around the chat method for single prompt interactions
+   * 
+   * @param {string} prompt - The text prompt to send to the model
+   * @param {string} modelId - The ID of the model to use
+   * @returns {Promise<string>} - The generated response text
+   */
+  async generateResponse(prompt, modelId) {
+    try {
+      // Format as a simple message
+      const messages = [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ];
+      
+      // Call the chat method with the formatted message
+      const response = await this.chat(modelId, messages);
+      
+      // Return the response text
+      if (response && response.message && response.message.content) {
+        return response.message.content;
+      }
+      
+      return '';
+    } catch (error) {
+      logger.error(`Error generating response with model ${modelId}:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = OllamaService;

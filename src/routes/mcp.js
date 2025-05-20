@@ -11,6 +11,10 @@ const sshService = require('../services/sshService');
 const mcpDBService = require('../services/mcpDBService');
 const config = require('../utils/config');
 const { logger } = require('../utils/logger');
+const db = require('../database');
+const axios = require('axios');
+const http = require('http');
+const { v4: uuidv4 } = require('uuid');
 
 // Get MCP configuration from config file
 router.get('/config', requireAuth, (req, res) => {
@@ -755,6 +759,90 @@ router.post('/ssh/install-in-directory', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error(`Error installing MCP in directory: ${err.message}`);
     res.status(500).json({ error: 'Failed to install MCP' });
+  }
+});
+
+// Get a client ID from an MCP server directly
+// This is a fallback method when WebSocket/SSE connections fail
+// GET /api/mcp/get-client-id
+router.get('/get-client-id', requireAuth, async (req, res) => {
+  const { host, port } = req.query;
+  
+  if (!host || !port) {
+    return res.status(400).json({ error: 'Host and port are required' });
+  }
+  
+  try {
+    logger.info(`Manual client ID request for MCP server ${host}:${port}`);
+    
+    // Create an EventSource to get the client ID
+    const EventSource = require('eventsource');
+    const sseUrl = `http://${host}:${port}/sse`;
+    
+    // Create a promise to handle the connection
+    const clientIdPromise = new Promise((resolve, reject) => {
+      // Create timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout waiting for client ID'));
+      }, 8000);
+      
+      try {
+        const es = new EventSource(sseUrl);
+        
+        // Listen for the connected event
+        es.addEventListener('connected', (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.clientId) {
+              clearTimeout(timeout);
+              resolve(data.clientId);
+              es.close();
+            }
+          } catch (e) {
+            logger.error(`Error parsing connected event: ${e.message}`);
+          }
+        });
+        
+        // Listen for the open event
+        es.onopen = () => {
+          logger.info(`SSE connection opened to ${sseUrl}`);
+        };
+        
+        // Listen for errors
+        es.onerror = (err) => {
+          logger.error(`SSE connection error: ${err.message || 'Unknown error'}`);
+          clearTimeout(timeout);
+          reject(new Error('SSE connection error'));
+          es.close();
+        };
+        
+        // Listen for general messages that might contain clientId
+        es.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'connected' && data.clientId) {
+              clearTimeout(timeout);
+              resolve(data.clientId);
+              es.close();
+            }
+          } catch (e) {
+            logger.error(`Error parsing message: ${e.message}`);
+          }
+        };
+      } catch (e) {
+        clearTimeout(timeout);
+        reject(e);
+      }
+    });
+    
+    // Wait for the client ID or timeout
+    const clientId = await clientIdPromise;
+    
+    // Return the client ID
+    return res.json({ clientId });
+  } catch (error) {
+    logger.error(`Error getting client ID: ${error.message}`);
+    return res.status(500).json({ error: `Failed to get client ID: ${error.message}` });
   }
 });
 

@@ -583,7 +583,7 @@ const OllamaSettings: React.FC<OllamaSettingsProps> = ({ isAdmin }) => {
           >
             <Icon as={SettingsIcon} mr={2} color="brand.primary" boxSize={5} />
             <Heading size="md" color="text.base" fontWeight="semibold">
-              Ollama API Connection
+              AI API Connection
             </Heading>
           </CardHeader>
 

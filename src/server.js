@@ -7,6 +7,7 @@ const path = require('path');
 const cors = require('cors');
 const http = require('http');
 const { setupWebSocketServer } = require('./websocket/server');
+const { registerMCPHandlers } = require('./routes/websocket');
 const { initializeDatabase, runModelIdMigration } = require('./database');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -18,7 +19,7 @@ const configRoutes = require('./routes/config');
 const ollamaRoutes = require('./routes/ollama');
 const mcpRoutes = require('./routes/mcp');
 const mcpPagesRoutes = require('./routes/mcp-pages');
-const websocketRoutes = require('./routes/websocket');
+const websocketRoutes = require('./routes/websocket').router;
 const aiRoutes = require('./routes/ai');
 const { setSessionStore } = require('./services/sessionService');
 
@@ -182,6 +183,10 @@ async function startServer() {
 
     // Setup WebSocket server
     const wsServer = setupWebSocketServer(server);
+    
+    // Register MCP WebSocket handlers
+    registerMCPHandlers(wsServer);
+    console.log('Registered MCP WebSocket handlers');
 
     // Make WebSocket server available to routes and services
     app.set('wsServer', wsServer);

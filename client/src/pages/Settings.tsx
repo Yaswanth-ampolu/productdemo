@@ -126,7 +126,7 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', name: 'Profile', icon: UserIcon },
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
-    { id: 'ollama', name: 'Ollama AI', icon: ServerIcon },
+    { id: 'ollama', name: 'LLM Integration', icon: ServerIcon },
     { id: 'mcp', name: 'MCP Integration', icon: CpuChipIcon },
     { id: 'debugging', name: 'Debugging', icon: BugAntIcon },
   ];
@@ -329,7 +329,7 @@ export default function Settings() {
 
           {activeTab === 'ollama' && (
             <div>
-              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Ollama AI Settings</h2>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>LLM Integration Settings</h2>
               <OllamaSettings isAdmin={user?.role === 'admin'} />
             </div>
           )}
