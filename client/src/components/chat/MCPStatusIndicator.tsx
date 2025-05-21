@@ -11,7 +11,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { useMCP } from '../../contexts/MCPContext';
 import { useMCPAgent } from '../../contexts/MCPAgentContext';
-import MCPDiagnosticsButton from './MCPDiagnosticsButton';
 import { useWebSocket } from '../../contexts/WebSocketContext';
 
 interface MCPStatusIndicatorProps {
@@ -155,11 +154,6 @@ const MCPStatusIndicator: React.FC<MCPStatusIndicatorProps> = ({ className = '' 
         
         {/* Spacer */}
         <div className="flex-grow"></div>
-        
-        {/* Add diagnostics button */}
-        <div className="ml-2">
-          <MCPDiagnosticsButton />
-        </div>
         
         {/* WebSocket reconnect button */}
         {!wsConnected && (

@@ -99,6 +99,9 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
   // Get WebSocket connection
   const { connected: wsConnected, send, addMessageListener } = useWebSocket();
 
+  // Add a flag to track if we're currently connecting
+  const [isConnectingToServer, setIsConnectingToServer] = useState(false);
+  
   // Fetch MCP status on mount
   useEffect(() => {
     // Initial load of available servers
@@ -339,6 +342,14 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
     localStorage.setItem('mcp_enabled', JSON.stringify(isMCPEnabled));
   }, [isMCPEnabled]);
 
+  // When welcome message is sent, store a timestamp to avoid duplicates
+  useEffect(() => {
+    if (mcpConnection.clientId && mcpConnection.status === 'connected') {
+      // Store the successful connection time
+      localStorage.setItem('mcp_connection_time', Date.now().toString());
+    }
+  }, [mcpConnection.clientId, mcpConnection.status]);
+
   // Dispatch tool result to registered handler
   const dispatchToolResult = (data: any) => {
     console.log('Dispatching tool result:', data);
@@ -395,11 +406,10 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
     try {
       console.log(`Starting connection to MCP server: ${server.mcp_host}:${server.mcp_port}`);
       
-      // First do a quick check on the info endpoint to verify basic server availability
-      // This is just to fail fast if the server is completely unreachable
+      // Basic check for server availability
       try {
         const infoResponse = await axios.get(`http://${server.mcp_host}:${server.mcp_port}/info`, {
-          timeout: 3000 // Short timeout for quick check
+          timeout: 3000
         });
         console.log('MCP server info check successful:', infoResponse.data);
       } catch (infoError) {
@@ -407,14 +417,13 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
         throw new Error(`Cannot connect to MCP server: ${infoError.message}`);
       }
       
-      // Set the default server in state immediately
+      // Set the default server
       setDefaultServer(server);
       
-      // Immediately establish WebSocket connection to get a clientId
-      // This is the critical part that provides the clientId needed for commands
-      console.log(`Immediately establishing WebSocket connection to MCP server: ${server.mcp_host}:${server.mcp_port}`);
+      // Connect via WebSocket for client ID
+      console.log(`Establishing WebSocket connection to MCP server: ${server.mcp_host}:${server.mcp_port}`);
       
-      // Update the UI state to show connecting
+      // Update UI state
       setMCPConnection({
         connectionId: null,
         clientId: null,
@@ -429,18 +438,13 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
           host: server.mcp_host,
           port: server.mcp_port
         });
-        
-        // We don't await here since this is handled asynchronously via WebSocket messages
-        console.log('WebSocket connection request sent, waiting for clientId');
       } else {
         throw new Error('WebSocket connection to backend is not established. Please refresh the page.');
       }
       
-      // In parallel, fetch tools if server is available, but don't block the connection on this
+      // Fetch tools in background
       fetchServerTools(server).catch(toolsError => {
         console.warn('Non-critical: Failed to fetch MCP tools:', toolsError);
-        // Don't fail the whole connection for tools fetch failure
-        // We set empty tools array if this fails
         setAvailableTools([]);
       });
       
@@ -454,12 +458,11 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
         error: err.message || 'Failed to connect to MCP server'
       });
       
-      // Even in case of error, attempt to reconnect after a delay
+      // Try reconnecting after a delay
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       reconnectTimeoutRef.current = window.setTimeout(() => {
-        console.log('Attempting automatic reconnection after error...');
         reconnect();
         reconnectTimeoutRef.current = null;
       }, 5000);
@@ -509,31 +512,95 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
 
   // Reconnect to MCP server
   const reconnect = () => {
-    if (!defaultServer) {
-      setError('No MCP server selected. Please select a server first.');
+    // If we already have a valid connection, don't reconnect
+    if (isConnectingToServer || (mcpConnection.clientId && mcpConnection.status === 'connected')) {
+      console.log('Already connected or connecting, skipping reconnection attempt');
       return;
     }
-    
-    disconnectFromMCP();
-    
-    // Wait a bit before reconnecting, with exponential backoff based on attempt count
-    const attempts = reconnectAttemptsRef.current || 0;
-    const delay = Math.min(1000 * Math.pow(1.5, attempts), 30000); // Cap at 30 seconds
-    
-    console.log(`Reconnecting to MCP server in ${delay}ms (attempt ${attempts + 1})...`);
-    
-    reconnectTimeoutRef.current = window.setTimeout(() => {
-      // Update attempts count for exponential backoff
-      reconnectAttemptsRef.current = attempts + 1;
-      
-      // Reset attempt count after 5 tries to prevent extremely long delays
-      if (reconnectAttemptsRef.current >= 5) {
-        reconnectAttemptsRef.current = 0;
+
+    // Clear existing connection info
+    setMCPConnection({
+      connectionId: null,
+      clientId: null,
+      status: 'connecting',
+      error: null
+    });
+
+    // Check if we have a stored connection
+    const storedConnInfo = localStorage.getItem('mcp_connection_info');
+    if (storedConnInfo) {
+      try {
+        const connInfo = JSON.parse(storedConnInfo);
+        
+        // If connection info is older than 1 hour, remove it
+        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+        if (Date.now() - connInfo.timestamp > oneHour) {
+          localStorage.removeItem('mcp_connection_info');
+        } else {
+          console.log('Using stored connection info:', connInfo);
+          
+          // Try to connect using stored info
+          if (connInfo.server && connInfo.clientId) {
+            // Find server in available servers
+            const server = availableServers.find(s => 
+              `${s.mcp_host}:${s.mcp_port}` === connInfo.server);
+            
+            if (server) {
+              console.log('Found matching server, connecting to:', server);
+              
+              // Set the default server
+              setDefaultServer(server);
+              
+              // Update connection info
+              setMCPConnection({
+                connectionId: connInfo.connectionId,
+                clientId: connInfo.clientId,
+                status: 'connected',
+                error: null
+              });
+              
+              // Update connection state
+              setIsConnectingToServer(false);
+              
+              // Return early as we've reconnected
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error parsing stored connection info:', err);
+        localStorage.removeItem('mcp_connection_info');
       }
+    }
+
+    // No valid stored connection, so connect via WebSocket
+    setIsConnectingToServer(true);
+    
+    if (defaultServer) {
+      console.log('Connecting to MCP server via WebSocket:', defaultServer);
       
-      connectToMCPServer(defaultServer);
-      reconnectTimeoutRef.current = null;
-    }, delay);
+      if (wsConnected) {
+        // Use WebSocket to connect
+        send({
+          type: 'mcp_connect',
+          host: defaultServer.mcp_host,
+          port: defaultServer.mcp_port,
+          immediate: true
+        });
+      } else {
+        console.error('WebSocket not connected, cannot connect to MCP server');
+        setMCPConnection({
+          ...mcpConnection,
+          status: 'error',
+          error: 'WebSocket not connected. Please refresh the page and try again.'
+        });
+        setIsConnectingToServer(false);
+      }
+    } else {
+      console.log('No default server available, showing server selector');
+      setShowServerSelector(true);
+      setIsConnectingToServer(false);
+    }
   };
 
   // Get current clientId
@@ -578,16 +645,22 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
 
   // Refresh the current connection
   const refreshConnection = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    if (!defaultServer) {
-      setError('No MCP server selected. Please select a server first.');
-      setIsLoading(false);
+    // If we're already connecting or already have a client ID, don't try to connect again
+    if (isConnectingToServer || mcpConnection.clientId) {
+      console.log('Already connecting or have client ID, skipping connection attempt');
       return;
     }
-
+    
+    setIsConnectingToServer(true);
+    setIsLoading(true);
+    
     try {
+      if (!defaultServer) {
+        setError('No MCP server selected. Please select a server first.');
+        setIsLoading(false);
+        return;
+      }
+
       // Test the connection
       const testResult = await testServerConnection(defaultServer);
 
@@ -611,6 +684,7 @@ export const MCPProvider: React.FC<MCPProviderProps> = ({ children }) => {
       console.error('Error refreshing MCP connection:', err);
       setError(err.message || 'Failed to refresh MCP connection');
     } finally {
+      setIsConnectingToServer(false);
       setIsLoading(false);
     }
   };

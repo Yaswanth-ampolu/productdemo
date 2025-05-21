@@ -22,6 +22,8 @@ import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
 import MCPServerSelector from '../components/chat/MCPServerSelector';
+import mcpChatService from '../services/mcpChatService';
+import MCPNotifications from '../components/mcp/MCPNotifications';
 
 // Define a custom message type that includes all needed properties
 interface ExtendedChatMessageType {
@@ -105,7 +107,9 @@ const Chatbot: React.FC = () => {
     toggleMCPEnabled,
     showServerSelector,
     setShowServerSelector,
-    selectServer
+    selectServer,
+    getClientId,
+    defaultServer
   } = useMCP();
 
   // MCP Agent state
@@ -566,442 +570,287 @@ const Chatbot: React.FC = () => {
 
     setMessages(prev => [...prev, userMessage]);
 
-    // If MCP Agent is enabled and there's no file, process the request with the agent
-    if (isMCPEnabled && isAgentEnabled && !file && content.trim() !== '') {
+    // If MCP is enabled, use MCP chat service
+    if (isMCPEnabled && !file && content.trim() !== '') {
       try {
-        // Process the request with the MCP Agent
-        await processUserRequest(content.trim());
-        return; // Exit early as the agent will handle the request
-      } catch (error) {
-        console.error('Error processing request with MCP Agent:', error);
-        // Continue with normal processing if agent fails
-      }
-    }
+        // Get client ID from MCP context
+        const mcpClientId = getClientId();
+        
+        if (!mcpClientId) {
+          console.error('MCP is enabled but no client ID available');
+          // Show an error message in the chat
+          const errorMessage: ExtendedChatMessageType = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content: "Error: MCP is enabled but not properly connected. Please try reconnecting to the MCP server.",
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          return;
+        }
+        
+        // Get default server info
+        if (!defaultServer) {
+          console.error('MCP is enabled but no default server configured');
+          // Show an error message in the chat
+          const errorMessage: ExtendedChatMessageType = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content: "Error: No MCP server configured. Please select a server from the settings.",
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          return;
+        }
 
-    // Handle file upload if a file is provided
-    if (file) {
-      setIsUploading(true);
-      setUploadProgress(0);
-
-      // Set flag in localStorage to indicate upload in progress
-      // This will be used by WebSocketContext to increase heartbeat frequency
-      localStorage.setItem('uploadInProgress', 'true');
-
-      // Reset the RAG notification state for the new document
-      setRagNotificationShown(false);
-
-      // Reset loading and streaming states to ensure we start fresh
-      setIsLoading(false);
-      setIsStreaming(false);
-
-      try {
-        // First, remove any existing processing or error messages
-        setMessages(prev => prev.filter(msg =>
-          !msg.isProcessingFile &&
-          !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error"))
-        ));
-
-        // Add a single loading animation with a friendly message
-        const processingMessage: ExtendedChatMessageType = {
-          id: `system-processing-${Date.now()}`,
+        console.log('Using regular chat flow but with MCP client ID:', mcpClientId);
+        
+        // Create a temporary AI message for streaming
+        const aiMessageId = `ai-${Date.now()}`;
+        const aiMessage: ExtendedChatMessageType = {
+          id: aiMessageId,
           role: 'assistant',
-          content: 'Please wait while we do the processing for your document.', // User-friendly message
+          content: '',
           timestamp: new Date(),
-          isProcessingFile: true, // Add a flag to identify processing messages
-          isProcessingOnly: true, // Flag to indicate this is document processing, not message streaming
-          isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
-          isLoadingOnly: false // Not just a loading indicator, it has text
+          isStreaming: true
         };
 
-        setMessages(prev => [...prev, processingMessage]);
+        // Add the message to the UI immediately to show streaming
+        setMessages(prev => [...prev, aiMessage]);
+        setIsStreaming(true);
+        setIsLoading(true);
 
-        // Send message with file
-        const response = await chatbotService.sendMessageWithFile(
-          displayContent, // Use the display content
-          file,
-          activeSessionId || undefined,
-          (progress) => setUploadProgress(progress)
-        );
+        // If we're using MCP, just use it as a connection - but use the regular chat flow
+        const conversationHistory = messages
+          .filter(msg => msg.role !== 'system') // Filter out system messages
+          .map(msg => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content
+          }));
 
-        // Update the user message with the server-generated ID
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === tempId
-              ? {
-                  ...msg,
-                  id: response.id,
-                  fileAttachment: {
-                    ...msg.fileAttachment!,
-                    url: `/api/documents/download/${response.fileAttachment?.documentId}`,
-                    documentId: response.fileAttachment?.documentId,
-                    status: 'UPLOADED'
-                  }
-                }
-              : msg
-          )
-        );
+        // Add the current message
+        conversationHistory.push({ role: 'user', content: content.trim() });
 
-        // Get the document ID from the response
-        const documentId = response.fileAttachment?.documentId;
-
-        // If we have a document ID, the document is being processed
-        if (documentId) {
-          // Find the processing message we just added
-          const processingMessageId = messages.find(msg => msg.isProcessingFile)?.id;
-
-          if (processingMessageId) {
-            // Update the processing message with document ID but keep it simple - just the loading animation
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === processingMessageId
-                  ? {
-                      ...msg,
-                      content: 'Please wait while we do the processing for your document.', // Keep the friendly message
-                      isProcessingOnly: true, // Flag to indicate this is document processing
-                      isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
-                      documentId: documentId,
-                      documentStatus: 'PROCESSING',
-                      isLoadingOnly: false // Not just a loading indicator, it has text
-                    }
-                  : msg
-              )
-            );
-          }
-
-          setIsUploading(false);
-          setIsLoading(true);
-
-          // Clear the upload in progress flag
-          localStorage.removeItem('uploadInProgress');
-
-          // Keep track of the processing message ID
-          const pollingMessageId = processingMessageId || `system-processing-${Date.now()}`;
-
-          // Create a timeout for overall processing
-          const processingTimeout = setTimeout(() => {
-            // Check if we're still loading
-            if (isLoading) {
-              // Add a fallback message
-              const timeoutMessage: ExtendedChatMessageType = {
-                id: `system-timeout-${Date.now()}`,
-                role: 'assistant',
-                content: "I've received your file, but the processing is taking longer than expected. " +
-                         "I'll continue processing it in the background, and you can ask questions about it later.",
-                timestamp: new Date()
-              };
-
-              // Remove the processing message
-              setMessages(prev => prev.filter(msg => msg.id !== pollingMessageId));
-
-              // Add the timeout message
-              setMessages(prev => [...prev, timeoutMessage]);
-              setIsLoading(false);
-            }
-          }, 60000); // 1 minute timeout
-
-          // Use the document status hook instead of polling
-          const { status: documentStatus, usingWebSocket } = useDocumentStatus({
-            documentId,
-            initialStatus: {
-              status: 'PROCESSING',
-              progress: 0,
-              message: 'Processing document...'
+        try {
+          // Use the selected model
+          const selectedModel = await getSelectedModelDetails();
+          
+          // Send to Ollama through mcpChatService but treat it like regular chat
+          const mcpRequest = {
+            modelId: selectedModel.ollama_model_id,
+            messages: conversationHistory,
+            mcpClientId: mcpClientId,
+            mcpServer: {
+              host: defaultServer.mcp_host,
+              port: defaultServer.mcp_port
             },
-            pollingInterval: 2000, // Fallback to polling every 2 seconds if WebSocket is not available
-            enablePolling: true
-          });
+            options: { stream: true }
+          };
 
+          console.log('Sending MCP chat request with model:', selectedModel.ollama_model_id);
 
-          // Watch for document status changes
-          useEffect(() => {
-            if (!documentStatus) return;
+          // Use the abort controller to allow stopping generation
+          abortFunctionRef.current = await mcpChatService.streamChatCompletion(
+            mcpRequest,
+            (chunk) => {
+              // Debug logging to track chunks
+              console.log('Raw chunk:', JSON.stringify(chunk));
+              
+              const newContent = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
+              if (newContent) {
+                // Update the ref with the accumulated content
+                streamedContentRef.current[aiMessageId] = (streamedContentRef.current[aiMessageId] || '') + newContent;
 
-            console.log(`Document ${documentId} status update (${usingWebSocket ? 'WebSocket' : 'Polling'}):`, documentStatus);
+                // Update the UI
+                setMessages(prev => prev.map(msg =>
+                  msg.id === aiMessageId ? { ...msg, content: streamedContentRef.current[aiMessageId] } : msg
+                ));
+              }
+            },
+            async () => {
+              // Add a small delay to ensure all content is accumulated
+              await new Promise(resolve => setTimeout(resolve, 500));
 
-            // Find the current processing message
-            const currentProcessingMessageId = messages.find(msg => msg.isProcessingFile)?.id || pollingMessageId;
+              try {
+                // Get final content after the delay
+                const finalContentAfterDelay = streamedContentRef.current[aiMessageId] || '';
+                
+                console.log('Sending message to database:', {
+                  messageLength: content.trim().length,
+                  responseLength: finalContentAfterDelay.length,
+                  sessionId: activeSessionId || undefined
+                });
+                
+                // Save the message to the database
+                const dbResponse = await chatbotService.sendMessage(
+                  content.trim(),
+                  activeSessionId || undefined,
+                  finalContentAfterDelay
+                );
+                
+                console.log('Message saved successfully:', dbResponse);
 
-            // Update the processing message - keep it simple with just the loading animation
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === currentProcessingMessageId
-                  ? {
-                      ...msg,
-                      documentStatus: documentStatus.status,
-                      // Use processing flag instead of streaming
-                      isProcessingOnly: documentStatus.status !== 'PROCESSED' && documentStatus.status !== 'ERROR',
-                      // Don't mark as streaming to avoid affecting the chat icon
-                      isStreaming: false,
-                      // Keep the friendly message
-                      content: 'Please wait while we do the processing for your document.'
-                    }
-                  : msg
-              )
-            );
+                if (!activeSessionId || activeSessionId !== dbResponse.sessionId) {
+                  setActiveSessionId(dbResponse.sessionId);
+                  await fetchSessions();
+                }
 
-            // Handle based on status
-            if (documentStatus.status === 'PROCESSED' || documentStatus.status === 'processed') {
-              // Clear the timeout since processing is complete
-              clearTimeout(processingTimeout);
+                // Update message with database ID
+                setMessages(prev => prev.map(msg =>
+                  msg.id === aiMessageId ? {
+                    ...msg,
+                    id: dbResponse.id,
+                    isStreaming: false,
+                    content: finalContentAfterDelay
+                  } : msg
+                ));
 
-              // First, completely remove ALL error messages and loading indicators
+                // Clean up the ref
+                delete streamedContentRef.current[aiMessageId];
+              } catch (dbError) {
+                console.error('Error saving message to database:', dbError);
+                // Still mark the message as not streaming even if saving fails
+                setMessages(prev => prev.map(msg =>
+                  msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
+                ));
+
+                // Clean up the ref even on error
+                delete streamedContentRef.current[aiMessageId];
+              }
+
+              setIsLoading(false);
+              setIsStreaming(false);
+              abortFunctionRef.current = null;
+            },
+            (error) => {
+              console.error('MCP streaming error:', error);
+              
+              // Show the error in chat
               setMessages(prev => {
-                // Filter out any error messages and loading indicators
-                const filteredMessages = prev.filter(msg =>
-                  // Remove error messages
-                  !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error")) &&
-                  // Remove loading indicators
-                  !msg.isProcessingFile
-                );
-
-                // Check if we already have a success message
-                const hasSuccessMessage = filteredMessages.some(msg =>
-                  msg.role === 'assistant' &&
-                  (msg.content.includes("Your document has been fully processed") ||
-                   msg.content.includes("Your document has been processed"))
-                );
-
-                if (!hasSuccessMessage) {
-                  // Add success message
-                  const successMessage: ExtendedChatMessageType = {
-                    id: `system-success-${Date.now()}`,
+                const withoutLoadingMessage = prev.filter(msg => msg.id !== aiMessageId);
+                return [
+                  ...withoutLoadingMessage,
+                  {
+                    id: `error-${Date.now()}`,
                     role: 'assistant',
-                    content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
+                    content: `Error: ${error.message}. Falling back to normal chat.`,
                     timestamp: new Date()
-                  };
-
-                  // Return filtered messages plus success message
-                  return [...filteredMessages, successMessage];
-                }
-
-                // Just return filtered messages if we already have a success message
-                return filteredMessages;
+                  }
+                ];
               });
-
-              // Mark that we've shown the notification to prevent duplicates
-              setRagNotificationShown(true);
-
-              // Check RAG availability immediately
-              console.log('Document processed, checking RAG availability immediately');
-              checkRagAvailability().then(immediateCheck => {
-                if (!immediateCheck) {
-                  console.log('First RAG check failed, scheduling a single follow-up check');
-                  // Schedule just one follow-up check after 5 seconds
-                  // This prevents excessive checks that can overload the system
-                  setTimeout(async () => {
-                    console.log('Performing follow-up RAG availability check');
-                    await checkRagAvailability();
-                  }, 5000);
-                }
-              });
-
-              // Enable RAG mode automatically when a document is processed
-              if (!isRagEnabled) {
-                setIsRagEnabled(true);
-                localStorage.setItem('ragEnabled', 'true');
-              }
-
-              // Reset both loading and streaming states
+              
+              // Clean up the ref on error
+              delete streamedContentRef.current[aiMessageId];
               setIsLoading(false);
               setIsStreaming(false);
-            } else if (documentStatus.status === 'ERROR' || documentStatus.status === 'error') {
-              // Clear the timeout on error
-              clearTimeout(processingTimeout);
-
-              // First check if we already have a success message
-              // (in case the document was processed in the background)
-              const hasSuccessMessage = messages.some(msg =>
-                msg.role === 'assistant' &&
-                msg.content.includes("Your document has been fully processed")
-              );
-
-              if (!hasSuccessMessage) {
-                // Remove all processing messages
-                setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
-
-                // Add error message
-                const errorMessage: ExtendedChatMessageType = {
-                  id: `system-error-${Date.now()}`,
-                  role: 'assistant',
-                  content: "I encountered an error processing your document. " +
-                          (documentStatus.error || "Please try uploading it again."),
-                  timestamp: new Date()
-                };
-
-                setMessages(prev => [...prev, errorMessage]);
-              }
-
-              // Reset loading states
-              setIsLoading(false);
-              setIsStreaming(false);
+              abortFunctionRef.current = null;
+              
+              // Don't try to use regular chat as fallback, just handle the error
             }
-          }, [documentStatus, documentId, pollingMessageId, processingTimeout, usingWebSocket, isRagEnabled, checkRagAvailability, messages]);
-
-          // Clean up timeout when component unmounts
-          useEffect(() => {
-            return () => {
-              clearTimeout(processingTimeout);
-            };
-          }, [processingTimeout]);
-
-          return; // Return early, we'll handle the AI response after processing
+          );
+        } catch (modelError) {
+          console.error('Error getting model details:', modelError);
+          
+          // Show error and cancel streaming
+          setMessages(prev => {
+            const withoutLoadingMessage = prev.filter(msg => msg.id !== aiMessageId);
+            return [
+              ...withoutLoadingMessage,
+              {
+                id: `error-${Date.now()}`,
+                role: 'assistant',
+                content: `Error: ${modelError.message}. Please check your model configuration.`,
+                timestamp: new Date()
+              }
+            ];
+          });
+          
+          setIsLoading(false);
+          setIsStreaming(false);
         }
-
-        // Process AI response as usual
-        handleAIResponse(response.id, displayContent);
 
         return;
       } catch (error) {
-        console.error('Error uploading file:', error);
-
-        // Check if we got a document ID in the error response
-        // If we did, the document is likely still being processed
-        const documentId = error.response?.data?.document?.id;
-
-        if (documentId) {
-          console.log(`Document ID ${documentId} found in error response, document is being processed...`);
-
-          // We have a document ID, so the file was uploaded and is being processed
-          // First, remove any existing error messages
-          setMessages(prev => prev.filter(msg =>
-            !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error"))
-          ));
-
-          // Find or create a processing message with loading indicator
-          const processingMessageId = messages.find(msg => msg.isProcessingFile)?.id;
-
-          if (processingMessageId) {
-            // Update existing processing message - keep it simple with just the loading animation
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === processingMessageId
-                  ? {
-                      ...msg,
-                      content: 'Please wait while we do the processing for your document.',
-                      documentId: documentId,
-                      documentStatus: 'PROCESSING',
-                      isProcessingOnly: true, // Flag to indicate this is document processing
-                      isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
-                      isLoadingOnly: false // Not just a loading indicator, it has text
-                    }
-                  : msg
-              )
-            );
-          } else {
-            // Create new processing message with loading indicator - keep it simple
-            const loadingMessage: ExtendedChatMessageType = {
-              id: `system-loading-${Date.now()}`,
-              role: 'assistant',
-              content: 'Please wait while we do the processing for your document.',
-              timestamp: new Date(),
-              isProcessingFile: true,
-              isProcessingOnly: true, // Flag to indicate this is document processing
-              isStreaming: false, // Don't mark as streaming to avoid affecting the chat icon
-              documentId: documentId,
-              documentStatus: 'PROCESSING',
-              isLoadingOnly: false // Not just a loading indicator, it has text
-            };
-
-            setMessages(prev => [...prev.filter(msg => !msg.isProcessingFile), loadingMessage]);
+        console.error('Error using MCP chat mode:', error);
+        
+        // Add an error message to the chat
+        const errorMessage: ExtendedChatMessageType = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `Error: ${error.message}. Falling back to normal chat.`,
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, errorMessage]);
+        
+        // Fall through to regular chat handling below
+      }
+    }
+    
+    // Helper function to get the selected model details
+    async function getSelectedModelDetails() {
+      try {
+        if (!selectedModelId) {
+          console.warn('No model selected, using default');
+          
+          // Try to get active models to find a default
+          const modelsResponse = await getActiveOllamaModels();
+          if (modelsResponse && modelsResponse.length > 0) {
+            // Find the first active model
+            const firstActiveModel = modelsResponse.find(model => model.is_active);
+            if (firstActiveModel) {
+              console.log('Using first active model as default:', firstActiveModel.name);
+              return firstActiveModel;
+            }
           }
-
-          // Use the document status hook instead of manual polling
-          // This will leverage WebSockets when available
-          const { status: documentStatus, usingWebSocket } = useDocumentStatus({
-            documentId,
-            initialStatus: {
-              status: 'PROCESSING',
-              progress: 0,
-              message: 'Processing document...'
-            },
-            pollingInterval: 2000, // Fallback to polling every 2 seconds if WebSocket is not available
-            enablePolling: true
-          });
-
-          // Keep track of the processing message ID
-          const pollingMessageId = processingMessageId || messages.find(msg => msg.isProcessingFile)?.id || `system-loading-${Date.now()}`;
-
-          // Watch for document status changes
-          useEffect(() => {
-            if (!documentStatus) return;
-
-            console.log(`Document ${documentId} status update (${usingWebSocket ? 'WebSocket' : 'Polling'}):`, documentStatus);
-
-            // Handle based on status
-            if (documentStatus.status === 'PROCESSED' || documentStatus.status === 'processed') {
-              // Document is processed, show success message and remove loading indicator
-
-              // First, completely remove ALL error messages and loading indicators
-              setMessages(prev => {
-                // Filter out any error messages and loading indicators
-                const filteredMessages = prev.filter(msg =>
-                  // Remove error messages
-                  !(msg.role === 'assistant' && msg.content.includes("Sorry, there was an error")) &&
-                  // Remove loading indicators
-                  !msg.isProcessingFile
-                );
-
-                // Check if we already have a success message
-                const hasSuccessMessage = filteredMessages.some(msg =>
-                  msg.role === 'assistant' &&
-                  msg.content.includes("Your document has been fully processed")
-                );
-
-                if (!hasSuccessMessage) {
-                  // Add success message
-                  const successMessage: ExtendedChatMessageType = {
-                    id: `system-success-${Date.now()}`,
-                    role: 'assistant',
-                    content: "Your document has been fully processed and is ready for questions! You can now ask me anything about the content, and I'll use the document to provide accurate answers.",
-                    timestamp: new Date()
-                  };
-
-                  // Return filtered messages plus success message
-                  return [...filteredMessages, successMessage];
-                }
-
-                // Just return filtered messages if we already have a success message
-                return filteredMessages;
-              });
-
-              // Mark that we've shown the notification to prevent duplicates
-              setRagNotificationShown(true);
-
-              // Reset loading states
-              setIsLoading(false);
-              setIsStreaming(false);
-
-              // Enable RAG mode automatically
-              setIsRagEnabled(true);
-              localStorage.setItem('ragEnabled', 'true');
-            }
-          }, [documentStatus, documentId, pollingMessageId, usingWebSocket]);
-        } else {
-          // No document ID, so the file wasn't uploaded at all
-          // In this case, we should show an error
-
-          // First, remove any existing processing messages
-          setMessages(prev => prev.filter(msg => !msg.isProcessingFile));
-
-          // Add error message
-          setMessages(prev => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              role: 'assistant',
-              content: 'Please wait while we do the processing for your document..',
-              timestamp: new Date()
-            }
-          ]);
+          
+          // If we couldn't find a model, create a placeholder with a default ID
+          return {
+            id: 'default',
+            name: 'Default Model',
+            model_id: 'default',
+            ollama_model_id: process.env.DEFAULT_OLLAMA_MODEL || 'llama3',
+            is_active: true,
+            description: 'Default Model'
+          };
         }
-
-        setIsUploading(false);
-        setIsLoading(false);
-
-        // Clear the upload in progress flag on error
-        localStorage.removeItem('uploadInProgress');
-
-        return;
+        
+        const modelsResponse = await getActiveOllamaModels();
+        const selectedModel = modelsResponse.find(model => model.id === selectedModelId);
+        
+        if (!selectedModel) {
+          console.warn('Selected model not found, using default');
+          
+          // If the selected model is not found, use the first active model
+          const firstActiveModel = modelsResponse.find(model => model.is_active);
+          if (firstActiveModel) {
+            return firstActiveModel;
+          }
+          
+          // If no active models, create a placeholder
+          return {
+            id: 'default',
+            name: 'Default Model',
+            model_id: 'default',
+            ollama_model_id: process.env.DEFAULT_OLLAMA_MODEL || 'llama3',
+            is_active: true,
+            description: 'Default Model'
+          };
+        }
+        
+        return selectedModel;
+      } catch (error) {
+        console.error('Error getting model details:', error);
+        
+        // Return a fallback model in case of error
+        return {
+          id: 'fallback',
+          name: 'Fallback Model',
+          model_id: 'fallback',
+          ollama_model_id: process.env.DEFAULT_OLLAMA_MODEL || 'llama3',
+          is_active: true,
+          description: 'Fallback Model'
+        };
       }
     }
 
@@ -1225,7 +1074,6 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  // Helper function to handle AI response generation
   const handleAIResponse = async (_messageId: string, content: string) => {
     try {
       if (selectedModelId) {
@@ -1327,8 +1175,6 @@ const Chatbot: React.FC = () => {
 
               // Clean up
               delete streamedContentRef.current[aiMessageId];
-              setIsLoading(false);
-              abortFunctionRef.current = null;
             } catch (error) {
               console.error('Error saving message to database:', error);
 
@@ -1339,8 +1185,6 @@ const Chatbot: React.FC = () => {
 
               // Clean up
               delete streamedContentRef.current[aiMessageId];
-              setIsLoading(false);
-              abortFunctionRef.current = null;
             }
           },
           (error) => {
@@ -1417,19 +1261,9 @@ const Chatbot: React.FC = () => {
   const handleToggleMCP = () => {
     // Toggle MCP in MCPContext
     toggleMCPEnabled();
-
-    // Toggle the AI agent to match MCP state
-    if (!isMCPEnabled) {
-      // If we're enabling MCP, enable the agent too
-      if (!isAgentEnabled) {
-        toggleAgent();
-      }
-    } else {
-      // If we're disabling MCP, disable the agent too
-      if (isAgentEnabled) {
-        toggleAgent();
-      }
-    }
+    
+    // Do not automatically toggle the agent - let them be independent
+    // This way we can have MCP enabled but agent disabled
   };
 
   const isEmpty = messages.length === 0;
@@ -1540,6 +1374,9 @@ const Chatbot: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-4">
+          {isMCPEnabled && (
+            <MCPNotifications />
+          )}
           <ModelSelector
             onSelectModel={setSelectedModelId}
             selectedModelId={selectedModelId}

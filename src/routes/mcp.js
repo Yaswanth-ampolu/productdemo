@@ -15,6 +15,19 @@ const db = require('../database');
 const axios = require('axios');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
+const EventSource = require('eventsource');
+const OllamaService = require('../services/ollamaService');
+const ollamaService = new OllamaService();
+
+// Initialize the service when the module is loaded
+(async () => {
+  try {
+    await ollamaService.initialize();
+    logger.info('OllamaService initialized for MCP routes');
+  } catch (error) {
+    logger.error('Failed to initialize OllamaService for MCP routes:', error);
+  }
+})();
 
 // Get MCP configuration from config file
 router.get('/config', requireAuth, (req, res) => {
@@ -843,6 +856,145 @@ router.get('/get-client-id', requireAuth, async (req, res) => {
   } catch (error) {
     logger.error(`Error getting client ID: ${error.message}`);
     return res.status(500).json({ error: `Failed to get client ID: ${error.message}` });
+  }
+});
+
+/**
+ * New route for MCP chat
+ * Handles sending chat messages through the MCP client
+ * POST /api/mcp/chat
+ */
+router.post('/chat', requireAuth, async (req, res) => {
+  try {
+    const { messages, modelId, mcpClientId, mcpServer, options } = req.body;
+
+    if (!messages) {
+      return res.status(400).json({ error: 'Messages are required' });
+    }
+
+    if (!mcpClientId) {
+      return res.status(400).json({ error: 'MCP Client ID is required' });
+    }
+
+    if (!mcpServer || !mcpServer.host || !mcpServer.port) {
+      return res.status(400).json({ error: 'MCP server details are required' });
+    }
+
+    logger.info(`Processing MCP chat request with client ID: ${mcpClientId}, model: ${modelId || 'default'}`);
+    
+    // Check if the request is for streaming
+    const isStreaming = options && options.stream === true;
+    
+    // Format messages for Ollama - extract just the required fields
+    const formattedMessages = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    try {
+      // Get the modelId from request or use default
+      const selectedModel = modelId || ollamaService.settings?.default_model || process.env.DEFAULT_OLLAMA_MODEL || 'llama3';
+      
+      // Log the model being used
+      logger.info(`Using model for MCP chat: ${selectedModel}`);
+      
+      // Extract the current user message for simplified calls
+      const userMessage = formattedMessages.length > 0 ? 
+        formattedMessages[formattedMessages.length - 1].content : 
+        'Hello';
+      
+      // Use the ollamaService to generate a response
+      if (isStreaming) {
+        // Set proper headers for SSE
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        
+        // Log the streaming request
+        logger.info(`Starting stream for model ${selectedModel} with ${formattedMessages.length} messages`);
+        
+        try {
+          // Use streaming mode with proper error handling
+          const { success, response, error } = await ollamaService.chat(
+            selectedModel,
+            formattedMessages,
+            null, // No system prompt
+            true, // Enable streaming
+            (chunk) => {
+              // Send each chunk as an SSE event
+              res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            }
+          );
+          
+          // If chat fails, handle error
+          if (!success) {
+            logger.error(`Streaming error for MCP chat: ${error}`);
+            // For streaming errors, we need to write an error event and end the stream
+            const errorChunk = {
+              id: `error-${Date.now()}`,
+              created: Date.now(),
+              model: selectedModel,
+              choices: [{
+                index: 0,
+                delta: { content: `Error: ${error}` },
+                message: { role: 'assistant', content: `Error: ${error}` },
+                finish_reason: 'error'
+              }]
+            };
+            
+            res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+            return;
+          }
+          
+          // Send done signal and end response
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } catch (streamError) {
+          logger.error(`Streaming error for MCP chat: ${streamError.message}`);
+          // For streaming errors, we need to write an error event and end the stream
+          const errorChunk = {
+            id: `error-${Date.now()}`,
+            created: Date.now(),
+            model: selectedModel,
+            choices: [{
+              index: 0,
+              delta: { content: `Error: ${streamError.message}` },
+              message: { role: 'assistant', content: `Error: ${streamError.message}` },
+              finish_reason: 'error'
+            }]
+          };
+          
+          res.write(`data: ${JSON.stringify(errorChunk)}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      } else {
+        // Regular non-streaming request
+        logger.info(`Starting regular chat request for model ${selectedModel} with message: ${userMessage.substring(0, 50)}...`);
+        
+        // Use generateResponse for simplified requests
+        const result = await ollamaService.generateResponse(userMessage, selectedModel);
+        
+        logger.info(`Completed request for model ${selectedModel}, success: ${result.success}`);
+        
+        if (!result.success) {
+          return res.status(500).json({ error: result.error || 'Failed to generate response' });
+        }
+        
+        return res.json({ response: result.response });
+      }
+    } catch (aiError) {
+      logger.error(`Error with Ollama service in MCP chat: ${aiError.message}`, aiError.stack);
+      
+      return res.status(500).json({ 
+        error: 'AI service unavailable. Please check Ollama configuration.' 
+      });
+    }
+  } catch (error) {
+    logger.error(`Error processing MCP chat request: ${error.message}`, error.stack);
+    return res.status(500).json({ error: 'Failed to process MCP chat request' });
   }
 });
 

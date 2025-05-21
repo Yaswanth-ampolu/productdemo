@@ -829,10 +829,12 @@ class OllamaService {
    * 
    * @param {string} prompt - The text prompt to send to the model
    * @param {string} modelId - The ID of the model to use
-   * @returns {Promise<string>} - The generated response text
+   * @returns {Promise<Object>} - Object with success flag and response
    */
   async generateResponse(prompt, modelId) {
     try {
+      logger.info(`Generating response with model ${modelId}`);
+      
       // Format as a simple message
       const messages = [
         {
@@ -842,17 +844,28 @@ class OllamaService {
       ];
       
       // Call the chat method with the formatted message
-      const response = await this.chat(modelId, messages);
+      const { success, response, error } = await this.chat(modelId, messages);
       
-      // Return the response text
-      if (response && response.message && response.message.content) {
-        return response.message.content;
+      // Return the response with success flag
+      if (success) {
+        const responseText = response?.choices?.[0]?.message?.content || '';
+        return {
+          success: true,
+          response: responseText
+        };
+      } else {
+        logger.error(`Error in chat response: ${error}`);
+        return {
+          success: false,
+          error: error || 'Failed to generate response'
+        };
       }
-      
-      return '';
     } catch (error) {
       logger.error(`Error generating response with model ${modelId}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: error.message || 'Error generating response'
+      };
     }
   }
 }
