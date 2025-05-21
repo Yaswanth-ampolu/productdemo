@@ -357,4 +357,55 @@ cookie_max_age = 86400000
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+# Product Demo
+
+## PDF Text Extraction Enhancement
+
+This application includes an enhanced PDF text extraction mechanism using Python's `pdfplumber` library for improved accuracy in the RAG (Retrieval-Augmented Generation) pipeline.
+
+### Features
+
+- Improved PDF text extraction with page markers and layout preservation
+- Maintains compatibility with existing document processing pipeline
+- Graceful fallback to original extraction methods if Python extraction fails
+- Configuration via `config.ini` file
+
+### Setup
+
+1. Make sure Python 3.x is installed on your system
+2. Install pdfplumber:
+   ```bash
+   pip install --user pdfplumber
+   ```
+3. Configure the Python interpreter path in `conf/config.ini`:
+   ```ini
+   [python]
+   interpreter = python3
+   # Or path to your virtual environment: /path/to/venv/bin/python3
+   ```
+
+### How It Works
+
+The enhanced text extraction processes PDF files in the following order:
+
+1. Attempts extraction using Python's pdfplumber (best quality)
+2. Falls back to LangChain's PDFLoader if Python extraction fails
+3. Falls back to pdf-parse if LangChain extraction fails
+4. Uses a placeholder message if all extraction methods fail
+
+The extracted text maintains its original structure as much as possible, including page markers, which improves the context quality for RAG responses.
+
+### Troubleshooting
+
+If you encounter issues with PDF extraction:
+
+1. Check the logs for specific error messages
+2. Ensure pdfplumber is installed: `pip install --user pdfplumber`
+3. Verify the Python interpreter path in `conf/config.ini`
+4. Make sure the Python script has execute permissions: `chmod +x python/extract_text.py`
+
+## License
+
+[Your license information here] 
