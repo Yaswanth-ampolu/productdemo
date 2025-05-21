@@ -23,6 +23,5 @@ logs/error.log
 node_modules/
 client/node_modules/
 
-
 python/venv/
 .venv
