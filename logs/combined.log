@@ -19645,3 +19645,25 @@ You can access the server at: [0;32mhttp://localhost:8080[0m
 2025-05-20 22:37:35 info: Registering MCP WebSocket message handlers
 2025-05-20 22:37:35 info: Loaded Ollama settings from database
 2025-05-20 22:37:35 info: OllamaService initialized
+2025-05-21 11:48:26 info: Loading configuration from: C:\Users\Seai_\Desktop\Seai practise\productdemo\conf\config.ini
+2025-05-21 11:48:26 info: Loaded Ollama settings from database
+2025-05-21 11:48:26 info: OllamaService initialized
+2025-05-21 11:48:27 info: Registering MCP WebSocket message handlers
+2025-05-21 11:48:27 info: Loaded Ollama settings from database
+2025-05-21 11:48:27 info: OllamaService initialized
+2025-05-21 11:49:17 info: Loaded Ollama settings from database
+2025-05-21 11:49:19 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-21 11:49:20 info: Loaded Ollama settings from database
+2025-05-21 11:49:22 info: Loaded Ollama settings from database
+2025-05-21 11:49:22 info: OllamaService initialized
+2025-05-21 11:49:22 info: RAG: OllamaService initialized successfully
+2025-05-21 11:49:33 info: Available columns in user_mcp_server_configurations for getUserMCPServerConfigurations: id, user_id, ssh_configuration_id, mcp_port, mcp_discovered_tools_schema, is_default, created_at, updated_at, mcp_nickname, mcp_host, mcp_server_version, mcp_connection_status, mcp_last_error_message
+2025-05-21 11:49:36 info: WebSocket: User 23b818b5-c1c6-4832-9fd7-f2840c0168f9 attempting to connect to MCP server 172.16.16.54:8080
+2025-05-21 11:49:36 info: WebSocket: Connecting to MCP server 172.16.16.54:8080 with connection ID mcp-1747808376556-e72b4dfa
+2025-05-21 11:49:36 info: WebSocket: Establishing SSE connection to http://172.16.16.54:8080/sse
+2025-05-21 11:49:36 info: WebSocket: SSE connection opened to 172.16.16.54:8080
+2025-05-21 11:49:36 info: WebSocket: Received clientId 1747808367607 from MCP server 172.16.16.54:8080
+2025-05-21 11:49:40 error: WebSocket: SSE connection error for 172.16.16.54:8080: Unknown error
+2025-05-21 11:49:40 warn: WebSocket: SSE error occurred after clientId was obtained for 172.16.16.54:8080. Keeping existing connection.
+2025-05-21 11:49:41 info: WebSocket: SSE connection opened to 172.16.16.54:8080
+2025-05-21 11:49:41 info: WebSocket: Received clientId 1747808372650 from MCP server 172.16.16.54:8080
