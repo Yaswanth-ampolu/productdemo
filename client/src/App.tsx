@@ -7,6 +7,7 @@ import { SidebarProvider } from './contexts/SidebarContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { MCPProvider } from './contexts/MCPContext';
 import { MCPAgentProvider } from './contexts/MCPAgentContext';
+import { ContextAgentProvider } from './contexts/ContextAgentContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import Layout from './components/Layout';

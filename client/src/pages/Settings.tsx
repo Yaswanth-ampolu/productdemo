@@ -7,11 +7,13 @@ import {
   PaintBrushIcon,
   ServerIcon,
   CpuChipIcon,
-  BugAntIcon
+  BugAntIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 import OllamaSettings from '../components/settings/OllamaSettings';
 import MCPSettings from '../components/settings/MCPSettings';
 import DebuggingSettings from '../components/settings/DebuggingSettings';
+import AIRulesSettings from '../components/settings/AIRulesSettings';
 
 // Import ThemeType from the ThemeContext
 type ThemeType = 'dark' | 'light' | 'midnight';
@@ -126,6 +128,7 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', name: 'Profile', icon: UserIcon },
     { id: 'appearance', name: 'Appearance', icon: PaintBrushIcon },
+    { id: 'ai_rules', name: 'AI Rules', icon: ChatBubbleLeftRightIcon },
     { id: 'ollama', name: 'LLM Integration', icon: ServerIcon },
     { id: 'mcp', name: 'MCP Integration', icon: CpuChipIcon },
     { id: 'debugging', name: 'Debugging', icon: BugAntIcon },
@@ -326,6 +329,15 @@ export default function Settings() {
             </div>
           )}
 
+          {activeTab === 'ai_rules' && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>AI Rules Settings</h2>
+              <p className="mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                Define rules and preferences for the AI to follow during your conversations.
+              </p>
+              <AIRulesSettings />
+            </div>
+          )}
 
           {activeTab === 'ollama' && (
             <div>
