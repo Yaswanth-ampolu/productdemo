@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -19,20 +19,130 @@ import {
 import { messageBubbleStyles, markdownStyles } from './chatStyles';
 import { useTheme } from '../../contexts/ThemeContext';
 import { RagSource } from '../../services/ragChatService';
+import { containsReadContextToolCall, extractToolCall } from '../../utils/toolParser';
+import ContextReadingButton from './ContextReadingButton';
 
 interface ChatMessageProps {
   message: ChatMessageType & {
     sources?: RagSource[];
     useRag?: boolean;
+    conversationId?: string;
   };
   isAI?: boolean;
+  conversationId?: string;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conversationId }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [showSources, setShowSources] = useState<boolean>(false);
+  const [contextResult, setContextResult] = useState<any>(null);
   const { currentTheme } = useTheme();
   const isDarkTheme = currentTheme !== 'light';
+
+  // Extract tool text if present
+  const extractToolText = (): string | undefined => {
+    if (!isAI || !message.content) return undefined;
+
+    // Look for TOOL: marker and extract the tool call text
+    const toolMatch = message.content.match(/TOOL:\s*(\{[\s\S]*?\})/);
+    if (toolMatch && toolMatch[0]) {
+      return toolMatch[0];
+    }
+
+    // Alternative pattern matching for read_context
+    if (message.content.includes('read_context')) {
+      const lines = message.content.split('\n');
+      const toolLines = lines.filter(line =>
+        line.includes('TOOL:') ||
+        line.includes('read_context') ||
+        line.includes('{') ||
+        line.includes('}')
+      );
+
+      if (toolLines.length > 0) {
+        return toolLines.join('\n');
+      }
+    }
+
+    return undefined;
+  };
+
+  // Check if the message contains a read_context tool call
+  const hasReadContextTool = isAI && containsReadContextToolCall(message.content);
+  const toolText = hasReadContextTool ? extractToolText() : undefined;
+
+  // State for AI response to context
+  const [aiContextResponse, setAiContextResponse] = useState<string | null>(null);
+
+  // Check if this message is a context result message
+  const isContextResultMessage = isAI && message.content.startsWith('Context Loaded');
+
+  // Check localStorage for context button state
+  useEffect(() => {
+    if (hasReadContextTool && conversationId) {
+      try {
+        // Check if we have already executed this context tool
+        const contextKey = `context_button_${conversationId}_${message.id}`;
+        const storedState = localStorage.getItem(contextKey);
+
+        if (storedState) {
+          const parsedState = JSON.parse(storedState);
+          if (parsedState.executed) {
+            console.log('Context tool was previously executed, restoring state');
+            // Restore the context result from localStorage
+            setContextResult(parsedState.result);
+            if (parsedState.aiResponse) {
+              setAiContextResponse(parsedState.aiResponse);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking localStorage for context button state:', error);
+      }
+    }
+  }, [hasReadContextTool, conversationId, message.id]);
+
+  // Handle context reading completion
+  const handleContextReadComplete = async (result: any, aiResponse?: string) => {
+    setContextResult(result);
+    if (aiResponse) {
+      setAiContextResponse(aiResponse);
+
+      // Save the button state to localStorage
+      if (conversationId && message.id) {
+        try {
+          const contextKey = `context_button_${conversationId}_${message.id}`;
+          localStorage.setItem(contextKey, JSON.stringify({
+            executed: true,
+            result: result,
+            aiResponse: aiResponse,
+            timestamp: new Date().toISOString()
+          }));
+          console.log('Saved context button state to localStorage:', contextKey);
+        } catch (storageError) {
+          console.error('Error saving context button state to localStorage:', storageError);
+        }
+      }
+
+      // Trigger a refresh of the messages if we have a conversation ID
+      if (conversationId) {
+        try {
+          // Wait a longer delay to ensure the database has been updated
+          // This is important to make sure we get the combined message
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // Dispatch a custom event to notify the Chatbot component to refresh messages
+          window.dispatchEvent(new CustomEvent('refreshMessages', {
+            detail: { conversationId }
+          }));
+
+          console.log('Dispatched refreshMessages event for conversation:', conversationId);
+        } catch (error) {
+          console.error('Error refreshing messages:', error);
+        }
+      }
+    }
+  };
 
   // Function to copy code to clipboard
   const copyToClipboard = (code: string) => {
@@ -312,6 +422,175 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false }) => {
                   <span className="dot"></span>
                 </div>
               </div>
+            ) : isContextResultMessage ? (
+              // This is a context result message, display it directly
+              <>
+                <div className="flex flex-col rounded-md overflow-hidden my-3" style={{
+                  border: '1px solid var(--color-border-accent)',
+                  backgroundColor: 'var(--color-surface-accent)'
+                }}>
+                  {/* Result header */}
+                  <div className="flex items-center p-2 border-b border-opacity-20" style={{
+                    borderColor: 'var(--color-border-accent)',
+                    backgroundColor: 'rgba(var(--color-success-rgb), 0.1)'
+                  }}>
+                    <span className="text-xs font-medium" style={{
+                      color: 'var(--color-success)'
+                    }}>
+                      Context Loaded
+                    </span>
+                  </div>
+
+                  {/* Result content */}
+                  <div className="p-3">
+                    {/* Extract and display the context rules */}
+                    {(() => {
+                      const lines = message.content.split('\n');
+                      const rulesStartIndex = lines.findIndex(line => line.includes('Your context rules:')) + 1;
+                      const aiResponseIndex = lines.findIndex(line => line.includes('AI Response:'));
+
+                      if (rulesStartIndex > 0 && aiResponseIndex > rulesStartIndex) {
+                        const rules = lines.slice(rulesStartIndex, aiResponseIndex).join('\n').trim();
+                        const aiResponse = lines.slice(aiResponseIndex + 1).join('\n').trim();
+
+                        return (
+                          <>
+                            <div className="text-sm mb-2" style={{ color: 'var(--color-text)' }}>
+                              Your context rules:
+                            </div>
+                            <div style={{
+                              backgroundColor: isDarkTheme ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)',
+                              padding: '0.75rem',
+                              borderRadius: '0.25rem',
+                              color: 'var(--color-text)',
+                              fontSize: '0.9rem',
+                              fontStyle: 'italic',
+                              border: '1px solid var(--color-border)'
+                            }}>
+                              {rules}
+                            </div>
+
+                            {/* AI Response section */}
+                            <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border-accent)' }}>
+                              <div className="font-medium mb-1 text-xs" style={{ color: 'var(--color-primary)' }}>
+                                AI Response:
+                              </div>
+                              <div className="text-sm" style={{ color: 'var(--color-text)' }}>
+                                {aiResponse}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      }
+
+                      return (
+                        <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                          {message.content}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </>
+            ) : hasReadContextTool && !contextResult ? (
+              // Show the context reading button if the message contains a read_context tool call
+              <>
+                <div>
+                  {/* Display the message content up to the tool call */}
+                  {message.content.includes('TOOL:')
+                    ? message.content.split('TOOL:')[0]
+                    : message.content.split(/read_context|context rules/i)[0]}
+                </div>
+                <ContextReadingButton
+                  onComplete={handleContextReadComplete}
+                  toolText={toolText}
+                  messageId={message.id}
+                  conversationId={conversationId || message.conversationId}
+                />
+              </>
+            ) : hasReadContextTool && contextResult ? (
+              // Show the context result if the context has been read
+              <>
+                <div>
+                  {/* Display the message content up to the tool call */}
+                  {message.content.includes('TOOL:')
+                    ? message.content.split('TOOL:')[0]
+                    : message.content.split(/read_context|context rules/i)[0]}
+                </div>
+
+                <div className="flex flex-col rounded-md overflow-hidden my-3" style={{
+                  border: '1px solid var(--color-border-accent)',
+                  backgroundColor: 'var(--color-surface-accent)'
+                }}>
+                  {/* Result header */}
+                  <div className="flex items-center p-2 border-b border-opacity-20" style={{
+                    borderColor: 'var(--color-border-accent)',
+                    backgroundColor: contextResult.success
+                      ? 'rgba(var(--color-success-rgb), 0.1)'
+                      : 'rgba(var(--color-error-rgb), 0.1)'
+                  }}>
+                    <span className="text-xs font-medium" style={{
+                      color: contextResult.success ? 'var(--color-success)' : 'var(--color-error)'
+                    }}>
+                      {contextResult.success ? 'Context Loaded' : 'Error Loading Context'}
+                    </span>
+                  </div>
+
+                  {/* Result content */}
+                  <div className="p-3">
+                    {contextResult.success ? (
+                      contextResult.result?.has_context ? (
+                        <>
+                          <div className="text-sm mb-2" style={{ color: 'var(--color-text)' }}>
+                            Your context rules:
+                          </div>
+                          <div style={{
+                            backgroundColor: isDarkTheme ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)',
+                            padding: '0.75rem',
+                            borderRadius: '0.25rem',
+                            color: 'var(--color-text)',
+                            fontSize: '0.9rem',
+                            fontStyle: 'italic',
+                            border: '1px solid var(--color-border)'
+                          }}>
+                            {contextResult.result.user_context}
+                          </div>
+
+                          {/* AI Response section - always shown as part of the same box */}
+                          <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border-accent)' }}>
+                            <div className="font-medium mb-1 text-xs" style={{ color: 'var(--color-primary)' }}>
+                              AI Response:
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--color-text)' }}>
+                              {aiContextResponse || "I've read your context preferences and will adjust my responses accordingly."}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                            No user context rules found. You can add rules in the AI Rules settings.
+                          </div>
+
+                          {/* AI Response section - always shown as part of the same box */}
+                          <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border-accent)' }}>
+                            <div className="font-medium mb-1 text-xs" style={{ color: 'var(--color-primary)' }}>
+                              AI Response:
+                            </div>
+                            <div className="text-sm" style={{ color: 'var(--color-text)' }}>
+                              {aiContextResponse || "I didn't find any saved context preferences. I'll continue with default behavior."}
+                            </div>
+                          </div>
+                        </>
+                      )
+                    ) : (
+                      <div className="text-sm" style={{ color: 'var(--color-error)' }}>
+                        Error: {contextResult.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             ) : (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

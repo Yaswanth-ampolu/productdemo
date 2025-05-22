@@ -17,11 +17,15 @@ import { useWebSocket } from '../contexts/WebSocketContext';
 import { useDocumentStatus } from '../hooks/useDocumentStatus';
 import { useMCP } from '../contexts/MCPContext';
 import { useMCPAgent } from '../contexts/MCPAgentContext';
+import { useToolExecution } from '../hooks/useToolExecution';
+import { enhancePromptWithMCPCapabilities } from '../prompts/mcpSystemPrompt';
+import { containsToolCall, containsReadContextToolCall } from '../utils/toolParser';
 import ChatInput from '../components/chat/ChatInput';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import ModelSelector from '../components/chat/ModelSelector';
 import MCPServerSelector from '../components/chat/MCPServerSelector';
+import ContextReadingIndicator from '../components/chat/ContextReadingIndicator';
 import mcpChatService from '../services/mcpChatService';
 import MCPNotifications from '../components/mcp/MCPNotifications';
 
@@ -113,7 +117,10 @@ const Chatbot: React.FC = () => {
   } = useMCP();
 
   // MCP Agent state
-  const { isAgentEnabled, toggleAgent, processUserRequest } = useMCPAgent();
+  const { isAgentEnabled, toggleAgent } = useMCPAgent();
+
+  // Tool execution state
+  const { isExecutingTool, currentTool, executeTool } = useToolExecution();
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const streamedContentRef = useRef<{[key: string]: string}>({}); // Store streamed content by message ID
@@ -304,12 +311,58 @@ const Chatbot: React.FC = () => {
   }, [wsConnected, wsReconnect]); // Intentionally omitting ragNotificationShown and other dependencies to prevent re-creating the interval
 
   // Fetch messages when active session changes
+  // Check for context in localStorage
+  const checkForStoredContext = (sessionId: string) => {
+    try {
+      const storedContext = localStorage.getItem(`context_${sessionId}`);
+      if (storedContext) {
+        const parsedContext = JSON.parse(storedContext);
+        if (parsedContext.hasContext) {
+          console.log('Found stored context for conversation:', sessionId);
+          return parsedContext;
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for stored context:', error);
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (activeSessionId) {
       fetchSessionMessages(activeSessionId);
+
+      // Check for context in localStorage
+      const storedContext = checkForStoredContext(activeSessionId);
+      if (storedContext) {
+        console.log('Using stored context from localStorage:', storedContext);
+
+        // We don't need to do anything here as the context will be loaded
+        // from the database when fetchSessionMessages is called
+        // This is just for debugging purposes
+      }
     } else {
       setMessages([]);
     }
+  }, [activeSessionId]);
+
+  // Listen for refreshMessages events
+  useEffect(() => {
+    const handleRefreshMessages = (event: CustomEvent<{ conversationId: string }>) => {
+      const { conversationId } = event.detail;
+      if (conversationId && conversationId === activeSessionId) {
+        console.log('Refreshing messages for conversation:', conversationId);
+        fetchSessionMessages(conversationId);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('refreshMessages', handleRefreshMessages as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('refreshMessages', handleRefreshMessages as EventListener);
+    };
   }, [activeSessionId]);
 
   // Store the last time we checked RAG availability
@@ -446,6 +499,14 @@ const Chatbot: React.FC = () => {
     }
   };
 
+  // Check if any message in the conversation contains context information
+  const hasContextMessage = (messages: ExtendedChatMessageType[]): boolean => {
+    return messages.some(msg =>
+      (msg.role === 'assistant' && msg.content.startsWith('Context Loaded')) ||
+      (msg.role === 'system' && msg.content.includes('User context loaded:'))
+    );
+  };
+
   const fetchSessionMessages = async (sessionId: string, append = false) => {
     try {
       setLoadingMessages(true);
@@ -455,6 +516,10 @@ const Chatbot: React.FC = () => {
       const { messages: fetchedMessages, total } = response;
       setTotalMessages(total);
       setHasMoreMessages(offset + fetchedMessages.length < total);
+
+      // Check if any of the fetched messages contain context information
+      const contextFound = hasContextMessage(fetchedMessages);
+      console.log('Context found in conversation:', contextFound);
 
       if (append) {
         setMessages(prev => [...fetchedMessages, ...prev]);
@@ -548,6 +613,26 @@ const Chatbot: React.FC = () => {
     // Allow sending if there's text or a file
     if ((content.trim() === '' && !file) || isLoading || isUploading) return;
 
+    // Special handling for read_context command
+    if (content.trim().toLowerCase() === 'read_context') {
+      console.log('Detected read_context command, triggering context tool directly');
+
+      // Create a temporary AI message that will contain the context tool
+      const aiMessageId = `ai-${Date.now()}`;
+      const aiMessage: ExtendedChatMessageType = {
+        id: aiMessageId,
+        role: 'assistant',
+        content: 'I can read your context rules to better understand your preferences\n\n```\nread_context\n```',
+        timestamp: new Date()
+      };
+
+      // Add the AI message to the UI
+      setMessages(prev => [...prev, aiMessage]);
+
+      // No need to add a user message or continue with regular message handling
+      return;
+    }
+
     const tempId = `temp-${Date.now()}`;
 
     // For file uploads, create a descriptive message if content is empty
@@ -575,7 +660,7 @@ const Chatbot: React.FC = () => {
       try {
         // Get client ID from MCP context
         const mcpClientId = getClientId();
-        
+
         if (!mcpClientId) {
           console.error('MCP is enabled but no client ID available');
           // Show an error message in the chat
@@ -588,7 +673,7 @@ const Chatbot: React.FC = () => {
           setMessages(prev => [...prev, errorMessage]);
           return;
         }
-        
+
         // Get default server info
         if (!defaultServer) {
           console.error('MCP is enabled but no default server configured');
@@ -604,7 +689,7 @@ const Chatbot: React.FC = () => {
         }
 
         console.log('Using regular chat flow but with MCP client ID:', mcpClientId);
-        
+
         // Create a temporary AI message for streaming
         const aiMessageId = `ai-${Date.now()}`;
         const aiMessage: ExtendedChatMessageType = {
@@ -634,11 +719,58 @@ const Chatbot: React.FC = () => {
         try {
           // Use the selected model
           const selectedModel = await getSelectedModelDetails();
-          
+
+          // Find any context messages in the conversation history
+          const contextMessage = messages.find(msg =>
+            (msg.role === 'system' && msg.content.includes('User context loaded:'))
+          );
+
+          // Extract context from assistant messages if system message not found
+          const assistantContextMessage = messages.find(msg =>
+            (msg.role === 'assistant' && msg.content.startsWith('Context Loaded'))
+          );
+
+          // Base system prompt
+          let systemPromptContent = 'You are a helpful AI assistant. Answer the user\'s questions accurately and concisely.';
+
+          // If we found a context message, include it in the system prompt
+          if (contextMessage) {
+            console.log('Using context from system message');
+            // The system message already has the context in the right format
+            systemPromptContent = `${systemPromptContent}\n\n${contextMessage.content}`;
+          } else if (assistantContextMessage) {
+            console.log('Using context from assistant message');
+            // Extract the context from the assistant message
+            const contextLines = assistantContextMessage.content.split('\n');
+            if (contextLines.length >= 3) {
+              // Format: "Context Loaded\nYour context rules:\n\n{rules}\n\nAI Response:\n{response}"
+              // Extract the rules part
+              const rulesStartIndex = contextLines.findIndex(line => line === 'Your context rules:') + 1;
+              const aiResponseIndex = contextLines.findIndex(line => line === 'AI Response:');
+
+              if (rulesStartIndex > 0 && aiResponseIndex > rulesStartIndex) {
+                const rules = contextLines.slice(rulesStartIndex, aiResponseIndex).join('\n').trim();
+                systemPromptContent = `${systemPromptContent}\n\nThe user has provided the following preferences and rules that you should follow:\n\n${rules}\n\nPlease respect these preferences in your responses.`;
+              }
+            }
+          }
+
+          // Add MCP capabilities to the system prompt
+          const systemMessage = {
+            role: 'system',
+            content: enhancePromptWithMCPCapabilities(systemPromptContent)
+          };
+
+          // Add system message to the beginning of the conversation
+          const enhancedConversation = [
+            systemMessage as { role: 'user' | 'assistant' | 'system'; content: string },
+            ...conversationHistory as { role: 'user' | 'assistant' | 'system'; content: string }[]
+          ];
+
           // Send to Ollama through mcpChatService but treat it like regular chat
           const mcpRequest = {
             modelId: selectedModel.ollama_model_id,
-            messages: conversationHistory,
+            messages: enhancedConversation,
             mcpClientId: mcpClientId,
             mcpServer: {
               host: defaultServer.mcp_host,
@@ -655,16 +787,31 @@ const Chatbot: React.FC = () => {
             (chunk) => {
               // Debug logging to track chunks
               console.log('Raw chunk:', JSON.stringify(chunk));
-              
+
               const newContent = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
               if (newContent) {
                 // Update the ref with the accumulated content
                 streamedContentRef.current[aiMessageId] = (streamedContentRef.current[aiMessageId] || '') + newContent;
 
-                // Update the UI
-                setMessages(prev => prev.map(msg =>
-                  msg.id === aiMessageId ? { ...msg, content: streamedContentRef.current[aiMessageId] } : msg
-                ));
+                // Check for tool calls in the accumulated content
+                const accumulatedContent = streamedContentRef.current[aiMessageId];
+                if (containsToolCall(accumulatedContent)) {
+                  // Process the tool call
+                  executeTool(accumulatedContent).then(processedContent => {
+                    // Update the message with the processed content
+                    streamedContentRef.current[aiMessageId] = processedContent;
+
+                    // Update the UI
+                    setMessages(prev => prev.map(msg =>
+                      msg.id === aiMessageId ? { ...msg, content: processedContent } : msg
+                    ));
+                  });
+                } else {
+                  // Update the UI with the regular content
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessageId ? { ...msg, content: accumulatedContent } : msg
+                  ));
+                }
               }
             },
             async () => {
@@ -674,20 +821,20 @@ const Chatbot: React.FC = () => {
               try {
                 // Get final content after the delay
                 const finalContentAfterDelay = streamedContentRef.current[aiMessageId] || '';
-                
+
                 console.log('Sending message to database:', {
                   messageLength: content.trim().length,
                   responseLength: finalContentAfterDelay.length,
                   sessionId: activeSessionId || undefined
                 });
-                
+
                 // Save the message to the database
                 const dbResponse = await chatbotService.sendMessage(
                   content.trim(),
                   activeSessionId || undefined,
                   finalContentAfterDelay
                 );
-                
+
                 console.log('Message saved successfully:', dbResponse);
 
                 if (!activeSessionId || activeSessionId !== dbResponse.sessionId) {
@@ -724,7 +871,7 @@ const Chatbot: React.FC = () => {
             },
             (error) => {
               console.error('MCP streaming error:', error);
-              
+
               // Show the error in chat
               setMessages(prev => {
                 const withoutLoadingMessage = prev.filter(msg => msg.id !== aiMessageId);
@@ -738,19 +885,19 @@ const Chatbot: React.FC = () => {
                   }
                 ];
               });
-              
+
               // Clean up the ref on error
               delete streamedContentRef.current[aiMessageId];
               setIsLoading(false);
               setIsStreaming(false);
               abortFunctionRef.current = null;
-              
+
               // Don't try to use regular chat as fallback, just handle the error
             }
           );
         } catch (modelError) {
           console.error('Error getting model details:', modelError);
-          
+
           // Show error and cancel streaming
           setMessages(prev => {
             const withoutLoadingMessage = prev.filter(msg => msg.id !== aiMessageId);
@@ -764,7 +911,7 @@ const Chatbot: React.FC = () => {
               }
             ];
           });
-          
+
           setIsLoading(false);
           setIsStreaming(false);
         }
@@ -772,7 +919,7 @@ const Chatbot: React.FC = () => {
         return;
       } catch (error) {
         console.error('Error using MCP chat mode:', error);
-        
+
         // Add an error message to the chat
         const errorMessage: ExtendedChatMessageType = {
           id: `error-${Date.now()}`,
@@ -780,19 +927,19 @@ const Chatbot: React.FC = () => {
           content: `Error: ${error.message}. Falling back to normal chat.`,
           timestamp: new Date()
         };
-        
+
         setMessages(prev => [...prev, errorMessage]);
-        
+
         // Fall through to regular chat handling below
       }
     }
-    
+
     // Helper function to get the selected model details
     async function getSelectedModelDetails() {
       try {
         if (!selectedModelId) {
           console.warn('No model selected, using default');
-          
+
           // Try to get active models to find a default
           const modelsResponse = await getActiveOllamaModels();
           if (modelsResponse && modelsResponse.length > 0) {
@@ -803,7 +950,7 @@ const Chatbot: React.FC = () => {
               return firstActiveModel;
             }
           }
-          
+
           // If we couldn't find a model, create a placeholder with a default ID
           return {
             id: 'default',
@@ -814,19 +961,19 @@ const Chatbot: React.FC = () => {
             description: 'Default Model'
           };
         }
-        
+
         const modelsResponse = await getActiveOllamaModels();
         const selectedModel = modelsResponse.find(model => model.id === selectedModelId);
-        
+
         if (!selectedModel) {
           console.warn('Selected model not found, using default');
-          
+
           // If the selected model is not found, use the first active model
           const firstActiveModel = modelsResponse.find(model => model.is_active);
           if (firstActiveModel) {
             return firstActiveModel;
           }
-          
+
           // If no active models, create a placeholder
           return {
             id: 'default',
@@ -837,11 +984,11 @@ const Chatbot: React.FC = () => {
             description: 'Default Model'
           };
         }
-        
+
         return selectedModel;
       } catch (error) {
         console.error('Error getting model details:', error);
-        
+
         // Return a fallback model in case of error
         return {
           id: 'fallback',
@@ -940,15 +1087,58 @@ const Chatbot: React.FC = () => {
 
         // If we get here, either RAG is not available/enabled or it failed
         // Use regular chat with conversation history
+
+        // Find any context messages in the conversation history
+        const contextMessage = messages.find(msg =>
+          (msg.role === 'system' && msg.content.includes('User context loaded:'))
+        );
+
+        // Extract context from assistant messages if system message not found
+        const assistantContextMessage = messages.find(msg =>
+          (msg.role === 'assistant' && msg.content.startsWith('Context Loaded'))
+        );
+
+        // Base system prompt
+        let systemPromptContent = 'You are a helpful AI assistant. Answer the user\'s questions accurately and concisely.';
+
+        // If we found a context message, include it in the system prompt
+        if (contextMessage) {
+          console.log('Using context from system message in regular chat');
+          // The system message already has the context in the right format
+          systemPromptContent = `${systemPromptContent}\n\n${contextMessage.content}`;
+        } else if (assistantContextMessage) {
+          console.log('Using context from assistant message in regular chat');
+          // Extract the context from the assistant message
+          const contextLines = assistantContextMessage.content.split('\n');
+          if (contextLines.length >= 3) {
+            // Format: "Context Loaded\nYour context rules:\n\n{rules}\n\nAI Response:\n{response}"
+            // Extract the rules part
+            const rulesStartIndex = contextLines.findIndex(line => line === 'Your context rules:') + 1;
+            const aiResponseIndex = contextLines.findIndex(line => line === 'AI Response:');
+
+            if (rulesStartIndex > 0 && aiResponseIndex > rulesStartIndex) {
+              const rules = contextLines.slice(rulesStartIndex, aiResponseIndex).join('\n').trim();
+              systemPromptContent = `${systemPromptContent}\n\nThe user has provided the following preferences and rules that you should follow:\n\n${rules}\n\nPlease respect these preferences in your responses.`;
+            }
+          }
+        }
+
+        // Create conversation history with user and assistant messages
         const conversationHistory = messages
-          .filter(msg => msg.role !== 'system') // Filter out system messages
+          .filter(msg => msg.role !== 'system' && !msg.content.startsWith('Context Loaded')) // Filter out system messages and context messages
           .map(msg => ({
             role: msg.role as 'user' | 'assistant',
             content: msg.content
           }));
 
-        // Add the current message
+        // Add the current message to conversation history
         conversationHistory.push({ role: 'user', content: content.trim() });
+
+        // Create the full conversation with system message
+        const fullConversation = [
+          { role: 'system' as 'user' | 'assistant' | 'system', content: systemPromptContent },
+          ...conversationHistory
+        ];
 
         // Set isLoading and isStreaming to true to indicate we're waiting for a response
         // The MessageList component will not show a separate loading indicator
@@ -959,7 +1149,7 @@ const Chatbot: React.FC = () => {
         abortFunctionRef.current = await aiChatService.streamChatCompletion(
           {
             modelId: selectedModel.ollama_model_id,
-            messages: conversationHistory,
+            messages: fullConversation,
             options: { stream: true }
           },
           (chunk: StreamChunk) => {
@@ -1074,164 +1264,7 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  const handleAIResponse = async (_messageId: string, content: string) => {
-    try {
-      if (selectedModelId) {
-        const modelsResponse = await getActiveOllamaModels();
-        const selectedModel = modelsResponse.find(model => model.id === selectedModelId);
-
-        if (!selectedModel) {
-          throw new Error('Selected model not found');
-        }
-
-        const conversationHistory = messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content
-        }));
-        conversationHistory.push({ role: 'user', content });
-
-        // Create a temporary AI message for streaming
-        const aiMessageId = `ai-${Date.now()}`;
-        const aiMessage: ExtendedChatMessageType = {
-          id: aiMessageId,
-          role: 'assistant',
-          content: '',
-          timestamp: new Date(),
-          isStreaming: true, // Mark as streaming to show the loading indicator
-        };
-
-        setMessages(prev => [...prev, aiMessage]);
-        setIsStreaming(true);
-
-        // Initialize streaming content for this message
-        streamedContentRef.current[aiMessageId] = '';
-
-        // Set up abort function
-        abortFunctionRef.current = () => {
-          // This will be called when the user clicks the stop button
-          console.log('Aborting generation');
-
-          // Mark the message as no longer streaming
-          setMessages(prev => prev.map(msg =>
-            msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
-          ));
-
-          setIsStreaming(false);
-          setIsLoading(false);
-          abortFunctionRef.current = null;
-        };
-
-        // Stream the response
-        abortFunctionRef.current = await aiChatService.streamChatCompletion(
-          {
-            modelId: selectedModel.ollama_model_id,
-            messages: conversationHistory,
-            options: { stream: true }
-          },
-          (chunk: StreamChunk) => {
-            const newContent = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.message?.content || '';
-            if (newContent) {
-              // Update the streamed content
-              streamedContentRef.current[aiMessageId] = (streamedContentRef.current[aiMessageId] || '') + newContent;
-
-              // Update the message in state
-              setMessages(prev => prev.map(msg =>
-                msg.id === aiMessageId ? {
-                  ...msg,
-                  content: streamedContentRef.current[aiMessageId]
-                } : msg
-              ));
-            }
-          },
-          async () => {
-            // This is called when streaming completes
-            setIsStreaming(false);
-
-            try {
-              // Add a small delay to ensure all content is accumulated
-              await new Promise(resolve => setTimeout(resolve, 500));
-
-              // Get the final content after delay
-              const finalContentAfterDelay = streamedContentRef.current[aiMessageId] || '';
-
-              // Save to database
-              const dbResponse = await chatbotService.sendMessage(
-                content,
-                activeSessionId || undefined,
-                finalContentAfterDelay
-              );
-
-              // Update the message with the database ID
-              setMessages(prev => {
-                return prev.map(msg =>
-                  msg.id === aiMessageId ? {
-                    ...msg,
-                    id: dbResponse.id,
-                    isStreaming: false,
-                    content: finalContentAfterDelay
-                  } : msg
-                );
-              });
-
-              // Clean up
-              delete streamedContentRef.current[aiMessageId];
-            } catch (error) {
-              console.error('Error saving message to database:', error);
-
-              // Still mark as not streaming
-              setMessages(prev => prev.map(msg =>
-                msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
-              ));
-
-              // Clean up
-              delete streamedContentRef.current[aiMessageId];
-            }
-          },
-          (error) => {
-            // This is called on error
-            console.error('Streaming error:', error);
-
-            // Show error message
-            setMessages(prev => {
-              const filteredMessages = prev.filter(msg => msg.id !== aiMessageId);
-              return [
-                ...filteredMessages,
-                {
-                  id: `error-${Date.now()}`,
-                  role: 'assistant',
-                  content: 'Sorry, there was an error generating a response. Please try again.',
-                  timestamp: new Date(),
-                }
-              ];
-            });
-
-            // Clean up
-            delete streamedContentRef.current[aiMessageId];
-            setIsLoading(false);
-            setIsStreaming(false);
-            abortFunctionRef.current = null;
-          }
-        );
-      } else {
-        throw new Error('No model selected');
-      }
-    } catch (error) {
-      console.error('Error in AI response:', error);
-
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: 'Sorry, there was an error generating a response. Please try again.',
-          timestamp: new Date(),
-        }
-      ]);
-
-      setIsLoading(false);
-      setIsStreaming(false);
-    }
-  };
+  // Function removed as it's no longer needed
 
   const toggleGroup = (groupLabel: string) => {
     setExpandedGroups(prev => ({
@@ -1261,12 +1294,31 @@ const Chatbot: React.FC = () => {
   const handleToggleMCP = () => {
     // Toggle MCP in MCPContext
     toggleMCPEnabled();
-    
+
     // Do not automatically toggle the agent - let them be independent
     // This way we can have MCP enabled but agent disabled
   };
 
   const isEmpty = messages.length === 0;
+
+  // Add event listener for refreshMessages event
+  useEffect(() => {
+    const handleRefreshMessages = (event: CustomEvent) => {
+      const { conversationId } = event.detail;
+      if (conversationId && conversationId === activeSessionId) {
+        console.log('Refreshing messages for conversation:', conversationId);
+        fetchSessionMessages(conversationId);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('refreshMessages', handleRefreshMessages as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('refreshMessages', handleRefreshMessages as EventListener);
+    };
+  }, [activeSessionId]);
 
   useEffect(() => {
     const styleElement = document.createElement('style');
@@ -1444,6 +1496,15 @@ const Chatbot: React.FC = () => {
             marginLeft: showSidebar ? (window.innerWidth < 768 ? '0' : '260px') : '0'
           }}
         >
+          {/* Context reading indicator - only show when not already displayed in a message */}
+          {isExecutingTool && currentTool === 'read_context' && !messages.some(msg =>
+            msg.role === 'assistant' && containsReadContextToolCall(msg.content)
+          ) && (
+            <div className="px-4 pt-2">
+              <ContextReadingIndicator isReading={true} />
+            </div>
+          )}
+
           <MessageList
             messages={messages.filter(msg => msg.role !== 'system') as any}
             isLoading={isLoading}
@@ -1451,6 +1512,7 @@ const Chatbot: React.FC = () => {
             loadMoreMessages={loadMoreMessages}
             loadingMessages={loadingMessages}
             isEmpty={isEmpty}
+            conversationId={activeSessionId || undefined}
           />
 
           <div

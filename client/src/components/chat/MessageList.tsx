@@ -30,12 +30,14 @@ interface MessageListProps {
     isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
     sources?: RagSource[]; // Add sources for RAG responses
     useRag?: boolean; // Flag to indicate if RAG was used
+    conversationId?: string; // Conversation ID for the message
   }[];
   isLoading: boolean;
   hasMoreMessages: boolean;
   loadMoreMessages: () => void;
   loadingMessages: boolean;
   isEmpty?: boolean;
+  conversationId?: string; // Current conversation ID
 }
 
 const MessageList: React.FC<MessageListProps> = ({
@@ -44,7 +46,8 @@ const MessageList: React.FC<MessageListProps> = ({
   hasMoreMessages,
   loadMoreMessages,
   loadingMessages,
-  isEmpty = false
+  isEmpty = false,
+  conversationId
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -156,6 +159,7 @@ const MessageList: React.FC<MessageListProps> = ({
                 <ChatMessage
                   message={message}
                   isAI={group.role === 'assistant'}
+                  conversationId={conversationId || message.conversationId}
                 />
               </div>
             ))}

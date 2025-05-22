@@ -26,6 +26,7 @@ export interface ChatMessage {
   isStreaming?: boolean; // Added to support streaming messages
   fileAttachment?: FileAttachment; // Added to support file attachments
   isProcessingFile?: boolean; // Added to identify document processing messages
+  conversationId?: string; // Added to identify the conversation this message belongs to
 }
 
 export interface ChatSession {
