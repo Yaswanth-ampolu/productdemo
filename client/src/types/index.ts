@@ -29,6 +29,19 @@ export interface ChatMessage {
   conversationId?: string; // Added to identify the conversation this message belongs to
 }
 
+// Extended ChatMessage type with additional properties used throughout the application
+export interface ExtendedChatMessage extends Omit<ChatMessage, 'role'> {
+  role: 'user' | 'assistant' | 'system';
+  sources?: any[]; // Sources for RAG responses
+  useRag?: boolean; // Flag to indicate if RAG was used
+  isContextTool?: boolean; // Flag to indicate if this is a context tool message
+  isContextMessage?: boolean; // Flag to indicate this is a context message with user preferences
+  isProcessingOnly?: boolean; // Flag to indicate this is document processing, not message streaming
+  isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
+  documentId?: string; // Document ID for file attachments
+  documentStatus?: string; // Status of document processing
+}
+
 export interface ChatSession {
   id: string;
   title: string;

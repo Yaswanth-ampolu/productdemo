@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { ChatMessage as ChatMessageType } from '../../types';
+import { ChatMessage as ChatMessageType, ExtendedChatMessage } from '../../types';
 import ChatMessage from './ChatMessage';
 import { ChatBubbleLeftRightIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
 import { messageListStyles, messageBubbleStyles } from './chatStyles';
@@ -10,28 +10,7 @@ import { RagSource } from '../../services/ragChatService';
 
 // Allow for extended message types that include system messages
 interface MessageListProps {
-  messages: {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
-    isStreaming?: boolean;
-    fileAttachment?: {
-      name: string;
-      type: string;
-      size: number;
-      url?: string;
-      documentId?: string;
-      status?: string;
-      processingError?: string;
-    };
-    isProcessingFile?: boolean;
-    isProcessingOnly?: boolean; // Flag to indicate this is document processing, not message streaming
-    isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
-    sources?: RagSource[]; // Add sources for RAG responses
-    useRag?: boolean; // Flag to indicate if RAG was used
-    conversationId?: string; // Conversation ID for the message
-  }[];
+  messages: ExtendedChatMessage[];
   isLoading: boolean;
   hasMoreMessages: boolean;
   loadMoreMessages: () => void;
@@ -75,7 +54,7 @@ const MessageList: React.FC<MessageListProps> = ({
 
   // Group messages by role
   const groupedMessages = React.useMemo(() => {
-    const groups: { role: string; messages: ChatMessageType[] }[] = [];
+    const groups: { role: string; messages: ExtendedChatMessage[] }[] = [];
 
     messages.forEach(message => {
       const lastGroup = groups[groups.length - 1];

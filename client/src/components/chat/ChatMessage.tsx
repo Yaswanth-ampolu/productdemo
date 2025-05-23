@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChatMessage as ChatMessageType } from '../../types';
+import { ChatMessage as ChatMessageType, ExtendedChatMessage } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -23,12 +23,7 @@ import { containsReadContextToolCall, extractToolCall } from '../../utils/toolPa
 import ContextReadingButton from './ContextReadingButton';
 
 interface ChatMessageProps {
-  message: ChatMessageType & {
-    sources?: RagSource[];
-    useRag?: boolean;
-    conversationId?: string;
-    isContextTool?: boolean; // Flag to indicate if this is a context tool message
-  };
+  message: ExtendedChatMessage;
   isAI?: boolean;
   conversationId?: string;
 }
@@ -147,6 +142,30 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
       if (conversationId && message.id) {
         try {
           const contextKey = `context_button_${conversationId}_${message.id}`;
+          const contextRulesKey = `context_rules_${conversationId}`;
+          
+          // Extract the context rules if available
+          let contextRules = '';
+          if (result && result.result && result.result.user_context) {
+            contextRules = result.result.user_context;
+            
+            // Save the actual context rules separately for easier access
+            localStorage.setItem(contextRulesKey, JSON.stringify({
+              rules: contextRules,
+              timestamp: new Date().toISOString(),
+              hasContext: true
+            }));
+            
+            // Also save to session storage for quicker access
+            sessionStorage.setItem(contextRulesKey, JSON.stringify({
+              rules: contextRules,
+              timestamp: new Date().toISOString(),
+              hasContext: true
+            }));
+            
+            console.log('Saved context rules to storage:', contextRules);
+          }
+          
           const stateToSave = {
             executed: true,
             isComplete: true,
@@ -155,7 +174,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
             aiResponse: aiResponse,
             timestamp: new Date().toISOString(),
             messageId: message.id,
-            conversationId: conversationId
+            conversationId: conversationId,
+            contextRules: contextRules
           };
 
           // Save to both storage types for redundancy
@@ -166,6 +186,21 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
           setLastUpdated(Date.now());
 
           console.log('Saved context button state to storage:', contextKey);
+          
+          // Add a system message with the context rules to ensure it's included in future prompts
+          const systemContextMessage: ExtendedChatMessage = {
+            id: `system-context-${Date.now()}`,
+            role: 'system',
+            content: `User context loaded: ${contextRules}`,
+            timestamp: new Date(),
+            isContextMessage: true
+          };
+          
+          // Dispatch a custom event to add this system message to the conversation
+          const event = new CustomEvent('addSystemMessage', { 
+            detail: { message: systemContextMessage }
+          });
+          window.dispatchEvent(event);
         } catch (storageError) {
           console.error('Error saving context button state to storage:', storageError);
         }

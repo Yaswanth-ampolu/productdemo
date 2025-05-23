@@ -3,7 +3,7 @@
  * These functions help apply user context rules to system prompts
  */
 
-import { MCPExtendedChatMessageType } from '../components/mcp/MCPChatComponents';
+import { ExtendedChatMessage } from '../types';
 
 /**
  * Apply context from a system message to the system prompt
@@ -13,7 +13,7 @@ import { MCPExtendedChatMessageType } from '../components/mcp/MCPChatComponents'
  */
 export const applySystemContextToPrompt = (
   systemPromptContent: string,
-  contextMessage: MCPExtendedChatMessageType
+  contextMessage: ExtendedChatMessage
 ): string => {
   console.log('Using context from system message');
   // The system message already has the context in the right format
@@ -29,7 +29,7 @@ export const applySystemContextToPrompt = (
  */
 export const applyAssistantContextToPrompt = (
   systemPromptContent: string,
-  assistantContextMessage: MCPExtendedChatMessageType
+  assistantContextMessage: ExtendedChatMessage
 ): string => {
   console.log('Using context from assistant message');
   // Extract the context from the assistant message
@@ -72,7 +72,7 @@ For example, if the user's rule says "talk with the user in hindi", you MUST res
  */
 export const applyContextToPrompt = (
   systemPromptContent: string,
-  messages: MCPExtendedChatMessageType[]
+  messages: ExtendedChatMessage[]
 ): string => {
   // Find any context messages in the conversation history
   const contextMessage = messages.find(msg =>
@@ -100,7 +100,7 @@ export const applyContextToPrompt = (
  * @param messages The conversation messages
  * @returns True if context is found, false otherwise
  */
-export const hasContextMessage = (messages: MCPExtendedChatMessageType[]): boolean => {
+export const hasContextMessage = (messages: ExtendedChatMessage[]): boolean => {
   return messages.some(msg =>
     (msg.role === 'assistant' && msg.content.startsWith('Context Loaded')) ||
     (msg.role === 'system' && msg.content.includes('User context loaded:'))
