@@ -1,3 +1,5 @@
+import { ExtendedChatMessage } from '../types';
+
 /**
  * Interface for a parsed tool call
  */
@@ -148,4 +150,85 @@ export const containsReadContextToolCall = (text: string): boolean => {
   ];
 
   return patterns.some(pattern => pattern.test(text));
+};
+
+/**
+ * Check if message content contains a runshellcommand tool call
+ * @param content Message content to check
+ * @returns True if contains runshellcommand tool call
+ */
+export const containsShellCommandToolCall = (content: string): boolean => {
+  if (!content) return false;
+  
+  // Check for various patterns that indicate a runshellcommand tool call
+  const patterns = [
+    /TOOL:\s*runshellcommand/i,
+    /```\s*runshellcommand\s*```/i,
+    /\{\s*"tool":\s*"runshellcommand"/i,
+    /\{\s*"name":\s*"runshellcommand"/i,
+    // JSON format pattern
+    /\{\s*"tool":\s*"runshellcommand"\s*,\s*"parameters":\s*\{\s*"command":/i
+  ];
+  
+  return patterns.some(pattern => pattern.test(content));
+};
+
+/**
+ * Extract shell command from tool call content
+ * @param content Message content containing the tool call
+ * @returns The command string or null if not found
+ */
+export const extractShellCommand = (content: string): string | null => {
+  if (!content) return null;
+  
+  try {
+    // Look for JSON format first
+    const jsonPattern = /\{\s*"tool":\s*"runshellcommand"\s*,\s*"parameters":\s*\{\s*"command":\s*"([^"]+)"/i;
+    const jsonMatch = content.match(jsonPattern);
+    if (jsonMatch && jsonMatch[1]) {
+      return jsonMatch[1];
+    }
+
+    // Look for multiline JSON format (replace 's' flag with [\s\S])
+    const multilinePattern = /\{\s*"tool":\s*"runshellcommand"\s*,\s*"parameters":\s*\{\s*"command":\s*"([^"]+)"\s*\}\s*\}/i;
+    const multilineMatch = content.match(multilinePattern);
+    if (multilineMatch && multilineMatch[1]) {
+      return multilineMatch[1];
+    }
+
+    // Try to parse as JSON if it looks like a tool call
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('{') && trimmed.includes('runshellcommand')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.tool === 'runshellcommand' && parsed.parameters?.command) {
+            return parsed.parameters.command;
+          }
+        } catch (e) {
+          // Continue to next line
+        }
+      }
+    }
+
+    // Look for code block with JSON (replace [\s\S] for cross-line matching)
+    const codeBlockPattern = /```(?:json)?\s*(\{[\s\S]*?"tool":\s*"runshellcommand"[\s\S]*?\})\s*```/i;
+    const codeBlockMatch = content.match(codeBlockPattern);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      try {
+        const parsed = JSON.parse(codeBlockMatch[1]);
+        if (parsed.tool === 'runshellcommand' && parsed.parameters?.command) {
+          return parsed.parameters.command;
+        }
+      } catch (e) {
+        // Failed to parse JSON
+      }
+    }
+
+  } catch (error) {
+    console.error('Error extracting shell command:', error);
+  }
+  
+  return null;
 };

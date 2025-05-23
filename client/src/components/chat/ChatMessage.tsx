@@ -19,8 +19,9 @@ import {
 import { messageBubbleStyles, markdownStyles } from './chatStyles';
 import { useTheme } from '../../contexts/ThemeContext';
 import { RagSource } from '../../services/ragChatService';
-import { containsReadContextToolCall, extractToolCall } from '../../utils/toolParser';
+import { containsReadContextToolCall, extractToolCall, containsShellCommandToolCall, extractShellCommand } from '../../utils/toolParser';
 import ContextReadingButton from './ContextReadingButton';
+import ShellCommandButton from './ShellCommandButton';
 
 interface ChatMessageProps {
   message: ExtendedChatMessage;
@@ -68,9 +69,35 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
     return undefined;
   };
 
+  // Function to extract shell command tool text for display
+  const extractShellToolText = (): string | undefined => {
+    if (!isAI || !message.content) return undefined;
+
+    // Look for JSON pattern in the content
+    const jsonPattern = /\{\s*"tool":\s*"runshellcommand"[\s\S]*?\}/i;
+    const match = message.content.match(jsonPattern);
+    if (match) {
+      return match[0];
+    }
+
+    // Look for code block with JSON
+    const codeBlockPattern = /```(?:json)?\s*(\{[\s\S]*?"tool":\s*"runshellcommand"[\s\S]*?\})\s*```/i;
+    const codeBlockMatch = message.content.match(codeBlockPattern);
+    if (codeBlockMatch) {
+      return codeBlockMatch[0];
+    }
+
+    return undefined;
+  };
+
   // Check if the message contains a read_context tool call or has isContextTool flag
   const hasReadContextTool = isAI && (containsReadContextToolCall(message.content) || message.isContextTool);
   const toolText = hasReadContextTool ? extractToolText() : undefined;
+
+  // Check if the message contains a runshellcommand tool call
+  const hasShellCommandTool = isAI && containsShellCommandToolCall(message.content);
+  const shellCommand = hasShellCommandTool ? extractShellCommand(message.content) : null;
+  const shellToolText = hasShellCommandTool ? extractShellToolText() : undefined;
 
   // Check if the message contains phrases that should trigger the context tool
   // Be more selective to avoid false positives
@@ -85,6 +112,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   // State for AI response to context
   const [aiContextResponse, setAiContextResponse] = useState<string | null>(null);
   const [showContextTool, setShowContextTool] = useState<boolean>(shouldTriggerContextTool);
+
+  // State for shell command tool
+  const [shellCommandResult, setShellCommandResult] = useState<any>(null);
+  const [aiShellCommandResponse, setAiShellCommandResponse] = useState<string | null>(null);
 
   // If we detect a phrase that should trigger the context tool, show the button
   useEffect(() => {
@@ -152,6 +183,33 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
       }
     }
   }, [hasReadContextTool, conversationId, message.id]);
+
+  // Check localStorage for shell command button state
+  useEffect(() => {
+    if (hasShellCommandTool && conversationId) {
+      try {
+        const commandKey = `shell_command_${conversationId}_${message.id}`;
+        let storedState = sessionStorage.getItem(commandKey);
+        if (!storedState) {
+          storedState = localStorage.getItem(commandKey);
+        }
+
+        if (storedState) {
+          const parsedState = JSON.parse(storedState);
+          if (parsedState.executed) {
+            console.log('Shell command was previously executed, restoring state');
+            setShellCommandResult(parsedState.result);
+            if (parsedState.aiResponse) {
+              setAiShellCommandResponse(parsedState.aiResponse);
+            }
+            setLastUpdated(Date.now());
+          }
+        }
+      } catch (error) {
+        console.error('Error checking storage for shell command state:', error);
+      }
+    }
+  }, [hasShellCommandTool, conversationId, message.id]);
 
   // Handle context reading completion
   const handleContextReadComplete = async (result: any, aiResponse?: string) => {
@@ -235,6 +293,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
       // This prevents empty messages and duplicated context tools
       console.log('Context tool execution completed for message:', message.id);
     }
+  };
+
+  // Handle shell command completion
+  const handleShellCommandComplete = async (result: any, aiResponse?: string) => {
+    setShellCommandResult(result);
+    if (aiResponse) {
+      setAiShellCommandResponse(aiResponse);
+    }
+    setLastUpdated(Date.now());
   };
 
   // Function to copy code to clipboard
@@ -685,6 +752,69 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
                     ) : (
                       <div className="text-sm" style={{ color: 'var(--color-error)' }}>
                         Error: {contextResult.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (hasShellCommandTool && !shellCommandResult) ? (
+              // Show the shell command button if the message contains a runshellcommand tool call
+              <>
+                <div>
+                  {/* Display the message content up to the tool call */}
+                  {message.content.split(/\{[^}]*"tool"[^}]*"runshellcommand"/i)[0]}
+                </div>
+                {shellCommand && (
+                  <ShellCommandButton
+                    onComplete={handleShellCommandComplete}
+                    toolText={shellToolText}
+                    messageId={message.id}
+                    conversationId={conversationId || message.conversationId}
+                    command={shellCommand}
+                    key={`shell-command-button-${message.id}-${lastUpdated}`}
+                  />
+                )}
+              </>
+            ) : hasShellCommandTool && shellCommandResult ? (
+              // Show the shell command result if the command has been executed
+              <>
+                <div>
+                  {/* Display the message content up to the tool call */}
+                  {message.content.split(/\{[^}]*"tool"[^}]*"runshellcommand"/i)[0]}
+                </div>
+
+                <div className="flex flex-col rounded-md overflow-hidden my-3" style={{
+                  border: '1px solid var(--color-border-accent)',
+                  backgroundColor: 'var(--color-surface-accent)'
+                }}>
+                  {/* Result header */}
+                  <div className="flex items-center p-2 border-b border-opacity-20" style={{
+                    borderColor: 'var(--color-border-accent)',
+                    backgroundColor: shellCommandResult.success
+                      ? 'rgba(var(--color-success-rgb), 0.1)'
+                      : 'rgba(var(--color-error-rgb), 0.1)'
+                  }}>
+                    <span className="text-xs font-medium" style={{
+                      color: shellCommandResult.success ? 'var(--color-success)' : 'var(--color-error)'
+                    }}>
+                      {shellCommandResult.success ? 'Command Executed Successfully' : 'Command Execution Failed'}
+                    </span>
+                  </div>
+
+                  {/* Result content */}
+                  <div className="p-3">
+                    {aiShellCommandResponse ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={components}
+                      >
+                        {aiShellCommandResponse}
+                      </ReactMarkdown>
+                    ) : (
+                      <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                        {shellCommandResult.success 
+                          ? 'Command executed successfully' 
+                          : `Error: ${shellCommandResult.error}`}
                       </div>
                     )}
                   </div>

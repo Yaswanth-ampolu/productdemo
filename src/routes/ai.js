@@ -2,9 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { logger } = require('../utils/logger');
 const OllamaService = require('../services/ollamaService');
+const ShellCommandService = require('../services/shellCommandService');
+const { requireAuth } = require('./auth');
 
 // Initialize the Ollama service
 const ollamaService = new OllamaService();
+
+// Initialize the Shell Command service
+const shellCommandService = new ShellCommandService();
 
 // Load settings at startup
 let serviceInitialized = false;
@@ -62,6 +67,129 @@ router.post('/chat', async (req, res) => {
   } catch (error) {
     logger.error('Error processing chat request:', error);
     return res.status(500).json({ error: 'Failed to process chat request' });
+  }
+});
+
+/**
+ * Execute shell command via MCP orchestrator
+ * POST /api/ai/tools/runshellcommand
+ */
+router.post('/tools/runshellcommand', requireAuth, async (req, res) => {
+  try {
+    const { command, serverId, timeout } = req.body;
+    const userId = req.session.userId;
+
+    if (!command) {
+      return res.status(400).json({ error: 'Command is required' });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User authentication required' });
+    }
+
+    logger.info(`Processing shell command execution for user ${userId}: ${command}`);
+
+    // Execute the shell command
+    const result = await shellCommandService.executeShellCommand(command, userId, {
+      serverId,
+      timeout: timeout || 30
+    });
+
+    return res.json(result);
+  } catch (error) {
+    logger.error('Error executing shell command:', error);
+    return res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to execute shell command'
+    });
+  }
+});
+
+/**
+ * Test MCP server connection
+ * GET /api/ai/tools/runshellcommand/test
+ */
+router.get('/tools/runshellcommand/test', requireAuth, async (req, res) => {
+  try {
+    const { serverId } = req.query;
+    const userId = req.session.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User authentication required' });
+    }
+
+    logger.info(`Testing MCP connection for user ${userId}${serverId ? ` with server ${serverId}` : ' (default server)'}`);
+
+    // Test the connection
+    const result = await shellCommandService.testConnection(userId, { serverId });
+
+    return res.json(result);
+  } catch (error) {
+    logger.error('Error testing MCP connection:', error);
+    return res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to test MCP connection'
+    });
+  }
+});
+
+/**
+ * Get available tools from MCP server
+ * GET /api/ai/tools/runshellcommand/tools
+ */
+router.get('/tools/runshellcommand/tools', requireAuth, async (req, res) => {
+  try {
+    const { serverId } = req.query;
+    const userId = req.session.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User authentication required' });
+    }
+
+    logger.info(`Getting available tools for user ${userId}${serverId ? ` with server ${serverId}` : ' (default server)'}`);
+
+    // Get available tools
+    const result = await shellCommandService.getAvailableTools(userId, { serverId });
+
+    return res.json(result);
+  } catch (error) {
+    logger.error('Error getting available tools:', error);
+    return res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to get available tools'
+    });
+  }
+});
+
+/**
+ * Get user's MCP server configurations
+ * GET /api/ai/tools/runshellcommand/servers
+ */
+router.get('/tools/runshellcommand/servers', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User authentication required' });
+    }
+
+    logger.info(`Getting MCP servers for user ${userId}`);
+
+    // Get user's MCP servers
+    const servers = await shellCommandService.getUserMCPServers(userId);
+    const defaultServer = await shellCommandService.getUserDefaultMCPServer(userId);
+
+    return res.json({ 
+      success: true,
+      servers,
+      defaultServer
+    });
+  } catch (error) {
+    logger.error('Error getting user MCP servers:', error);
+    return res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to get MCP servers'
+    });
   }
 });
 
