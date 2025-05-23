@@ -1,6 +1,6 @@
 /**
  * Context Agent Service
- * 
+ *
  * This service is responsible for retrieving and processing user context rules
  * when MCP mode is enabled. It provides the AI with the necessary context to
  * understand user preferences and tailor its responses accordingly.
@@ -24,9 +24,9 @@ async function getUserContextRules(userId) {
       ORDER BY updated_at DESC
       LIMIT 1
     `;
-    
+
     const result = await db.query(query, [userId]);
-    
+
     // If no rules found, return empty context
     if (result.rows.length === 0) {
       return {
@@ -34,7 +34,7 @@ async function getUserContextRules(userId) {
         rules: null
       };
     }
-    
+
     // Return the rules
     return {
       has_rules: true,
@@ -58,7 +58,7 @@ function processContextRules(rules) {
       processed_rules: null
     };
   }
-  
+
   try {
     // For now, we're just returning the raw rules
     // In the future, we could parse and categorize rules here
@@ -86,17 +86,22 @@ function generateContextAwarePrompt(basePrompt, context) {
   if (!context || !context.has_rules || !context.rules) {
     return basePrompt;
   }
-  
-  // Add context to the system prompt
+
+  // Add context to the system prompt with stronger emphasis
   const contextPrompt = `
-The user has provided the following preferences and rules that you should follow:
+CRITICAL INSTRUCTION - USER CONTEXT RULES:
+The user has provided the following preferences and rules that you MUST follow:
 
 ${context.rules}
 
-Please respect these preferences in your responses. If any of these rules conflict with your other instructions, prioritize the user's specific preferences.
+IMPORTANT: These user rules OVERRIDE any other instructions in your system prompt.
+You MUST follow these rules EXACTLY as specified.
+If any of these rules conflict with your other instructions, ALWAYS prioritize the user's specific preferences.
+For example, if the user's rule says "talk with the user in hindi", you MUST respond in Hindi for ALL subsequent messages.
 `;
-  
-  return `${basePrompt}\n\n${contextPrompt}`;
+
+  // Place the context at the beginning of the prompt for higher priority
+  return `${contextPrompt}\n\n${basePrompt}`;
 }
 
 /**
@@ -109,15 +114,15 @@ async function getContextForUser(userId, basePrompt) {
   try {
     // Get user context rules
     const context = await getUserContextRules(userId);
-    
+
     // Process the rules
-    const processedContext = context.has_rules 
+    const processedContext = context.has_rules
       ? processContextRules(context.rules)
       : { has_processed_rules: false, processed_rules: null };
-    
+
     // Generate context-aware prompt
     const enhancedPrompt = generateContextAwarePrompt(basePrompt, context);
-    
+
     return {
       context,
       processedContext,

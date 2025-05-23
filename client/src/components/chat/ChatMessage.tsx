@@ -27,6 +27,7 @@ interface ChatMessageProps {
     sources?: RagSource[];
     useRag?: boolean;
     conversationId?: string;
+    isContextTool?: boolean; // Flag to indicate if this is a context tool message
   };
   isAI?: boolean;
   conversationId?: string;
@@ -36,6 +37,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [showSources, setShowSources] = useState<boolean>(false);
   const [contextResult, setContextResult] = useState<any>(null);
+  // Add a state variable to force re-renders when needed
+  const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
   const { currentTheme } = useTheme();
   const isDarkTheme = currentTheme !== 'light';
 
@@ -67,8 +70,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
     return undefined;
   };
 
-  // Check if the message contains a read_context tool call
-  const hasReadContextTool = isAI && containsReadContextToolCall(message.content);
+  // Check if the message contains a read_context tool call or has isContextTool flag
+  const hasReadContextTool = isAI && (containsReadContextToolCall(message.content) || message.isContextTool);
   const toolText = hasReadContextTool ? extractToolText() : undefined;
 
   // State for AI response to context
@@ -77,27 +80,59 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   // Check if this message is a context result message
   const isContextResultMessage = isAI && message.content.startsWith('Context Loaded');
 
-  // Check localStorage for context button state
+  // Check storage for context button state
   useEffect(() => {
     if (hasReadContextTool && conversationId) {
       try {
         // Check if we have already executed this context tool
         const contextKey = `context_button_${conversationId}_${message.id}`;
-        const storedState = localStorage.getItem(contextKey);
+
+        // Try sessionStorage first (faster) then fall back to localStorage
+        let storedState = sessionStorage.getItem(contextKey);
+        if (!storedState) {
+          storedState = localStorage.getItem(contextKey);
+        }
 
         if (storedState) {
           const parsedState = JSON.parse(storedState);
           if (parsedState.executed) {
             console.log('Context tool was previously executed, restoring state');
-            // Restore the context result from localStorage
+
+            // Restore the context result from storage
             setContextResult(parsedState.result);
             if (parsedState.aiResponse) {
               setAiContextResponse(parsedState.aiResponse);
             }
+
+            // Re-save to both storage types to ensure consistency
+            try {
+              localStorage.setItem(contextKey, storedState);
+              sessionStorage.setItem(contextKey, storedState);
+            } catch (storageError) {
+              console.error('Error re-saving context button state to storage:', storageError);
+            }
+
+            // Force a re-render to ensure the button shows as completed
+            setLastUpdated(Date.now());
+
+            // Add a small delay and force another re-render to ensure the button state is updated
+            setTimeout(() => {
+              setLastUpdated(Date.now());
+
+              // Find and update any context buttons in the DOM
+              const contextButtons = document.querySelectorAll(`[data-message-id="${message.id}"][data-context-button-state]`);
+              contextButtons.forEach(button => {
+                button.setAttribute('data-context-button-state', 'complete');
+                if (button instanceof HTMLElement) {
+                  button.style.backgroundColor = 'var(--color-success)';
+                  button.style.cursor = 'default';
+                }
+              });
+            }, 200);
           }
         }
       } catch (error) {
-        console.error('Error checking localStorage for context button state:', error);
+        console.error('Error checking storage for context button state:', error);
       }
     }
   }, [hasReadContextTool, conversationId, message.id]);
@@ -108,39 +143,38 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
     if (aiResponse) {
       setAiContextResponse(aiResponse);
 
-      // Save the button state to localStorage
+      // Save the button state to both localStorage and sessionStorage
       if (conversationId && message.id) {
         try {
           const contextKey = `context_button_${conversationId}_${message.id}`;
-          localStorage.setItem(contextKey, JSON.stringify({
+          const stateToSave = {
             executed: true,
+            isComplete: true,
+            isLoading: false,
             result: result,
             aiResponse: aiResponse,
-            timestamp: new Date().toISOString()
-          }));
-          console.log('Saved context button state to localStorage:', contextKey);
+            timestamp: new Date().toISOString(),
+            messageId: message.id,
+            conversationId: conversationId
+          };
+
+          // Save to both storage types for redundancy
+          localStorage.setItem(contextKey, JSON.stringify(stateToSave));
+          sessionStorage.setItem(contextKey, JSON.stringify(stateToSave));
+
+          // Force a re-render to ensure the button shows as completed
+          setLastUpdated(Date.now());
+
+          console.log('Saved context button state to storage:', contextKey);
         } catch (storageError) {
-          console.error('Error saving context button state to localStorage:', storageError);
+          console.error('Error saving context button state to storage:', storageError);
         }
       }
 
-      // Trigger a refresh of the messages if we have a conversation ID
-      if (conversationId) {
-        try {
-          // Wait a longer delay to ensure the database has been updated
-          // This is important to make sure we get the combined message
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Dispatch a custom event to notify the Chatbot component to refresh messages
-          window.dispatchEvent(new CustomEvent('refreshMessages', {
-            detail: { conversationId }
-          }));
-
-          console.log('Dispatched refreshMessages event for conversation:', conversationId);
-        } catch (error) {
-          console.error('Error refreshing messages:', error);
-        }
-      }
+      // We don't need to trigger a refresh of messages anymore
+      // The context is updated in-place in the current message
+      // This prevents empty messages and duplicated context tools
+      console.log('Context tool execution completed for message:', message.id);
     }
   };
 
@@ -284,7 +318,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   };
 
   return (
-    <div style={isAI ? messageBubbleStyles.ai.container : messageBubbleStyles.user.container}>
+    <div
+      style={isAI ? messageBubbleStyles.ai.container : messageBubbleStyles.user.container}
+      data-context-tool={hasReadContextTool ? "true" : "false"}
+      data-message-id={message.id}
+    >
       <div style={isAI ? messageBubbleStyles.ai.header : messageBubbleStyles.user.header}>
         {isAI ? (
           <div style={messageBubbleStyles.ai.avatar}>
@@ -506,6 +544,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
                   toolText={toolText}
                   messageId={message.id}
                   conversationId={conversationId || message.conversationId}
+                  key={`context-button-${message.id}-${lastUpdated}`} // Add key with lastUpdated to force re-render
                 />
               </>
             ) : hasReadContextTool && contextResult ? (

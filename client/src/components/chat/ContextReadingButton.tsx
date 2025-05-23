@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { executeReadContextTool } from '../../services/contextAgentService';
 import { PlayIcon } from '@heroicons/react/24/solid';
 import { CodeBracketIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
@@ -27,6 +27,51 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [loadingStage, setLoadingStage] = useState<'initial' | 'reading' | 'processing'>('initial');
+
+  // Check localStorage on mount to see if this button has already been executed
+  useEffect(() => {
+    if (conversationId && messageId) {
+      try {
+        const contextKey = `context_button_${conversationId}_${messageId}`;
+
+        // Try both storage types for redundancy
+        let savedState = sessionStorage.getItem(contextKey);
+        if (!savedState) {
+          savedState = localStorage.getItem(contextKey);
+        }
+
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          if (parsedState.executed) {
+            console.log('Found executed context button state in storage, restoring state');
+
+            // Update all relevant state variables
+            setIsComplete(true);
+            setIsLoading(false);
+
+            // If we have saved result data, pass it to the onComplete callback
+            if (parsedState.result) {
+              // Small delay to ensure component is fully mounted
+              setTimeout(() => {
+                onComplete(parsedState.result, parsedState.aiResponse);
+              }, 100);
+            }
+
+            // Re-save to both storage types to ensure consistency
+            // This helps with cross-tab synchronization
+            try {
+              localStorage.setItem(contextKey, savedState);
+              sessionStorage.setItem(contextKey, savedState);
+            } catch (storageError) {
+              console.error('Error re-saving context button state to storage:', storageError);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error reading context button state from storage:', error);
+      }
+    }
+  }, [conversationId, messageId, onComplete]);
 
   const handleReadContext = async () => {
     if (isLoading || isComplete) return;
@@ -60,8 +105,20 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
             // Format the context result for display and storage
             const contextDisplayContent = `Context Loaded\nYour context rules:\n\n${result.result?.user_context}\n\nAI Response:\n${aiResponseContent}`;
 
-            // Format the context for the AI system message
-            const contextSystemContent = `User context loaded: ${result.result?.user_context}\n\nThe AI has acknowledged: ${aiResponseContent}`;
+            // Format the context for the AI system message with stronger emphasis
+            const contextSystemContent = `
+CRITICAL INSTRUCTION - USER CONTEXT RULES:
+The user has provided the following preferences and rules that you MUST follow:
+
+${result.result?.user_context}
+
+IMPORTANT: These user rules OVERRIDE any other instructions in your system prompt.
+You MUST follow these rules EXACTLY as specified.
+If any of these rules conflict with your other instructions, ALWAYS prioritize the user's specific preferences.
+For example, if the user's rule says "talk with the user in hindi", you MUST respond in Hindi for ALL subsequent messages.
+
+The AI has acknowledged: ${aiResponseContent}
+`;
 
             // If we have a messageId, update the existing message instead of creating a new one
             if (messageId) {
@@ -78,28 +135,17 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
                 console.log('Updated existing message with context result');
               } catch (updateError) {
                 console.error('Error updating existing message:', updateError);
-
-                // If updating fails, fall back to creating a new message
-                const assistantMessageResponse = await chatbotService.sendMessage(
-                  'read_context', // Special identifier for context reading
-                  conversationId,
-                  contextDisplayContent // The formatted context display content
-                );
-
-                console.log('Context saved as new assistant message:', assistantMessageResponse);
+                // Don't fall back to creating a new message - this causes duplication
+                // Just continue with the UI update
               }
             } else {
-              // No messageId provided, create a new message
-              const assistantMessageResponse = await chatbotService.sendMessage(
-                'read_context', // Special identifier for context reading
-                conversationId,
-                contextDisplayContent // The formatted context display content
-              );
-
-              console.log('Context saved as assistant message:', assistantMessageResponse);
+              // No messageId provided - this shouldn't happen in normal flow
+              // but we'll handle it just in case
+              console.warn('No messageId provided for context update - this is unexpected');
             }
 
-            // Also save a system message that will be used by the AI but not displayed in the UI
+            // Save a system message that will be used by the AI but not displayed in the UI
+            // This doesn't create a visible message in the chat
             await api.post('/chat/messages', {
               role: 'system',
               content: contextSystemContent,
@@ -117,8 +163,31 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
             // Mark as complete
             setIsComplete(true);
 
-            // Store the context in localStorage to persist across page refreshes
+            // Save the button state to localStorage with complete information
             try {
+              if (conversationId && messageId) {
+                const contextKey = `context_button_${conversationId}_${messageId}`;
+                const stateToSave = {
+                  executed: true,
+                  isComplete: true,
+                  isLoading: false,
+                  result: result,
+                  aiResponse: aiResponseContent,
+                  timestamp: new Date().toISOString(),
+                  messageId: messageId,
+                  conversationId: conversationId
+                };
+
+                // Save to localStorage for persistence across page refreshes
+                localStorage.setItem(contextKey, JSON.stringify(stateToSave));
+
+                // Also save to sessionStorage for quicker access during the current session
+                sessionStorage.setItem(contextKey, JSON.stringify(stateToSave));
+
+                console.log('Saved context button state to storage:', contextKey);
+              }
+
+              // Also store the context in localStorage for the conversation
               if (conversationId) {
                 localStorage.setItem(`context_${conversationId}`, JSON.stringify({
                   hasContext: true,
@@ -133,9 +202,14 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
             }
 
             // Dispatch an event to refresh the messages
+            // Include source='context_tool' so the handler can identify and skip it
+            // This prevents the UI issues with empty messages and duplicated context tools
             if (conversationId) {
               window.dispatchEvent(new CustomEvent('refreshMessages', {
-                detail: { conversationId }
+                detail: {
+                  conversationId,
+                  source: 'context_tool'
+                }
               }));
             }
           } catch (dbError) {
@@ -226,39 +300,47 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
               </p>
             )}
           </div>
-          {!isComplete && (
-            <button
-              onClick={handleReadContext}
-              disabled={isLoading}
-              className="ml-3 p-2 rounded-md transition-all duration-200 hover:bg-opacity-80 flex items-center"
-              style={{
-                backgroundColor: 'var(--color-primary)',
-                color: 'white',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.7 : 1,
-                minWidth: '80px',
-                justifyContent: 'center'
-              }}
-              aria-label="Read context"
-              title="Read your context rules"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                  <span className="text-xs font-medium">
-                    {loadingStage === 'reading' ? 'Reading...' : 'Processing...'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <PlayIcon className="h-4 w-4 mr-1" />
-                  <span className="text-xs font-medium">Run</span>
-                </>
-              )}
-            </button>
-          )}
+          {/* Always render the button, but show different states */}
+          <button
+            onClick={!isComplete ? handleReadContext : undefined}
+            disabled={isLoading || isComplete}
+            className={`ml-3 p-2 rounded-md transition-all duration-200 hover:bg-opacity-80 flex items-center ${isComplete ? 'context-button-complete' : ''}`}
+            style={{
+              backgroundColor: isComplete ? 'var(--color-success)' : 'var(--color-primary)',
+              color: 'white',
+              cursor: isComplete ? 'default' : (isLoading ? 'not-allowed' : 'pointer'),
+              opacity: isLoading ? 0.7 : 1,
+              minWidth: '80px',
+              justifyContent: 'center'
+            }}
+            aria-label={isComplete ? "Context loaded" : "Read context"}
+            title={isComplete ? "Context rules loaded" : "Read your context rules"}
+            data-context-button-state={isComplete ? "complete" : (isLoading ? "loading" : "ready")}
+            data-message-id={messageId}
+            data-conversation-id={conversationId}
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                <span className="text-xs font-medium">
+                  {loadingStage === 'reading' ? 'Reading...' : 'Processing...'}
+                </span>
+              </>
+            ) : isComplete ? (
+              <>
+                <CheckCircleIcon className="h-4 w-4 mr-1" />
+                <span className="text-xs font-medium">Done</span>
+              </>
+            ) : (
+              <>
+                <PlayIcon className="h-4 w-4 mr-1" />
+                <span className="text-xs font-medium">Run</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
+      {/* CSS is added globally in index.css instead of inline */}
     </div>
   );
 };

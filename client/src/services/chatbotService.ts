@@ -31,18 +31,20 @@ export const chatbotService = {
   },
 
   // Message sending
-  sendMessage: async (message: string, sessionId?: string, response?: string): Promise<ChatMessageResponse> => {
+  sendMessage: async (message: string, sessionId?: string, response?: string, isContextUpdate: boolean = false): Promise<ChatMessageResponse> => {
     try {
       console.log('Sending message to database:', {
         messageLength: message.length,
         responseLength: response ? response.length : 0,
-        sessionId
+        sessionId,
+        isContextUpdate
       });
 
       const apiResponse = await api.post('/chatbot/message', {
         message,
         sessionId,
-        response
+        response,
+        isContextUpdate
       });
 
       console.log('Message saved successfully:', apiResponse.data);

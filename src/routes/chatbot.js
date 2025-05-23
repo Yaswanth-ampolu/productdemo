@@ -297,7 +297,7 @@ router.delete('/sessions/:sessionId', isAuthenticated, async (req, res) => {
 
 // Send message to chatbot
 router.post('/message', isAuthenticated, async (req, res) => {
-  const { message, sessionId } = req.body;
+  const { message, sessionId, isContextUpdate } = req.body;
   const userId = req.session.userId;
 
   if (!message) {
@@ -349,17 +349,34 @@ router.post('/message', isAuthenticated, async (req, res) => {
 
     // Log the message and response being saved
     console.log(`Saving message to database - User: ${userId}, Session: ${activeSessionId}`);
-    console.log(`Message length: ${message.length}, Response length: ${response ? response.length : 0}`);
+    console.log(`Message length: ${message.length}, Response length: ${response ? response.length : 0}, isContextUpdate: ${isContextUpdate ? 'true' : 'false'}`);
 
     try {
-      // Store message and response in database
-      const result = await pool.query(
-        'INSERT INTO messages (user_id, message, response, session_id, timestamp) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, timestamp',
-        [userId, message, response, activeSessionId]
-      );
+      // If this is a context update, we don't want to save it as a user message
+      // Instead, we'll just save the response as an assistant message
+      let messageId, timestamp;
 
-      const messageId = result.rows[0].id;
-      const timestamp = result.rows[0].timestamp;
+      if (isContextUpdate) {
+        console.log('This is a context update, saving only as assistant message');
+
+        // Store only the response in database with a special flag
+        const result = await pool.query(
+          'INSERT INTO messages (user_id, message, response, session_id, timestamp, is_context_update) VALUES ($1, $2, $3, $4, NOW(), $5) RETURNING id, timestamp',
+          [userId, '', response, activeSessionId, true]
+        );
+
+        messageId = result.rows[0].id;
+        timestamp = result.rows[0].timestamp;
+      } else {
+        // Regular message - store both user message and response
+        const result = await pool.query(
+          'INSERT INTO messages (user_id, message, response, session_id, timestamp) VALUES ($1, $2, $3, $4, NOW()) RETURNING id, timestamp',
+          [userId, message, response, activeSessionId]
+        );
+
+        messageId = result.rows[0].id;
+        timestamp = result.rows[0].timestamp;
+      }
 
       console.log(`Message saved successfully with ID: ${messageId}`);
 

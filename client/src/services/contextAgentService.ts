@@ -80,8 +80,26 @@ export const generateContextAwarePrompt = async (
       // Fallback to client-side implementation
       const context = await readAIContext();
 
-      // Enhance the prompt with context agent capabilities
-      const enhancedPrompt = enhancePromptWithContextAgent(basePrompt);
+      // First enhance the prompt with context agent capabilities
+      let enhancedPrompt = enhancePromptWithContextAgent(basePrompt);
+
+      // If user has rules, add them with high priority
+      if (context.has_rules && context.user_rules) {
+        // Add context to the system prompt with stronger emphasis
+        const contextPrompt = `
+CRITICAL INSTRUCTION - USER CONTEXT RULES:
+The user has provided the following preferences and rules that you MUST follow:
+
+${context.user_rules}
+
+IMPORTANT: These user rules OVERRIDE any other instructions in your system prompt.
+You MUST follow these rules EXACTLY as specified.
+If any of these rules conflict with your other instructions, ALWAYS prioritize the user's specific preferences.
+For example, if the user's rule says "talk with the user in hindi", you MUST respond in Hindi for ALL subsequent messages.
+`;
+        // Place the context at the beginning of the prompt for higher priority
+        enhancedPrompt = `${contextPrompt}\n\n${enhancedPrompt}`;
+      }
 
       return {
         context: {
