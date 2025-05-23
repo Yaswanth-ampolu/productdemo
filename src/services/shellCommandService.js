@@ -87,39 +87,21 @@ class ShellCommandService {
         logger.info(`Python orchestrator process exited with code: ${code}`);
         
         if (code === 0) {
-          try {
-            // Parse the JSON output from orchestrator
-            const result = JSON.parse(stdout);
-            
-            resolve({
-              success: true,
-              command,
-              result,
-              serverConfig: {
-                id: serverConfig.id,
-                name: serverConfig.server_name,
-                host: serverConfig.mcp_host,
-                port: serverConfig.mcp_port
-              },
-              timestamp: new Date().toISOString()
-            });
-          } catch (parseError) {
-            logger.error('Error parsing orchestrator output:', parseError);
-            resolve({
-              success: false,
-              command,
-              error: 'Failed to parse orchestrator output',
-              output: stdout,
-              stderr,
-              serverConfig: {
-                id: serverConfig.id,
-                name: serverConfig.server_name,
-                host: serverConfig.mcp_host,
-                port: serverConfig.mcp_port
-              },
-              timestamp: new Date().toISOString()
-            });
-          }
+          // For successful execution, always preserve the complete raw output
+          // The user wants to see the full orchestrator logs + JSON result
+          resolve({
+            success: true,
+            command,
+            result: null, // Don't try to parse - just show raw output
+            output: stdout, // This contains the complete orchestrator output
+            serverConfig: {
+              id: serverConfig.id,
+              name: serverConfig.server_name,
+              host: serverConfig.mcp_host,
+              port: serverConfig.mcp_port
+            },
+            timestamp: new Date().toISOString()
+          });
         } else {
           resolve({
             success: false,

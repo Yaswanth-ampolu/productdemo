@@ -114,6 +114,28 @@ export const chatbotService = {
       console.error('Error getting document status:', error);
       throw error;
     }
+  },
+
+  // Update message content (for appending shell command results)
+  updateMessage: async (messageId: string, appendContent: string, isShellCommandResult: boolean = false): Promise<{ success: boolean, messageId: string }> => {
+    try {
+      console.log('Updating message with shell command result:', {
+        messageId,
+        contentLength: appendContent.length,
+        isShellCommandResult
+      });
+
+      const apiResponse = await api.put(`/chatbot/messages/${messageId}`, {
+        appendContent,
+        isShellCommandResult
+      });
+
+      console.log('Message updated successfully:', apiResponse.data);
+      return apiResponse.data;
+    } catch (error) {
+      console.error('Error in chatbotService.updateMessage:', error);
+      throw error;
+    }
   }
 };
 

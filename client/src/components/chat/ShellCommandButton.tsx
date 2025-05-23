@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PlayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { CommandLineIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { shellCommandService } from '../../services/shellCommandService';
+import ShellCommandResult from './ShellCommandResult';
+import { chatbotService } from '../../services/chatbotService';
 
 interface ShellCommandButtonProps {
   onComplete: (result: any, aiResponse?: string) => void;
@@ -29,6 +31,7 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
   const [isDeclined, setIsDeclined] = useState(false);
   const [loadingStage, setLoadingStage] = useState<'initial' | 'executing' | 'processing'>('initial');
   const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executionLogs, setExecutionLogs] = useState<string[]>([]);
   
   // Use a ref to track if the component has already been executed
   const hasExecuted = useRef<boolean>(false);
@@ -52,6 +55,8 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
             if (parsed.aiResponse) {
               onComplete(parsed.result, parsed.aiResponse);
             }
+          } else if (parsed.declined) {
+            setIsDeclined(true);
           }
         } catch (error) {
           console.error('Error parsing saved shell command state:', error);
@@ -60,59 +65,148 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
     }
   }, [conversationId, messageId, onComplete]);
 
+  // Prevent any state changes if already executed
+  const isAlreadyExecuted = hasExecuted.current || isComplete || isDeclined;
+
+  // Capture console logs during execution
+  const captureLog = (message: string) => {
+    setExecutionLogs(prev => [...prev, `[${new Date().toISOString()}] ${message}`]);
+  };
+
   const handleRunCommand = async () => {
     if (isLoading || isComplete || isDeclined || hasExecuted.current) return;
 
     setIsLoading(true);
     setLoadingStage('executing');
+    setExecutionLogs([]);
 
     try {
+      captureLog(`Starting execution of command: ${command}`);
       console.log('Executing shell command:', command);
 
       // Execute the shell command via the service
       const result = await shellCommandService.executeCommand(command);
-      setExecutionResult(result);
+      setExecutionResult({ ...result, executionLogs });
+
+      captureLog(`Command execution completed. Success: ${result.success}`);
 
       // Update loading stage
       setLoadingStage('processing');
 
-      // Format the result for display
-      let aiResponseContent: string;
+      // Create a clean AI-readable result for context
+      let contextResult: string;
       
       if (result.success) {
-        // Format successful result
-        aiResponseContent = `Command executed successfully!\n\n`;
-        aiResponseContent += `**Command:** \`${result.command}\`\n`;
-        aiResponseContent += `**Server:** ${result.serverConfig?.name} (${result.serverConfig?.host}:${result.serverConfig?.port})\n`;
-        aiResponseContent += `**Time:** ${new Date(result.timestamp).toLocaleString()}\n\n`;
+        contextResult = `SHELL_COMMAND_EXECUTED: ${command}\n`;
+        contextResult += `STATUS: SUCCESS\n`;
+        contextResult += `SERVER: ${result.serverConfig?.name} (${result.serverConfig?.host}:${result.serverConfig?.port})\n`;
+        contextResult += `TIMESTAMP: ${new Date(result.timestamp).toISOString()}\n`;
         
-        if (result.result) {
-          if (typeof result.result === 'string') {
-            aiResponseContent += `**Output:**\n\`\`\`\n${result.result}\n\`\`\``;
-          } else if (result.result.output) {
-            aiResponseContent += `**Output:**\n\`\`\`\n${result.result.output}\n\`\`\``;
-          } else if (result.result.stdout) {
-            aiResponseContent += `**Output:**\n\`\`\`\n${result.result.stdout}\n\`\`\``;
-          } else {
-            aiResponseContent += `**Result:**\n\`\`\`json\n${JSON.stringify(result.result, null, 2)}\n\`\`\``;
+        if (result.output && result.output.trim()) {
+          // Extract just the meaningful text from the JSON output
+          const outputText = typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+          
+          // Try to parse if it's JSON with a text field
+          try {
+            const parsed = JSON.parse(outputText);
+            if (parsed.text) {
+              contextResult += `OUTPUT:\n${parsed.text.trim()}`;
+            } else {
+              contextResult += `OUTPUT:\n${outputText.trim()}`;
+            }
+          } catch {
+            contextResult += `OUTPUT:\n${outputText.trim()}`;
           }
+        } else {
+          contextResult += `OUTPUT: (Command completed successfully with no output)`;
         }
       } else {
-        // Format error result
-        aiResponseContent = `Command execution failed.\n\n`;
-        aiResponseContent += `**Command:** \`${result.command}\`\n`;
+        contextResult = `SHELL_COMMAND_EXECUTED: ${command}\n`;
+        contextResult += `STATUS: FAILED\n`;
         if (result.serverConfig) {
-          aiResponseContent += `**Server:** ${result.serverConfig.name} (${result.serverConfig.host}:${result.serverConfig.port})\n`;
+          contextResult += `SERVER: ${result.serverConfig.name} (${result.serverConfig.host}:${result.serverConfig.port})\n`;
         }
-        aiResponseContent += `**Time:** ${new Date(result.timestamp).toLocaleString()}\n\n`;
-        aiResponseContent += `**Error:** ${result.error}\n`;
+        contextResult += `TIMESTAMP: ${new Date(result.timestamp).toISOString()}\n`;
         
-        if (result.stderr) {
-          aiResponseContent += `**Error Output:**\n\`\`\`\n${result.stderr}\n\`\`\``;
+        if (result.error) {
+          contextResult += `ERROR: ${result.error}\n`;
         }
         
-        if (result.output) {
-          aiResponseContent += `**Output:**\n\`\`\`\n${result.output}\n\`\`\``;
+        if (result.stderr && result.stderr.trim()) {
+          contextResult += `STDERR: ${result.stderr.trim()}\n`;
+        }
+        
+        if (result.output && result.output.trim()) {
+          contextResult += `OUTPUT: ${result.output.trim()}`;
+        }
+      }
+
+      // Save this command execution to the conversation history as a separate context message for AI
+      // This ensures the AI can see the command execution context in future messages
+      // The UI display is handled by the ShellCommandResult component
+      if (conversationId) {
+        try {
+          captureLog('Saving command result as context message for AI');
+          
+          // Save as a separate context message for AI consumption
+          // This won't be displayed in the UI but will be available to the AI
+          await chatbotService.sendMessage(
+            '', // No user message
+            conversationId,
+            contextResult, // Clean context result for AI
+            true // isContextUpdate = true
+          );
+          
+          captureLog('Command result saved as context message for AI');
+        } catch (saveError: any) {
+          console.error('Failed to save command result as context message:', saveError);
+          captureLog(`Failed to save context: ${saveError.message}`);
+        }
+      } else {
+        captureLog(`Cannot save context: conversationId=${conversationId}`);
+      }
+
+      // Format user-friendly response for display
+      let userResponse: string;
+      
+      if (result.success) {
+        userResponse = `✅ **Command executed successfully**\n\n`;
+        userResponse += `**Command:** \`${result.command}\`\n`;
+        userResponse += `**Server:** ${result.serverConfig?.name} (${result.serverConfig?.host}:${result.serverConfig?.port})\n`;
+        userResponse += `**Time:** ${new Date(result.timestamp).toLocaleString()}\n\n`;
+        
+        if (result.output && result.output.trim()) {
+          try {
+            const parsed = JSON.parse(result.output);
+            if (parsed.text) {
+              userResponse += `**Output:**\n\`\`\`\n${parsed.text.trim()}\n\`\`\``;
+            } else {
+              userResponse += `**Output:**\n\`\`\`\n${result.output.trim()}\n\`\`\``;
+            }
+          } catch {
+            userResponse += `**Output:**\n\`\`\`\n${result.output.trim()}\n\`\`\``;
+          }
+        } else {
+          userResponse += `The command completed successfully.`;
+        }
+      } else {
+        userResponse = `❌ **Command execution failed**\n\n`;
+        userResponse += `**Command:** \`${result.command}\`\n`;
+        if (result.serverConfig) {
+          userResponse += `**Server:** ${result.serverConfig.name} (${result.serverConfig.host}:${result.serverConfig.port})\n`;
+        }
+        userResponse += `**Time:** ${new Date(result.timestamp).toLocaleString()}\n\n`;
+        
+        if (result.error) {
+          userResponse += `**Error:** ${result.error}\n\n`;
+        }
+        
+        if (result.stderr && result.stderr.trim()) {
+          userResponse += `**Error Details:**\n\`\`\`\n${result.stderr.trim()}\n\`\`\`\n`;
+        }
+        
+        if (result.output && result.output.trim()) {
+          userResponse += `**Raw Output:**\n\`\`\`\n${result.output.trim()}\n\`\`\`\n`;
         }
       }
 
@@ -128,8 +222,9 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
           executed: true,
           isComplete: true,
           isLoading: false,
-          result: result,
-          aiResponse: aiResponseContent,
+          result: { ...result, executionLogs },
+          aiResponse: userResponse,
+          contextResult: contextResult,
           timestamp: new Date().toISOString(),
           messageId: messageId,
           conversationId: conversationId,
@@ -141,7 +236,7 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
       }
 
       // Call the completion handler
-      onComplete(result, aiResponseContent);
+      onComplete({ ...result, executionLogs }, userResponse);
 
       // Dispatch an event to refresh the messages
       if (conversationId) {
@@ -155,17 +250,19 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
 
     } catch (error: any) {
       console.error('Error executing shell command:', error);
+      captureLog(`Error during execution: ${error.message}`);
       
       const errorResult = {
         success: false,
         command: command,
         error: error.message || 'Unknown error occurred',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        executionLogs
       };
 
       setExecutionResult(errorResult);
 
-      const errorResponse = `Failed to execute command: ${command}\n\nError: ${error.message || 'Unknown error occurred'}`;
+      const errorResponse = `❌ **Command execution failed**\n\n**Command:** \`${command}\`\n\n**Error:** ${error.message || 'Unknown error occurred'}`;
       
       setIsComplete(true);
       setIsLoading(false);
@@ -309,7 +406,7 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
           </div>
 
           {/* Action buttons - only show if not completed, declined, or loading */}
-          {!isComplete && !isDeclined && !isLoading && (
+          {!isAlreadyExecuted && !isLoading && (
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleRunCommand}
@@ -318,7 +415,7 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
                   backgroundColor: 'var(--color-success)',
                   color: 'white'
                 }}
-                disabled={isLoading}
+                disabled={isLoading || isAlreadyExecuted}
               >
                 <PlayIcon className="h-3 w-3 mr-1" />
                 Run
@@ -330,7 +427,7 @@ const ShellCommandButton: React.FC<ShellCommandButtonProps> = ({
                   backgroundColor: 'var(--color-text-muted)',
                   color: 'white'
                 }}
-                disabled={isLoading}
+                disabled={isLoading || isAlreadyExecuted}
               >
                 <XMarkIcon className="h-3 w-3 mr-1" />
                 Decline

@@ -125,6 +125,70 @@ export const enhancePromptWithShellCommands = (systemPromptContent: string): str
 };
 
 /**
+ * Extract and summarize shell command execution context from messages
+ * @param messages The conversation messages
+ * @returns Summary of command execution context
+ */
+export const extractShellCommandContext = (messages: ExtendedChatMessage[]): string => {
+  const commandExecutions: string[] = [];
+  
+  // Look for system messages containing shell command results (both old and new format)
+  const shellMessages = messages.filter(msg => 
+    (msg.role === 'assistant' && msg.content.includes('SYSTEM: Shell command execution result for AI context:')) ||
+    (msg.role === 'system' && msg.isContextUpdate && msg.content.includes('SHELL_COMMAND_EXECUTED:'))
+  );
+  
+  console.log(`Found ${shellMessages.length} shell command executions in conversation`);
+  
+  shellMessages.forEach((msg, index) => {
+    const lines = msg.content.split('\n');
+    
+    // Handle new format (system messages with isContextUpdate)
+    if (msg.role === 'system' && msg.isContextUpdate) {
+      const contextContent = msg.content.trim();
+      if (contextContent) {
+        console.log(`Shell command ${index + 1}:`, contextContent.substring(0, 100) + '...');
+        commandExecutions.push(`[Command Execution ${index + 1}]\n${contextContent}`);
+      }
+    } else {
+      // Handle old format (assistant messages with embedded context)
+      const contextStart = lines.findIndex(line => line.includes('SYSTEM: Shell command execution result for AI context:'));
+      
+      if (contextStart >= 0) {
+        const contextContent = lines.slice(contextStart + 1).join('\n').trim();
+        if (contextContent) {
+          console.log(`Shell command ${index + 1} (old format):`, contextContent.substring(0, 100) + '...');
+          commandExecutions.push(`[Command Execution ${index + 1}]\n${contextContent}`);
+        }
+      }
+    }
+  });
+  
+  if (commandExecutions.length > 0) {
+    // Prioritize the most recent command execution by putting it first
+    const recentCommands = commandExecutions.slice(-3).reverse(); // Get last 3 commands, most recent first
+    
+    const shellContext = `
+
+## RECENT SHELL COMMAND EXECUTIONS (MOST RECENT FIRST)
+You have previously executed the following commands in this conversation. 
+**IMPORTANT**: When answering questions about "previous command" or "last command", refer to the FIRST command listed below (most recent).
+
+${recentCommands.join('\n\n')}
+
+## END OF COMMAND HISTORY
+
+`;
+    
+    console.log('Generated shell context for AI:', shellContext.substring(0, 200) + '...');
+    return shellContext;
+  }
+  
+  console.log('No shell command executions found');
+  return '';
+};
+
+/**
  * Apply context to the system prompt
  * This function checks for context in system or assistant messages and applies it to the system prompt
  * @param systemPromptContent The base system prompt content
@@ -139,11 +203,27 @@ export const applyContextToPrompt = (
     enableShellCommands?: boolean;
   } = {}
 ): string => {
+  console.log('=== APPLYING CONTEXT TO PROMPT ===');
+  console.log('Base system prompt length:', systemPromptContent.length);
+  console.log('Shell commands enabled:', options.enableShellCommands);
+  console.log('Total messages in conversation:', messages.length);
+
   let enhancedPrompt = systemPromptContent;
 
   // Add shell command capabilities if enabled
   if (options.enableShellCommands) {
     enhancedPrompt = enhancePromptWithShellCommands(enhancedPrompt);
+    console.log('Enhanced prompt with shell commands, new length:', enhancedPrompt.length);
+    
+    // Add shell command execution context
+    const shellContext = extractShellCommandContext(messages);
+    if (shellContext) {
+      enhancedPrompt += shellContext;
+      console.log('Added shell command context, final length:', enhancedPrompt.length);
+      console.log('Shell context preview:', shellContext.substring(0, 300) + '...');
+    } else {
+      console.log('No shell command context found');
+    }
   }
 
   // Find any context messages in the conversation history
@@ -158,12 +238,21 @@ export const applyContextToPrompt = (
 
   // Apply context to the system prompt
   if (contextMessage) {
-    return applySystemContextToPrompt(enhancedPrompt, contextMessage);
+    console.log('Found system context message, applying...');
+    const finalPrompt = applySystemContextToPrompt(enhancedPrompt, contextMessage);
+    console.log('Final prompt length after system context:', finalPrompt.length);
+    return finalPrompt;
   } else if (assistantContextMessage) {
-    return applyAssistantContextToPrompt(enhancedPrompt, assistantContextMessage);
+    console.log('Found assistant context message, applying...');
+    const finalPrompt = applyAssistantContextToPrompt(enhancedPrompt, assistantContextMessage);
+    console.log('Final prompt length after assistant context:', finalPrompt.length);
+    return finalPrompt;
   }
 
   // If no context found, return the enhanced prompt
+  console.log('No user context messages found');
+  console.log('Final enhanced prompt length:', enhancedPrompt.length);
+  console.log('=== CONTEXT APPLICATION COMPLETE ===');
   return enhancedPrompt;
 };
 
@@ -176,5 +265,17 @@ export const hasContextMessage = (messages: ExtendedChatMessage[]): boolean => {
   return messages.some(msg =>
     (msg.role === 'assistant' && msg.content.startsWith('Context Loaded')) ||
     (msg.role === 'system' && msg.content.includes('User context loaded:'))
+  );
+};
+
+/**
+ * Check if conversation contains shell command executions
+ * @param messages The conversation messages
+ * @returns True if shell commands have been executed
+ */
+export const hasShellCommandExecutions = (messages: ExtendedChatMessage[]): boolean => {
+  return messages.some(msg =>
+    (msg.role === 'assistant' && msg.content.includes('SYSTEM: Shell command execution result for AI context:')) ||
+    (msg.role === 'system' && msg.isContextUpdate && msg.content.includes('SHELL_COMMAND_EXECUTED:'))
   );
 };

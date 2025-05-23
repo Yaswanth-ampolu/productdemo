@@ -8,8 +8,15 @@ const { requireAuth } = require('./auth');
 // Initialize the Ollama service
 const ollamaService = new OllamaService();
 
-// Initialize the Shell Command service
-const shellCommandService = new ShellCommandService();
+// Initialize the Shell Command service with error handling
+let shellCommandService;
+try {
+  shellCommandService = new ShellCommandService();
+  logger.info('Shell Command Service initialized successfully');
+} catch (error) {
+  logger.error('Failed to initialize Shell Command Service:', error);
+  shellCommandService = null;
+}
 
 // Load settings at startup
 let serviceInitialized = false;
@@ -76,15 +83,30 @@ router.post('/chat', async (req, res) => {
  */
 router.post('/tools/runshellcommand', requireAuth, async (req, res) => {
   try {
+    // Check if shell command service is available
+    if (!shellCommandService) {
+      logger.error('Shell Command Service not available');
+      return res.status(503).json({ 
+        success: false,
+        error: 'Shell command service is not available. Please check server configuration.'
+      });
+    }
+
     const { command, serverId, timeout } = req.body;
     const userId = req.session.userId;
 
     if (!command) {
-      return res.status(400).json({ error: 'Command is required' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Command is required' 
+      });
     }
 
     if (!userId) {
-      return res.status(401).json({ error: 'User authentication required' });
+      return res.status(401).json({ 
+        success: false,
+        error: 'User authentication required' 
+      });
     }
 
     logger.info(`Processing shell command execution for user ${userId}: ${command}`);
@@ -95,12 +117,14 @@ router.post('/tools/runshellcommand', requireAuth, async (req, res) => {
       timeout: timeout || 30
     });
 
+    logger.info(`Shell command execution completed for user ${userId}: ${result.success ? 'SUCCESS' : 'FAILED'}`);
     return res.json(result);
   } catch (error) {
     logger.error('Error executing shell command:', error);
     return res.status(500).json({ 
       success: false,
-      error: error.message || 'Failed to execute shell command'
+      error: error.message || 'Failed to execute shell command',
+      timestamp: new Date().toISOString()
     });
   }
 });

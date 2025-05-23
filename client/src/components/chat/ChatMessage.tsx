@@ -22,6 +22,7 @@ import { RagSource } from '../../services/ragChatService';
 import { containsReadContextToolCall, extractToolCall, containsShellCommandToolCall, extractShellCommand } from '../../utils/toolParser';
 import ContextReadingButton from './ContextReadingButton';
 import ShellCommandButton from './ShellCommandButton';
+import ShellCommandResult from './ShellCommandResult';
 
 interface ChatMessageProps {
   message: ExtendedChatMessage;
@@ -783,42 +784,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
                   {message.content.split(/\{[^}]*"tool"[^}]*"runshellcommand"/i)[0]}
                 </div>
 
-                <div className="flex flex-col rounded-md overflow-hidden my-3" style={{
-                  border: '1px solid var(--color-border-accent)',
-                  backgroundColor: 'var(--color-surface-accent)'
-                }}>
-                  {/* Result header */}
-                  <div className="flex items-center p-2 border-b border-opacity-20" style={{
-                    borderColor: 'var(--color-border-accent)',
-                    backgroundColor: shellCommandResult.success
-                      ? 'rgba(var(--color-success-rgb), 0.1)'
-                      : 'rgba(var(--color-error-rgb), 0.1)'
-                  }}>
-                    <span className="text-xs font-medium" style={{
-                      color: shellCommandResult.success ? 'var(--color-success)' : 'var(--color-error)'
-                    }}>
-                      {shellCommandResult.success ? 'Command Executed Successfully' : 'Command Execution Failed'}
-                    </span>
-                  </div>
-
-                  {/* Result content */}
-                  <div className="p-3">
-                    {aiShellCommandResponse ? (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={components}
-                      >
-                        {aiShellCommandResponse}
-                      </ReactMarkdown>
-                    ) : (
-                      <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                        {shellCommandResult.success 
-                          ? 'Command executed successfully' 
-                          : `Error: ${shellCommandResult.error}`}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {/* Use the new ShellCommandResult component for better presentation */}
+                {shellCommandResult && (
+                  <ShellCommandResult result={shellCommandResult} />
+                )}
               </>
             ) : (
               <ReactMarkdown

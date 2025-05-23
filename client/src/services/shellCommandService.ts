@@ -6,17 +6,22 @@ import { api } from './api';
 export interface ShellCommandResult {
   success: boolean;
   command: string;
-  result?: any;
-  error?: string;
   output?: string;
+  error?: string;
   stderr?: string;
+  timestamp: string;
   serverConfig?: {
-    id: string;
     name: string;
     host: string;
-    port: string;
+    port: number;
   };
-  timestamp: string;
+  executionLogs?: string[];
+  debugInfo?: {
+    status?: number;
+    statusText?: string;
+    url?: string;
+    method?: string;
+  };
 }
 
 /**
@@ -55,202 +60,190 @@ export interface MCPToolsResult {
  * Shell Command Service
  * Provides methods for executing shell commands and managing MCP servers
  */
-export class ShellCommandService {
+export const shellCommandService = {
   /**
-   * Execute a shell command via MCP orchestrator
+   * Execute a shell command on the configured MCP server
    * @param command The shell command to execute
-   * @param options Execution options
-   * @returns Promise with execution result
+   * @returns Promise resolving to command execution result
    */
-  async executeCommand(
-    command: string,
-    options: {
-      serverId?: string;
-      timeout?: number;
-    } = {}
-  ): Promise<ShellCommandResult> {
+  executeCommand: async (command: string): Promise<ShellCommandResult> => {
+    const executionLogs: string[] = [];
+    
     try {
+      executionLogs.push(`Starting command execution: ${command}`);
+      executionLogs.push(`API endpoint: /ai/tools/runshellcommand`);
+      
       const response = await api.post('/ai/tools/runshellcommand', {
-        command,
-        serverId: options.serverId,
-        timeout: options.timeout || 30
+        command
       });
-
-      return response.data;
-    } catch (error: any) {
-      console.error('Error executing shell command:', error);
       
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to execute shell command';
+      executionLogs.push(`Received response from server`);
+      
+      const result = response.data;
+      
+      // Parse execution logs from the output if available
+      if (result.output && typeof result.output === 'string') {
+        try {
+          const parsed = JSON.parse(result.output);
+          if (parsed.logs && Array.isArray(parsed.logs)) {
+            executionLogs.push(...parsed.logs);
+          }
+        } catch {
+          // Not JSON or no logs, continue
+        }
+      }
+      
+      executionLogs.push(`Command completed with status: ${result.success ? 'SUCCESS' : 'FAILED'}`);
+      
+      return {
+        ...result,
+        executionLogs,
+        timestamp: result.timestamp || new Date().toISOString()
+      };
+    } catch (error: any) {
+      executionLogs.push(`Error during command execution: ${error.message}`);
+      
+      // Add more detailed error information for debugging
+      if (error.response) {
+        executionLogs.push(`HTTP Status: ${error.response.status} ${error.response.statusText}`);
+        executionLogs.push(`Response URL: ${error.response.config?.url}`);
+        executionLogs.push(`Response Headers: ${JSON.stringify(error.response.headers)}`);
+        if (error.response.data) {
+          executionLogs.push(`Response Data: ${JSON.stringify(error.response.data)}`);
+        }
+      } else if (error.request) {
+        executionLogs.push(`Request failed: ${error.request}`);
+      } else {
+        executionLogs.push(`Error setup: ${error.message}`);
+      }
+      
+      console.error('Shell command execution failed:', error);
+      
+      // Provide more detailed error message
+      let errorMessage = 'Unknown error occurred';
+      if (error.response?.status === 404) {
+        errorMessage = 'Shell command API endpoint not found (404). Please check if the server is properly configured.';
+      } else if (error.response?.status === 503) {
+        errorMessage = error.response.data?.error || 'Shell command service is unavailable';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       
       return {
         success: false,
         command,
         error: errorMessage,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        executionLogs,
+        // Add debug information
+        debugInfo: {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.response?.config?.url,
+          method: error.response?.config?.method
+        }
       };
     }
-  }
+  },
 
   /**
-   * Test MCP server connection
-   * @param serverId Optional server ID (uses default if not provided)
-   * @returns Promise with connection test result
+   * Test MCP connection
+   * @returns Promise resolving to connection test result
    */
-  async testConnection(serverId?: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  testConnection: async (): Promise<{ success: boolean; message: string }> => {
     try {
-      const params = serverId ? { serverId } : {};
-      const response = await api.get('/ai/tools/runshellcommand/test', { params });
-
+      const response = await api.get('/ai/tools/runshellcommand/test');
       return response.data;
     } catch (error: any) {
-      console.error('Error testing MCP connection:', error);
-      
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to test MCP connection';
-      
       return {
         success: false,
-        error: errorMessage
+        message: error.response?.data?.error || error.message || 'Connection test failed'
       };
     }
-  }
+  },
 
   /**
-   * Get available tools from MCP server
-   * @param serverId Optional server ID (uses default if not provided)
-   * @returns Promise with available tools
+   * Get available MCP tools
+   * @returns Promise resolving to available tools list
    */
-  async getAvailableTools(serverId?: string): Promise<MCPToolsResult> {
+  getAvailableTools: async (): Promise<{ success: boolean; tools?: any[]; error?: string }> => {
     try {
-      const params = serverId ? { serverId } : {};
-      const response = await api.get('/ai/tools/runshellcommand/tools', { params });
-
+      const response = await api.get('/ai/tools/runshellcommand/tools');
       return response.data;
     } catch (error: any) {
-      console.error('Error getting available tools:', error);
-      
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to get available tools';
-      
       return {
         success: false,
-        error: errorMessage,
-        timestamp: new Date().toISOString()
+        error: error.response?.data?.error || error.message || 'Failed to get tools'
       };
     }
-  }
+  },
 
   /**
-   * Get user's MCP server configurations
-   * @returns Promise with user's MCP servers
+   * Get user's MCP servers
+   * @returns Promise resolving to user's MCP servers
    */
-  async getUserMCPServers(): Promise<{
-    success: boolean;
-    servers?: MCPServerConfig[];
-    defaultServer?: MCPServerConfig | null;
-    error?: string;
-  }> {
+  getMCPServers: async (): Promise<{ success: boolean; servers?: any[]; error?: string }> => {
     try {
       const response = await api.get('/ai/tools/runshellcommand/servers');
-
       return response.data;
     } catch (error: any) {
-      console.error('Error getting user MCP servers:', error);
-      
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to get MCP servers';
-      
       return {
         success: false,
-        error: errorMessage
+        error: error.response?.data?.error || error.message || 'Failed to get servers'
       };
     }
   }
+};
 
-  /**
-   * Generate a shell command suggestion based on user request
-   * This is a helper function to suggest common commands
-   * @param userRequest The user's natural language request
-   * @returns Suggested shell command
-   */
-  generateCommandSuggestion(userRequest: string): string {
-    const request = userRequest.toLowerCase();
+/**
+ * Common shell command suggestions for AI usage
+ */
+export const shellCommandSuggestions = {
+  fileOperations: [
+    'ls -la',
+    'pwd',
+    'find . -name "*.txt"',
+    'cat filename.txt',
+    'head -10 filename.txt',
+    'tail -10 filename.txt',
+    'mkdir directory_name',
+    'cp source destination',
+    'mv source destination',
+    'rm filename.txt'
+  ],
+  
+  systemInfo: [
+    'uname -a',
+    'whoami',
+    'date',
+    'uptime',
+    'df -h',
+    'free -h',
+    'top -n 1',
+    'ps aux',
+    'netstat -tuln',
+    'ss -tuln'
+  ],
+  
+  textProcessing: [
+    'grep "pattern" filename.txt',
+    'wc -l filename.txt',
+    'sort filename.txt',
+    'uniq filename.txt',
+    'cut -d"," -f1 filename.csv',
+    'awk "{print $1}" filename.txt',
+    'sed "s/old/new/g" filename.txt'
+  ],
+  
+  network: [
+    'ping -c 4 google.com',
+    'curl -I https://example.com',
+    'wget https://example.com/file.txt',
+    'nslookup google.com',
+    'netstat -rn'
+  ]
+};
 
-    // Common command patterns
-    if (request.includes('list') && (request.includes('files') || request.includes('folder') || request.includes('directory'))) {
-      return 'ls -la';
-    }
-    
-    if (request.includes('current') && request.includes('directory')) {
-      return 'pwd';
-    }
-    
-    if (request.includes('disk') && request.includes('space')) {
-      return 'df -h';
-    }
-    
-    if (request.includes('memory') || request.includes('ram')) {
-      return 'free -h';
-    }
-    
-    if (request.includes('process') && request.includes('running')) {
-      return 'ps aux';
-    }
-    
-    if (request.includes('network') && request.includes('connection')) {
-      return 'netstat -tuln';
-    }
-    
-    if (request.includes('system') && request.includes('info')) {
-      return 'uname -a';
-    }
-    
-    if (request.includes('date') || request.includes('time')) {
-      return 'date';
-    }
-    
-    if (request.includes('who') && request.includes('logged')) {
-      return 'who';
-    }
-    
-    if (request.includes('create') && request.includes('directory')) {
-      return 'mkdir new_directory';
-    }
-
-    // If no pattern matches, return a generic suggestion
-    return 'echo "Please specify the command you want to execute"';
-  }
-
-  /**
-   * Format command result for display
-   * @param result The command execution result
-   * @returns Formatted display string
-   */
-  formatResultForDisplay(result: ShellCommandResult): string {
-    if (!result.success) {
-      return `❌ Command failed: ${result.error}\n${result.stderr ? `Error output: ${result.stderr}` : ''}`;
-    }
-
-    let display = `✅ Command executed successfully\n`;
-    display += `📋 Command: ${result.command}\n`;
-    display += `🖥️ Server: ${result.serverConfig?.name || 'Unknown'} (${result.serverConfig?.host}:${result.serverConfig?.port})\n`;
-    display += `⏰ Time: ${new Date(result.timestamp).toLocaleString()}\n\n`;
-
-    if (result.result) {
-      // Handle different result formats
-      if (typeof result.result === 'string') {
-        display += `📄 Output:\n${result.result}`;
-      } else if (result.result.output) {
-        display += `📄 Output:\n${result.result.output}`;
-      } else if (result.result.stdout) {
-        display += `📄 Output:\n${result.result.stdout}`;
-      } else {
-        display += `📄 Result:\n${JSON.stringify(result.result, null, 2)}`;
-      }
-    } else if (result.output) {
-      display += `📄 Output:\n${result.output}`;
-    }
-
-    return display;
-  }
-}
-
-// Export singleton instance
-export const shellCommandService = new ShellCommandService(); 
+export default shellCommandService; 

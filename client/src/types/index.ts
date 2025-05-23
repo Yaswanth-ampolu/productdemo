@@ -36,6 +36,7 @@ export interface ExtendedChatMessage extends Omit<ChatMessage, 'role'> {
   useRag?: boolean; // Flag to indicate if RAG was used
   isContextTool?: boolean; // Flag to indicate if this is a context tool message
   isContextMessage?: boolean; // Flag to indicate this is a context message with user preferences
+  isContextUpdate?: boolean; // Flag to indicate this is a context update (like shell command results)
   isProcessingOnly?: boolean; // Flag to indicate this is document processing, not message streaming
   isLoadingOnly?: boolean; // Flag to indicate this is just a loading indicator with no text
   documentId?: string; // Document ID for file attachments

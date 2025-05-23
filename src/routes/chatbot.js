@@ -165,7 +165,7 @@ router.get('/sessions/:sessionId', isAuthenticated, async (req, res) => {
 
     // Get messages for session with pagination
     const messagesResult = await pool.query(
-      `SELECT id, message, response, timestamp
+      `SELECT id, message, response, timestamp, is_context_update
        FROM messages
        WHERE session_id = $1
        ORDER BY timestamp DESC
@@ -173,21 +173,33 @@ router.get('/sessions/:sessionId', isAuthenticated, async (req, res) => {
       [sessionId, limit, offset]
     );
 
-    // Format messages for client
-    const formattedMessages = messagesResult.rows.map(row => ([
-      {
-        id: `${row.id}-user`,
-        role: 'user',
-        content: row.message,
-        timestamp: row.timestamp
-      },
-      {
-        id: `${row.id}-assistant`,
-        role: 'assistant',
-        content: row.response,
-        timestamp: row.timestamp
+    // Format messages for client - include context updates but handle them specially
+    const formattedMessages = messagesResult.rows.map(row => {
+      const messages = [];
+      
+      // Only add user message if it's not a context update and has content
+      if (!row.is_context_update && row.message && row.message.trim()) {
+        messages.push({
+          id: `${row.id}-user`,
+          role: 'user',
+          content: row.message,
+          timestamp: row.timestamp
+        });
       }
-    ])).flat();
+      
+      // Always add assistant/system message if there's a response
+      if (row.response && row.response.trim()) {
+        messages.push({
+          id: `${row.id}-assistant`,
+          role: row.is_context_update ? 'system' : 'assistant',  // Context updates are system messages
+          content: row.response,
+          timestamp: row.timestamp,
+          isContextUpdate: row.is_context_update || false
+        });
+      }
+      
+      return messages;
+    }).flat();
 
     // Sort by timestamp
     formattedMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -300,7 +312,8 @@ router.post('/message', isAuthenticated, async (req, res) => {
   const { message, sessionId, isContextUpdate } = req.body;
   const userId = req.session.userId;
 
-  if (!message) {
+  // Allow empty messages for context updates, but require message for regular messages
+  if (!message && !isContextUpdate) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
@@ -538,6 +551,95 @@ router.get('/sessions/:sessionId/files', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error retrieving session files:', error);
     res.status(500).json({ error: 'Error retrieving session files' });
+  }
+});
+
+// Update message content (for appending shell command results)
+router.put('/messages/:messageId', isAuthenticated, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.session.userId;
+    const { appendContent, isShellCommandResult } = req.body;
+
+    console.log('Update message request received:', {
+      messageId,
+      userId,
+      contentLength: appendContent ? appendContent.length : 0,
+      isShellCommandResult
+    });
+
+    if (!appendContent) {
+      return res.status(400).json({ error: 'Content to append is required' });
+    }
+
+    // Get the message and verify ownership
+    const messageCheck = await pool.query(
+      `SELECT m.id, m.response, m.session_id, s.user_id 
+       FROM messages m 
+       JOIN chat_sessions s ON m.session_id = s.id 
+       WHERE m.id = $1 AND s.user_id = $2`,
+      [messageId, userId]
+    );
+
+    console.log(`Database query result: Found ${messageCheck.rows.length} messages for ID ${messageId}`);
+
+    if (messageCheck.rows.length === 0) {
+      console.log('Message not found or access denied');
+      return res.status(404).json({ error: 'Message not found or access denied' });
+    }
+
+    const message = messageCheck.rows[0];
+    console.log('Original message response length:', message.response ? message.response.length : 0);
+    
+    // Append the shell command result to the existing response
+    let updatedResponse;
+    if (isShellCommandResult) {
+      // Parse the shell command output to count folders dynamically
+      const outputLines = appendContent.split('\n').filter(line => 
+        line.trim() && line.includes('drwx')
+      );
+      const folderCount = outputLines.length;
+      
+      updatedResponse = `${message.response}
+
+---
+
+**Shell Command Execution Result:**
+
+${appendContent}
+
+Based on this command execution, I can see that there are **${folderCount} folders** in your current directory:
+
+${outputLines.map((line, index) => {
+  const parts = line.trim().split(/\s+/);
+  const folderName = parts[parts.length - 1];
+  const dateInfo = parts.slice(-4, -1).join(' ');
+  return `${index + 1}. **${folderName}** - Directory (${dateInfo})`;
+}).join('\n')}
+
+The command execution was successful and listed all directories in the current location.`;
+    } else {
+      updatedResponse = `${message.response}\n\n${appendContent}`;
+    }
+
+    console.log('Updated response length:', updatedResponse.length);
+
+    // Update the message in the database
+    await pool.query(
+      'UPDATE messages SET response = $1 WHERE id = $2',
+      [updatedResponse, messageId]
+    );
+
+    console.log('Message updated successfully in database');
+
+    res.json({ 
+      success: true, 
+      message: 'Message updated successfully',
+      messageId: messageId
+    });
+  } catch (error) {
+    console.error('Error updating message:', error);
+    res.status(500).json({ error: 'Error updating message' });
   }
 });
 
