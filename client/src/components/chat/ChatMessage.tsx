@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage as ChatMessageType, ExtendedChatMessage } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -37,6 +37,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   const { currentTheme } = useTheme();
   const isDarkTheme = currentTheme !== 'light';
 
+  // Use a ref to track if the context has already been processed
+  const contextProcessedRef = useRef<boolean>(false);
+
   // Extract tool text if present
   const extractToolText = (): string | undefined => {
     if (!isAI || !message.content) return undefined;
@@ -69,8 +72,26 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
   const hasReadContextTool = isAI && (containsReadContextToolCall(message.content) || message.isContextTool);
   const toolText = hasReadContextTool ? extractToolText() : undefined;
 
+  // Check if the message contains phrases that should trigger the context tool
+  // Be more selective to avoid false positives
+  const shouldTriggerContextTool = isAI && !hasReadContextTool && (
+    message.content.includes('I can read your context rules') || 
+    message.content.includes('I can check your context preferences') || 
+    message.content.match(/use the context tool/i) !== null ||
+    message.content.match(/I should (use|run) the context tool/i) !== null ||
+    message.content.match(/let me (use|run) the context tool/i) !== null
+  );
+
   // State for AI response to context
   const [aiContextResponse, setAiContextResponse] = useState<string | null>(null);
+  const [showContextTool, setShowContextTool] = useState<boolean>(shouldTriggerContextTool);
+
+  // If we detect a phrase that should trigger the context tool, show the button
+  useEffect(() => {
+    if (shouldTriggerContextTool && !contextProcessedRef.current) {
+      setShowContextTool(true);
+    }
+  }, [shouldTriggerContextTool]);
 
   // Check if this message is a context result message
   const isContextResultMessage = isAI && message.content.startsWith('Context Loaded');
@@ -134,6 +155,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
 
   // Handle context reading completion
   const handleContextReadComplete = async (result: any, aiResponse?: string) => {
+    // Mark context as processed to prevent multiple executions
+    contextProcessedRef.current = true;
+    
     setContextResult(result);
     if (aiResponse) {
       setAiContextResponse(aiResponse);
@@ -178,7 +202,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
             contextRules: contextRules
           };
 
-          // Save to both storage types for redundancy
+          // Save to both storage types for redundancy - only once
           localStorage.setItem(contextKey, JSON.stringify(stateToSave));
           sessionStorage.setItem(contextKey, JSON.stringify(stateToSave));
 
@@ -565,8 +589,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isAI = false, conver
                   </div>
                 </div>
               </>
-            ) : hasReadContextTool && !contextResult ? (
+            ) : (showContextTool || (hasReadContextTool && !contextResult)) ? (
               // Show the context reading button if the message contains a read_context tool call
+              // or if we detected a phrase that should trigger the context tool
               <>
                 <div>
                   {/* Display the message content up to the tool call */}

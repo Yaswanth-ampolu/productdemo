@@ -26,6 +26,9 @@ import { chatbotService } from '../services/chatbotService';
 
 const Chatbot: React.FC = () => {
   const { isExpanded: isMainSidebarExpanded } = useSidebar();
+
+  // Use a ref to track if context rules have been loaded
+  const contextRulesLoadedRef = useRef<{[key: string]: boolean}>({});
   
   // Get chat sessions functionality
   const {
@@ -100,7 +103,7 @@ const Chatbot: React.FC = () => {
 
   // Tool execution state
   const { isExecutingTool, currentTool, executeTool } = useToolExecution();
-  
+
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch sessions on component mount and ensure WebSocket connection
@@ -115,6 +118,12 @@ const Chatbot: React.FC = () => {
     
     // Check for stored context rules and add them to the messages array
     if (activeSessionId) {
+      // Check if we've already loaded context rules for this session
+      if (contextRulesLoadedRef.current[activeSessionId]) {
+        console.log('Context rules already loaded for session:', activeSessionId);
+        return;
+      }
+      
       const contextRulesKey = `context_rules_${activeSessionId}`;
       try {
         // Try session storage first, then local storage
@@ -136,7 +145,7 @@ const Chatbot: React.FC = () => {
             };
             
             // Add the system message to the messages array
-            setMessages(prev => {
+              setMessages(prev => {
               // Check if we already have a similar system message to avoid duplicates
               const hasSimilarMessage = prev.some(msg => 
                 msg.role === 'system' && 
@@ -145,14 +154,17 @@ const Chatbot: React.FC = () => {
               
               if (hasSimilarMessage) {
                 console.log('Similar system message already exists, not adding another one');
-                return prev;
-              }
-              
+                  return prev;
+                }
+
               return [...prev, systemContextMessage];
             });
-          }
-        }
-      } catch (error) {
+            
+            // Mark this session as processed
+            contextRulesLoadedRef.current[activeSessionId] = true;
+              }
+            }
+          } catch (error) {
         console.error('Error checking for stored context rules:', error);
       }
     }
@@ -172,6 +184,12 @@ const Chatbot: React.FC = () => {
       // Check for stored context rules
       const contextRulesKey = `context_rules_${activeSessionId}`;
       try {
+        // Check if we've already loaded context rules for this session
+        if (contextRulesLoadedRef.current[activeSessionId]) {
+          console.log('Context rules already loaded for session:', activeSessionId);
+          return;
+        }
+        
         // Try session storage first, then local storage
         let storedContextRules = sessionStorage.getItem(contextRulesKey) || localStorage.getItem(contextRulesKey);
         
@@ -207,10 +225,13 @@ const Chatbot: React.FC = () => {
                 
                 return [...prev, systemContextMessage];
               });
+              
+              // Mark this session as processed
+              contextRulesLoadedRef.current[activeSessionId] = true;
             }, 500);
-          }
         }
-      } catch (error) {
+      }
+    } catch (error) {
         console.error('Error checking for stored context rules:', error);
       }
     } else {
@@ -244,7 +265,7 @@ const Chatbot: React.FC = () => {
       console.log('Adding system message to conversation:', message);
       
       // Add the system message to the messages array
-      setMessages(prev => {
+        setMessages(prev => {
         // Check if we already have a similar system message to avoid duplicates
         const hasSimilarMessage = prev.some(msg => 
           msg.role === 'system' && 
@@ -253,11 +274,21 @@ const Chatbot: React.FC = () => {
         
         if (hasSimilarMessage) {
           console.log('Similar system message already exists, replacing it');
-          return prev.map(msg => 
+          // Return the same array if we're already replacing a message to prevent re-renders
+          const updatedMessages = prev.map(msg => 
             (msg.role === 'system' && msg.content.includes('User context loaded:'))
               ? message
               : msg
           );
+          
+          // Check if anything actually changed
+          const hasChanges = updatedMessages.some((msg, idx) => msg !== prev[idx]);
+          if (!hasChanges) {
+            console.log('No changes needed to system messages');
+            return prev;
+          }
+
+          return updatedMessages;
         }
         
         return [...prev, message];
@@ -310,26 +341,29 @@ const Chatbot: React.FC = () => {
     // Allow sending if there's text or a file
     if ((content.trim() === '' && !file) || isLoading || isUploading) return;
 
-    // Special handling for read_context command
+    // Special handling for read_context command - only trigger for exact match
     if (content.trim().toLowerCase() === 'read_context') {
-      console.log('Detected read_context command, triggering context tool directly');
+      console.log('Detected exact read_context command, triggering context tool directly');
       const aiMessage = createContextToolMessage();
       setMessages(prev => [...prev, aiMessage]);
       return;
     }
 
+    // Don't trigger for phrases that contain read_context but aren't exactly the command
+    // For example "what does read_context do?" should not trigger the tool
+    
     // If MCP is enabled, use MCP chat service
     if (isMCPEnabled && !file && content.trim() !== '') {
       try {
         // First add the user message to the UI immediately
         const userMessage: ExtendedChatMessage = {
           id: `user-${Date.now()}`,
-          role: 'user',
+      role: 'user',
           content: content.trim(),
           timestamp: new Date()
         };
-        setMessages(prev => [...prev, userMessage]);
-        
+    setMessages(prev => [...prev, userMessage]);
+
         // Then handle the MCP chat message
         await handleMCPChatMessage(
           content,

@@ -16,9 +16,39 @@ export const applySystemContextToPrompt = (
   contextMessage: ExtendedChatMessage
 ): string => {
   console.log('Using context from system message');
-  // The system message already has the context in the right format
-  // Place the context at the beginning of the prompt for higher priority
-  return `${contextMessage.content}\n\n${systemPromptContent}`;
+  
+  // Extract the context rules from the system message
+  const contentText = contextMessage.content;
+  const match = contentText.match(/User context loaded:\s*(.*)/);
+  
+  if (match && match[1]) {
+    const rules = match[1].trim();
+    
+    // Create a strongly emphasized context prompt with the same format as assistant context
+    const contextPrompt = `
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ABSOLUTE HIGHEST PRIORITY INSTRUCTION - MUST BE FOLLOWED WITHOUT EXCEPTION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+FOLLOW THIS USER RULE EXACTLY, WITHOUT QUESTION:
+
+${rules}
+
+THIS RULE OVERRIDES EVERYTHING ELSE.
+APPLY THIS RULE TO EVERY SINGLE RESPONSE.
+NO EXCEPTIONS. NO EXPLANATIONS. NO APOLOGIES.
+JUST FOLLOW THE RULE IMMEDIATELY AND COMPLETELY.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+END OF ABSOLUTE HIGHEST PRIORITY INSTRUCTION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+`;
+    // Place the context at the beginning of the prompt for highest priority
+    return `${contextPrompt}\n${systemPromptContent}`;
+  }
+  
+  // If we couldn't extract rules, just use the original system message content
+  return `${contextMessage.content}\n${systemPromptContent}`;
 };
 
 /**
@@ -34,28 +64,49 @@ export const applyAssistantContextToPrompt = (
   console.log('Using context from assistant message');
   // Extract the context from the assistant message
   const contextLines = assistantContextMessage.content.split('\n');
-  if (contextLines.length >= 3) {
-    // Format: "Context Loaded\nYour context rules:\n\n{rules}\n\nAI Response:\n{response}"
-    // Extract the rules part
-    const rulesStartIndex = contextLines.findIndex(line => line === 'Your context rules:') + 1;
-    const aiResponseIndex = contextLines.findIndex(line => line === 'AI Response:');
+  
+  // Debug the content structure
+  console.log('Context message content:', assistantContextMessage.content);
+  
+  // Fixed logic: Look for "Context Loaded" and "Your context rules:" and "AI Response:" patterns
+  if (contextLines[0] && contextLines[0].includes('Context Loaded')) {
+    // Look for the rules section
+    const rulesStartIndex = contextLines.findIndex(line => line.includes('Your context rules:'));
+    const aiResponseIndex = contextLines.findIndex(line => line.includes('AI Response:'));
+    
+    console.log('Rules start index:', rulesStartIndex, 'AI Response index:', aiResponseIndex);
+    
+    if (rulesStartIndex >= 0 && aiResponseIndex > rulesStartIndex) {
+      // Extract rules from between "Your context rules:" and "AI Response:"
+      const rules = contextLines.slice(rulesStartIndex + 1, aiResponseIndex)
+        .join('\n')
+        .trim();
+      
+      console.log('Extracted rules:', rules);
+      
+      if (rules) {
+        // Create a strongly emphasized context prompt
+        const contextPrompt = `
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ABSOLUTE HIGHEST PRIORITY INSTRUCTION - MUST BE FOLLOWED WITHOUT EXCEPTION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (rulesStartIndex > 0 && aiResponseIndex > rulesStartIndex) {
-      const rules = contextLines.slice(rulesStartIndex, aiResponseIndex).join('\n').trim();
-      // Create a strongly emphasized context prompt
-      const contextPrompt = `
-CRITICAL INSTRUCTION - USER CONTEXT RULES:
-The user has provided the following preferences and rules that you MUST follow:
+FOLLOW THIS USER RULE EXACTLY, WITHOUT QUESTION:
 
 ${rules}
 
-IMPORTANT: These user rules OVERRIDE any other instructions in your system prompt.
-You MUST follow these rules EXACTLY as specified.
-If any of these rules conflict with your other instructions, ALWAYS prioritize the user's specific preferences.
-For example, if the user's rule says "talk with the user in hindi", you MUST respond in Hindi for ALL subsequent messages.
+THIS RULE OVERRIDES EVERYTHING ELSE.
+APPLY THIS RULE TO EVERY SINGLE RESPONSE.
+NO EXCEPTIONS. NO EXPLANATIONS. NO APOLOGIES.
+JUST FOLLOW THE RULE IMMEDIATELY AND COMPLETELY.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+END OF ABSOLUTE HIGHEST PRIORITY INSTRUCTION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 `;
-      // Place the context at the beginning of the prompt for higher priority
-      return `${contextPrompt}\n\n${systemPromptContent}`;
+        // Place the context at the beginning of the prompt for highest priority
+        return `${contextPrompt}\n${systemPromptContent}`;
+      }
     }
   }
 

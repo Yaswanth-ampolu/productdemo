@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { executeReadContextTool } from '../../services/contextAgentService';
 import { PlayIcon } from '@heroicons/react/24/solid';
 import { CodeBracketIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
@@ -27,9 +27,20 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [loadingStage, setLoadingStage] = useState<'initial' | 'reading' | 'processing'>('initial');
+  
+  // Use a ref to track if the component has already been initialized
+  const hasInitialized = useRef<boolean>(false);
 
   // Check localStorage on mount to see if this button has already been executed
   useEffect(() => {
+    // Guard against multiple executions
+    if (hasInitialized.current) {
+      return;
+    }
+    
+    // Mark as initialized
+    hasInitialized.current = true;
+    
     if (conversationId && messageId) {
       try {
         const contextKey = `context_button_${conversationId}_${messageId}`;
@@ -49,21 +60,24 @@ const ContextReadingButton: React.FC<ContextReadingButtonProps> = ({
             setIsComplete(true);
             setIsLoading(false);
 
+            // Add a data attribute to the button element for CSS targeting
+            setTimeout(() => {
+              const buttons = document.querySelectorAll(`[data-message-id="${messageId}"][data-context-button-state]`);
+              buttons.forEach(button => {
+                button.setAttribute('data-context-button-state', 'complete');
+                if (button instanceof HTMLElement) {
+                  button.style.backgroundColor = 'var(--color-success)';
+                  button.style.cursor = 'default';
+                }
+              });
+            }, 100);
+
             // If we have saved result data, pass it to the onComplete callback
             if (parsedState.result) {
               // Small delay to ensure component is fully mounted
               setTimeout(() => {
                 onComplete(parsedState.result, parsedState.aiResponse);
               }, 100);
-            }
-
-            // Re-save to both storage types to ensure consistency
-            // This helps with cross-tab synchronization
-            try {
-              localStorage.setItem(contextKey, savedState);
-              sessionStorage.setItem(contextKey, savedState);
-            } catch (storageError) {
-              console.error('Error re-saving context button state to storage:', storageError);
             }
           }
         }
@@ -341,6 +355,21 @@ The AI has acknowledged: ${aiResponseContent}
         </div>
       </div>
       {/* CSS is added globally in index.css instead of inline */}
+      <style>
+        {`
+        /* Ensure the button stays in the "Done" state after page refresh */
+        button[data-context-button-state="complete"] {
+          background-color: var(--color-success) !important;
+          cursor: default !important;
+          opacity: 1 !important;
+        }
+        
+        /* Hide the "Show code" button when complete */
+        [data-context-button-state="complete"] ~ div button {
+          display: none !important;
+        }
+        `}
+      </style>
     </div>
   );
 };

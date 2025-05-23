@@ -7,6 +7,7 @@ import { useMCPAgent } from '../../contexts/MCPAgentContext';
 import { useWebSocket } from '../../contexts/WebSocketContext';
 import { enhancePromptWithMCPCapabilities } from '../../prompts/mcpSystemPrompt';
 import mcpChatService from '../../services/mcpChatService';
+import { applyContextToPrompt } from '../../utils/contextUtils';
 
 // Define a custom message type that includes all needed properties
 export interface MCPExtendedChatMessageType {
@@ -180,40 +181,14 @@ export const useMCPChat = () => {
       conversationHistory.push({ role: 'user', content: content.trim() });
 
       try {
-        // Find any context messages in the conversation history
-        const contextMessage = messages.find(msg =>
-          (msg.role === 'system' && msg.content.includes('User context loaded:'))
-        );
-
-        // Extract context from assistant messages if system message not found
-        const assistantContextMessage = messages.find(msg =>
-          (msg.role === 'assistant' && msg.content.startsWith('Context Loaded'))
-        );
-
         // Base system prompt
         let systemPromptContent = 'You are a helpful AI assistant. Answer the user\'s questions accurately and concisely.';
 
-        // If we found a context message, include it in the system prompt
-        if (contextMessage) {
-          console.log('Using context from system message');
-          // The system message already has the context in the right format
-          systemPromptContent = `${systemPromptContent}\n\n${contextMessage.content}`;
-        } else if (assistantContextMessage) {
-          console.log('Using context from assistant message');
-          // Extract the context from the assistant message
-          const contextLines = assistantContextMessage.content.split('\n');
-          if (contextLines.length >= 3) {
-            // Format: "Context Loaded\nYour context rules:\n\n{rules}\n\nAI Response:\n{response}"
-            // Extract the rules part
-            const rulesStartIndex = contextLines.findIndex(line => line === 'Your context rules:') + 1;
-            const aiResponseIndex = contextLines.findIndex(line => line === 'AI Response:');
+        // Apply context to the system prompt using our utility function
+        systemPromptContent = applyContextToPrompt(systemPromptContent, messages);
 
-            if (rulesStartIndex > 0 && aiResponseIndex > rulesStartIndex) {
-              const rules = contextLines.slice(rulesStartIndex, aiResponseIndex).join('\n').trim();
-              systemPromptContent = `${systemPromptContent}\n\nThe user has provided the following preferences and rules that you should follow:\n\n${rules}\n\nPlease respect these preferences in your responses.`;
-            }
-          }
-        }
+        // Log the system prompt with context for debugging
+        console.log('System prompt with context applied:', systemPromptContent);
 
         // Add MCP capabilities to the system prompt
         const systemMessage = {
