@@ -184,8 +184,10 @@ export const useMCPChat = () => {
         // Base system prompt
         let systemPromptContent = 'You are a helpful AI assistant. Answer the user\'s questions accurately and concisely.';
 
-        // Apply context to the system prompt using our utility function
-        systemPromptContent = applyContextToPrompt(systemPromptContent, messages);
+        // Apply context to the system prompt using our utility function with shell command capabilities
+        systemPromptContent = applyContextToPrompt(systemPromptContent, messages, {
+          enableShellCommands: true
+        });
 
         // Log the system prompt with context for debugging
         console.log('System prompt with context applied:', systemPromptContent);

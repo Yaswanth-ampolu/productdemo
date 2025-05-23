@@ -1,4 +1,5 @@
 import { executeReadContextTool } from './contextAgentService';
+import { runShellCommandTool } from './aiToolsService';
 
 /**
  * Interface for AI tool parameters
@@ -47,6 +48,15 @@ export const handleToolExecution = async (
     switch (toolName) {
       case 'read_context':
         result = await executeReadContextTool();
+        break;
+
+      case 'runshellcommand':
+        const shellResult = await runShellCommandTool.execute(params);
+        result = {
+          success: shellResult.success,
+          result: shellResult,
+          error: shellResult.success ? undefined : shellResult.error
+        };
         break;
 
       // Add more tools here as needed

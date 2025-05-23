@@ -4,6 +4,7 @@
  */
 
 import { ExtendedChatMessage } from '../types';
+import { SHELL_COMMAND_SYSTEM_PROMPT } from '../prompts/shellCommandSystemPrompt';
 
 /**
  * Apply context from a system message to the system prompt
@@ -115,16 +116,36 @@ END OF ABSOLUTE HIGHEST PRIORITY INSTRUCTION
 };
 
 /**
+ * Enhance system prompt with shell command capabilities
+ * @param systemPromptContent The base system prompt content
+ * @returns Enhanced system prompt with shell command capabilities
+ */
+export const enhancePromptWithShellCommands = (systemPromptContent: string): string => {
+  return `${systemPromptContent}\n\n${SHELL_COMMAND_SYSTEM_PROMPT}`;
+};
+
+/**
  * Apply context to the system prompt
  * This function checks for context in system or assistant messages and applies it to the system prompt
  * @param systemPromptContent The base system prompt content
  * @param messages The conversation messages
+ * @param options Enhancement options
  * @returns Enhanced system prompt with context
  */
 export const applyContextToPrompt = (
   systemPromptContent: string,
-  messages: ExtendedChatMessage[]
+  messages: ExtendedChatMessage[],
+  options: {
+    enableShellCommands?: boolean;
+  } = {}
 ): string => {
+  let enhancedPrompt = systemPromptContent;
+
+  // Add shell command capabilities if enabled
+  if (options.enableShellCommands) {
+    enhancedPrompt = enhancePromptWithShellCommands(enhancedPrompt);
+  }
+
   // Find any context messages in the conversation history
   const contextMessage = messages.find(msg =>
     (msg.role === 'system' && msg.content.includes('User context loaded:'))
@@ -137,13 +158,13 @@ export const applyContextToPrompt = (
 
   // Apply context to the system prompt
   if (contextMessage) {
-    return applySystemContextToPrompt(systemPromptContent, contextMessage);
+    return applySystemContextToPrompt(enhancedPrompt, contextMessage);
   } else if (assistantContextMessage) {
-    return applyAssistantContextToPrompt(systemPromptContent, assistantContextMessage);
+    return applyAssistantContextToPrompt(enhancedPrompt, assistantContextMessage);
   }
 
-  // If no context found, return the original prompt
-  return systemPromptContent;
+  // If no context found, return the enhanced prompt
+  return enhancedPrompt;
 };
 
 /**
